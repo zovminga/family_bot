@@ -27,12 +27,14 @@ def open_sheet(sheet_name="Data"):
     sh = gc.open(os.getenv("SHEET_NAME"))
     return sh.worksheet(sheet_name)
 
+
 def load_categories() -> list[str]:
     """Читает список категорий из столбца A листа Config."""
     cfg_ws = open_sheet("Config")              # ← название листа, где лежит список
     col = cfg_ws.col_values(1)                 # A:A
     col = [c.strip() for c in col if c.strip()]   # убираем пустые
     return col[1:] if len(col) > 1 else []     # отбрасываем заголовок
+
 
 sheet = open_sheet()
 
@@ -51,12 +53,15 @@ SPENDERS = ["Лиза", "Азат"]
     STAT_CAT, STAT_MON
 ) = range(10)
 
-# ---------- Helpers ----------
+
+# -------- Helpers ----------
 def month_of(date_str: str) -> str:
     return datetime.strptime(date_str, DATE_FMT).strftime(MONTH_FMT)
 
+
 def sheet_append(row):
     sheet.append_row(row, value_input_option="USER_ENTERED")
+
 
 def compute_stats(cat, month):
     df = pd.DataFrame(sheet.get_all_records())
@@ -66,6 +71,7 @@ def compute_stats(cat, month):
     total = df.groupby("Currency")["Amount"].sum()
     lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
     return "\n".join(lines) if lines else "Нет данных 🤷‍♂️"
+
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +88,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True),
     )
     return CHOOSE_ACTION
+
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "Отмена":
@@ -104,11 +111,13 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Нажмите кнопку 😉")
         return CHOOSE_ACTION
 
+
 # ----- Add expense flow -----
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cat"] = update.message.text
     await update.message.reply_text("Введите сумму:")
     return TYPING_AMT
+
 
 async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -121,6 +130,7 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Валюта?", reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True))
     return CHOOSE_CUR
 
+
 async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cur"] = update.message.text
     buttons = [
@@ -129,6 +139,7 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("Дата траты:", reply_markup=InlineKeyboardMarkup(buttons))
     return CHOOSE_DT
+
 
 async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -140,6 +151,7 @@ async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("Введите дату в формате дд.мм.гггг:")
         return TYPING_DT
+
 
 async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -188,11 +200,13 @@ async def stat_mon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Статистика за {month}, категория {cat}:\n{stats}")
     return start_over(update, context)
 
+
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global CATS
     CATS = load_categories()
     text = f"Категории обновлены:\n{', '.join(CATS) if CATS else 'пусто'}"
     await update.message.reply_text(text)
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -211,6 +225,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return CHOOSE_ACTION
 
+
 async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cur"] = update.message.text
     kb = [[s] for s in SPENDERS]
@@ -218,6 +233,7 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Кто внес трату?", reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
     )
     return CHOOSE_SPENDER
+
 
 async def choose_spender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["spender"] = update.message.text
@@ -229,6 +245,7 @@ async def choose_spender(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return TYPING_CMNT
+
 
 async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(update, Update) and update.callback_query:
@@ -244,6 +261,7 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.effective_message.reply_text("Дата траты:", reply_markup=InlineKeyboardMarkup(buttons))
     return CHOOSE_DT
+
 
 # ---------- Main ----------
 def main():
@@ -277,6 +295,7 @@ def main():
     app.add_handler(CommandHandler("stop", cancel))
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
