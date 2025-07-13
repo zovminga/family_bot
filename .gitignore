@@ -1,3 +1,5 @@
 venv/
 creds.json
 .env
+.idea/
+.DS_Store
