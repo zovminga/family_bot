@@ -21,13 +21,13 @@ def open_sheet(sheet_name="Data"):
     scope = ["https://www.googleapis.com/auth/drive",
              "https://www.googleapis.com/auth/spreadsheets"]
 
-    # Загружаем учетные данные из переменной окружения
-    creds_json_str = os.getenv("GOOGLE_CREDS_JSON")
-    if not creds_json_str:
-        raise RuntimeError("Переменная окружения GOOGLE_CREDS_JSON не найдена.")
+    # Получаем путь к файлу из переменной окружения
+    creds_path = os.getenv("GOOGLE_CREDS_PATH")
+    if not creds_path:
+        raise RuntimeError("Переменная окружения GOOGLE_CREDS_PATH не найдена.")
 
-    creds_dict = json.loads(creds_json_str)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    # Авторизуемся, используя файл по указанному пути
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
 
     gc = gspread.authorize(creds)
     sheet_name_env = os.getenv("SHEET_NAME")
@@ -80,7 +80,7 @@ def compute_stats(cat, month):
         df = df[df["Category"] == cat]
     total = df.groupby("Currency")["Amount"].sum()
     lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
-    return "\n".join(lines) if lines else "Нет данных 🤷‍♂️"
+    return "\n".join(lines) if lines else "Нет данных 🤷"
 
 
 # ---------- Conversation steps ----------
