@@ -17,6 +17,17 @@ from telegram.ext import (
 
 
 # ---------- Google Sheets ----------
+def test_google_sheets_connection():
+    """Тестирует подключение к Google Sheets."""
+    try:
+        open_sheet("Config")
+        print("✅ Подключение к Google Sheets успешно")
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка подключения к Google Sheets: {e}")
+        return False
+
+
 def open_sheet(sheet_name="Data"):
     scope = ["https://www.googleapis.com/auth/drive",
              "https://www.googleapis.com/auth/spreadsheets"]
@@ -38,20 +49,68 @@ def open_sheet(sheet_name="Data"):
     return sh.worksheet(sheet_name)
 
 
+def validate_categories(categories: list[str]) -> list[str]:
+    """Валидирует и очищает список категорий."""
+    if not categories:
+        return []
+    
+    # Убираем дубликаты, сохраняя порядок
+    seen = set()
+    unique_categories = []
+    for cat in categories:
+        cat_clean = cat.strip()
+        if cat_clean and cat_clean not in seen:
+            seen.add(cat_clean)
+            unique_categories.append(cat_clean)
+    
+    return unique_categories
+
+
 def load_categories() -> list[str]:
     """Читает список категорий из столбца A листа Config."""
-    cfg_ws = open_sheet("Config")  # ← название листа, где лежит список
-    col = cfg_ws.col_values(1)  # A:A
-    col = [c.strip() for c in col if c.strip()]  # убираем пустые
-    return col[1:] if len(col) > 1 else []  # отбрасываем заголовок
+    try:
+        cfg_ws = open_sheet("Config")  # ← название листа, где лежит список
+        col = cfg_ws.col_values(1)  # A:A
+        col = [c.strip() for c in col if c.strip()]  # убираем пустые
+        categories = col[1:] if len(col) > 1 else []  # отбрасываем заголовок
+        
+        # Валидируем категории
+        categories = validate_categories(categories)
+        
+        # Проверяем, что категории не пустые
+        if not categories:
+            print("⚠️  Внимание: лист Config пуст или не содержит категорий")
+            return []
+            
+        print(f"✅ Загружено {len(categories)} категорий: {', '.join(categories)}")
+        return categories
+        
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке категорий: {e}")
+        # Возвращаем базовые категории в случае ошибки
+        return ["Продукты", "Транспорт", "Развлечения", "Другое"]
 
 
 sheet = open_sheet()
 
 # ---------- Bot constants ----------
-CATS = load_categories()
-if not CATS:
-    raise RuntimeError("Лист Config пуст – нет категорий для бота")
+def initialize_categories():
+    """Инициализирует категории при запуске бота."""
+    global CATS
+    
+    # Тестируем подключение к Google Sheets
+    if not test_google_sheets_connection():
+        print("⚠️  Используются базовые категории из-за проблем с подключением")
+        CATS = ["Продукты", "Транспорт", "Развлечения", "Другое"]
+        return CATS
+    
+    CATS = load_categories()
+    if not CATS:
+        print("⚠️  Используются базовые категории")
+        CATS = ["Продукты", "Транспорт", "Развлечения", "Другое"]
+    return CATS
+
+CATS = initialize_categories()
 CURS = ["RUB", "RSD", "EUR"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
@@ -245,10 +304,49 @@ async def stat_mon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CHOOSE_ACTION
 
 
+async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает текущие категории."""
+    if CATS:
+        text = f"📋 Текущие категории ({len(CATS)} шт.):\n{', '.join(CATS)}"
+    else:
+        text = "❌ Категории не загружены"
+    
+    await update.message.reply_text(text)
+
+
+async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Тестирует подключение к Google Sheets."""
+    try:
+        # Тестируем подключение
+        if test_google_sheets_connection():
+            # Пытаемся загрузить категории
+            test_cats = load_categories()
+            if test_cats:
+                text = f"✅ Подключение успешно!\n📋 Доступно категорий: {len(test_cats)}\n{', '.join(test_cats)}"
+            else:
+                text = "⚠️  Подключение работает, но категории не найдены в листе Config"
+        else:
+            text = "❌ Ошибка подключения к Google Sheets"
+    except Exception as e:
+        text = f"❌ Ошибка: {str(e)}"
+    
+    await update.message.reply_text(text)
+
+
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезагружает категории из Google Sheets."""
     global CATS
+    old_cats = CATS.copy()
     CATS = load_categories()
-    text = f"Категории обновлены:\n{', '.join(CATS) if CATS else 'пусто'}"
+    
+    if CATS:
+        if old_cats == CATS:
+            text = f"✅ Категории уже актуальны ({len(CATS)} шт.):\n{', '.join(CATS)}"
+        else:
+            text = f"🔄 Категории обновлены ({len(CATS)} шт.):\n{', '.join(CATS)}"
+    else:
+        text = "❌ Не удалось загрузить категории. Проверьте лист Config в Google Sheets."
+    
     await update.message.reply_text(text)
 
 
@@ -301,6 +399,8 @@ def main():
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("reloadcats", reload_cats))
+    app.add_handler(CommandHandler("categories", show_categories))
+    app.add_handler(CommandHandler("test_connection", test_connection))
 
     # --- Webhook setup ---
     # Порт для Render.com
