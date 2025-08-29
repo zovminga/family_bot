@@ -119,8 +119,8 @@ SPENDERS = ["Лиза", "Азат"]
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
     CHOOSE_SPENDER, TYPING_CMNT,
     CHOOSE_DT, TYPING_DT,
-    STAT_CAT, STAT_MON
-) = range(10)
+    STAT_CAT, STAT_MON, STAT_GROUP, STAT_GROUP_CAT
+) = range(12)
 
 
 # -------- Helpers ----------
@@ -132,14 +132,52 @@ def sheet_append(row):
     sheet.append_row(row, value_input_option="USER_ENTERED")
 
 
-def compute_stats(cat, month):
+def compute_stats(cat, month, group_by_category=False):
     df = pd.DataFrame(sheet.get_all_records())
     df = df[df["Month"] == month]
     if cat != "Все":
         df = df[df["Category"] == cat]
-    total = df.groupby("Currency")["Amount"].sum()
-    lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
-    return "\n".join(lines) if lines else "Нет данных 🤷"
+    
+    if df.empty:
+        return "Нет данных 🤷"
+    
+    if not group_by_category:
+        # Обычная статистика по валютам
+        total = df.groupby("Currency")["Amount"].sum()
+        lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
+        return "\n".join(lines) if lines else "Нет данных 🤷"
+    else:
+        # Группировка по категориям и валютам
+        # Группируем по категории и валюте
+        grouped = df.groupby(["Category", "Currency"])["Amount"].sum().reset_index()
+        
+        # Сортируем категории по общей сумме
+        category_totals = df.groupby("Category")["Amount"].sum().sort_values(ascending=False)
+        
+        # Формируем результат
+        result_lines = []
+        total_overall = df["Amount"].sum()
+        result_lines.append(f"💰 Общая сумма: {total_overall:,.2f}")
+        result_lines.append("")
+        
+        for category in category_totals.index:
+            cat_data = grouped[grouped["Category"] == category]
+            cat_total = category_totals[category]
+            
+            # Строки для каждой валюты в категории
+            currency_lines = []
+            for _, row in cat_data.iterrows():
+                currency_lines.append(f"  {row['Currency']}: {row['Amount']:,.2f}")
+            
+            # Процент от общей суммы
+            percentage = (cat_total / total_overall) * 100 if total_overall > 0 else 0
+            
+            result_lines.append(f"📊 {category} ({percentage:.1f}%):")
+            result_lines.extend(currency_lines)
+            result_lines.append(f"  💵 Итого: {cat_total:,.2f}")
+            result_lines.append("")  # Пустая строка между категориями
+        
+        return "\n".join(result_lines).strip()
 
 
 # ---------- Conversation steps ----------
@@ -295,10 +333,41 @@ async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stat_mon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    month = update.message.text
+    context.user_data["stat_month"] = update.message.text
+    kb = [["Да", "Нет"]]
+    await update.message.reply_text(
+        "Нужна ли группировка по категориям?",
+        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+    )
+    return STAT_GROUP
+
+
+async def stat_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает выбор группировки."""
+    choice = update.message.text
+    month = context.user_data["stat_month"]
     cat = context.user_data["stat_cat"]
-    stats = compute_stats(cat, month)
-    await update.message.reply_text(f"Статистика за {month}, категория {cat}:\n{stats}")
+    
+    if choice == "Да":
+        # Если выбрана конкретная категория, группировка не нужна
+        if cat != "Все":
+            stats = compute_stats(cat, month, group_by_category=False)
+            await update.message.reply_text(
+                f"Статистика за {month}, категория {cat}:\n{stats}"
+            )
+        else:
+            # Для "Все" категорий показываем группировку
+            stats = compute_stats(cat, month, group_by_category=True)
+            await update.message.reply_text(
+                f"Статистика за {month} (группировка по категориям):\n{stats}"
+            )
+    else:
+        # Обычная статистика без группировки
+        stats = compute_stats(cat, month, group_by_category=False)
+        await update.message.reply_text(
+            f"Статистика за {month}, категория {cat}:\n{stats}"
+        )
+    
     # Возвращаемся в главное меню
     await start(update, context)
     return CHOOSE_ACTION
@@ -389,6 +458,7 @@ def main():
             TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
             STAT_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_cat)],
             STAT_MON: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_mon)],
+            STAT_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_group)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
