@@ -115,17 +115,38 @@ CURS = ["RUB", "RSD", "EUR"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
 SPENDERS = ["Лиза", "Азат"]
+
+# Словарь для сопоставления Telegram ID с именами пользователей
+# Замените на реальные Telegram ID пользователей
+TELEGRAM_USERS = {
+    # Пример: 123456789: "Лиза",
+    # Пример: 987654321: "Азат",
+}
 (
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
-    CHOOSE_SPENDER, TYPING_CMNT,
+    TYPING_CMNT,
     CHOOSE_DT, TYPING_DT,
     STAT_CAT, STAT_MON, STAT_GROUP, STAT_GROUP_CAT
-) = range(12)
+) = range(11)
 
 
 # -------- Helpers ----------
 def month_of(date_str: str) -> str:
     return datetime.strptime(date_str, DATE_FMT).strftime(MONTH_FMT)
+
+
+def get_user_info(update: Update) -> tuple[str, str]:
+    """Получает информацию о пользователе из Telegram."""
+    user = update.effective_user
+    user_id = user.id
+    username = user.username or user.first_name or f"User{user_id}"
+    
+    # Проверяем, есть ли пользователь в словаре
+    if user_id in TELEGRAM_USERS:
+        return TELEGRAM_USERS[user_id], username
+    else:
+        # Если пользователь не найден, возвращаем его имя из Telegram
+        return username, username
 
 
 def sheet_append(row):
@@ -238,20 +259,17 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cur"] = update.message.text
-    kb = [[s] for s in SPENDERS]
-    await update.message.reply_text(
-        "Кто внес трату?", reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return CHOOSE_SPENDER
-
-
-async def choose_spender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["spender"] = update.message.text
+    
+    # Автоматически определяем пользователя
+    user_name, username = get_user_info(update)
+    context.user_data["spender"] = user_name
+    
+    # Сразу переходим к комментарию
     buttons = [
         [InlineKeyboardButton("Пропустить", callback_data="skip")]
     ]
     await update.message.reply_text(
-        "Добавьте комментарий или нажмите «Пропустить»",
+        f"👤 Автоматически определен: {user_name}\n\nДобавьте комментарий или нажмите «Пропустить»",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return TYPING_CMNT
@@ -383,6 +401,40 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию о текущем пользователе."""
+    user = update.effective_user
+    user_id = user.id
+    username = user.username or user.first_name or f"User{user_id}"
+    
+    # Проверяем, зарегистрирован ли пользователь
+    if user_id in TELEGRAM_USERS:
+        registered_name = TELEGRAM_USERS[user_id]
+        text = f"👤 Ваш профиль:\nID: {user_id}\nИмя: {username}\nЗарегистрирован как: {registered_name}"
+    else:
+        text = f"👤 Ваш профиль:\nID: {user_id}\nИмя: {username}\nСтатус: Не зарегистрирован\n\nИспользуйте /register для регистрации"
+    
+    await update.message.reply_text(text)
+
+
+async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Регистрирует пользователя в системе."""
+    user = update.effective_user
+    user_id = user.id
+    username = user.username or user.first_name or f"User{user_id}"
+    
+    # Проверяем, есть ли аргументы в команде
+    if context.args:
+        name = context.args[0]
+        # В реальном приложении здесь нужно сохранить в базу данных или файл
+        # Пока просто выводим информацию
+        text = f"✅ Регистрация:\nID: {user_id}\nИмя: {username}\nЗарегистрирован как: {name}\n\n⚠️  Для сохранения добавьте в код:\nTELEGRAM_USERS[{user_id}] = \"{name}\""
+    else:
+        text = f"📝 Регистрация пользователя:\n\nИспользуйте: /register ИМЯ\n\nПример: /register Лиза\n\nВаш ID: {user_id}\nВаше имя: {username}"
+    
+    await update.message.reply_text(text)
+
+
 async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Тестирует подключение к Google Sheets."""
     try:
@@ -449,7 +501,6 @@ def main():
             CHOOSE_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cat)],
             TYPING_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_amount)],
             CHOOSE_CUR: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cur)],
-            CHOOSE_SPENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_spender)],
             TYPING_CMNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, type_comment),
                 CallbackQueryHandler(type_comment, pattern="^skip$")
@@ -471,6 +522,8 @@ def main():
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))
+    app.add_handler(CommandHandler("whoami", whoami))
+    app.add_handler(CommandHandler("register", register_user))
 
     # --- Webhook setup ---
     # Порт для Render.com
