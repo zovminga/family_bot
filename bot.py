@@ -120,7 +120,7 @@ SPENDERS = ["Лиза", "Азат"]
 # Замените на реальные Telegram ID пользователей
 TELEGRAM_USERS = {
     # Пример: 123456789: "Лиза",
-    # Пример: 987654321: "Азат",
+    248826020: "Азат",
 }
 (
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
