@@ -91,8 +91,6 @@ def load_categories() -> list[str]:
         return ["Продукты", "Транспорт", "Развлечения", "Другое"]
 
 
-sheet = open_sheet()
-
 # ---------- Bot constants ----------
 def initialize_categories():
     """Инициализирует категории при запуске бота."""
@@ -111,10 +109,13 @@ def initialize_categories():
     return CATS
 
 CATS = initialize_categories()
-CURS = ["RUB", "RSD", "EUR"]
+CURS = ["₽", "дин", "€", "¥"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
 SPENDERS = ["Лиза", "Азат"]
+
+# Глобальная переменная для листа данных
+sheet = None
 
 # Словарь для сопоставления Telegram ID с именами пользователей
 # Замените на реальные Telegram ID пользователей
@@ -491,6 +492,10 @@ def main():
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise RuntimeError("Переменная окружения BOT_TOKEN не найдена.")
+
+    # Инициализируем подключение к Google Sheets
+    global sheet
+    sheet = open_sheet()
 
     app = Application.builder().token(bot_token).build()
 
