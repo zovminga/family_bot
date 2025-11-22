@@ -198,18 +198,61 @@ def get_last_n_records(n: int = 3) -> str:
         if not all_records:
             return "📭 Нет записей"
         
+        # Получаем заголовки для определения правильного названия столбца
+        headers = sheet.row_values(1) if sheet.row_values(1) else []
+        
+        # Определяем название столбца "Кто внес" - пробуем разные варианты
+        spender_key = None
+        possible_keys = ["Кто внес", "Who", "Spender", "Кто", "Who внес"]
+        for key in possible_keys:
+            if key in headers:
+                spender_key = key
+                break
+        
+        # Если не нашли по названию, используем индекс (6-й столбец, индекс 5)
+        if not spender_key and len(headers) > 5:
+            # Используем индекс столбца
+            all_values = sheet.get_all_values()
+            if len(all_values) > 0:
+                # Берем последние N записей по индексу
+                last_records = all_values[-n:] if len(all_values) > n else all_values[1:]
+                last_records.reverse()
+                
+                lines = [f"📋 Последние {n} записи:\n"]
+                for i, row in enumerate(last_records, 1):
+                    date = row[0] if len(row) > 0 else "?"
+                    category = row[2] if len(row) > 2 else "?"
+                    amount = float(row[3]) if len(row) > 3 and row[3] else 0
+                    currency = row[4] if len(row) > 4 else "?"
+                    spender = row[5] if len(row) > 5 else "?"
+                    comment = row[6] if len(row) > 6 else ""
+                    
+                    comment_text = f" ({comment})" if comment else ""
+                    lines.append(
+                        f"{i}. 📅 {date} | {category} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
+                    )
+                
+                return "\n".join(lines)
+        
         # Берем последние N записей
         last_records = all_records[-n:]
         last_records.reverse()  # Показываем от новых к старым
         
         lines = [f"📋 Последние {n} записи:\n"]
         for i, record in enumerate(last_records, 1):
-            date = record.get("Date", "?")
-            category = record.get("Category", "?")
-            amount = record.get("Amount", 0)
-            currency = record.get("Currency", "?")
-            spender = record.get("Кто внес", "?")
-            comment = record.get("Comment", "")
+            date = record.get("Date", record.get("Дата", "?"))
+            category = record.get("Category", record.get("Категория", "?"))
+            amount = record.get("Amount", record.get("Сумма", 0))
+            currency = record.get("Currency", record.get("Валюта", "?"))
+            
+            # Используем найденный ключ или пробуем разные варианты
+            if spender_key:
+                spender = record.get(spender_key, "?")
+            else:
+                spender = (record.get("Кто внес") or record.get("Who") or 
+                          record.get("Spender") or record.get("Кто") or "?")
+            
+            comment = record.get("Comment", record.get("Комментарий", ""))
             
             comment_text = f" ({comment})" if comment else ""
             lines.append(
