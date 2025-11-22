@@ -3,8 +3,10 @@ import os
 import json
 from datetime import datetime
 from dateutil import parser as dparser
+from typing import Optional
 
 import pandas as pd
+import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from telegram import (
@@ -127,8 +129,9 @@ TELEGRAM_USERS = {
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
     TYPING_CMNT,
     CHOOSE_DT, TYPING_DT,
-    STAT_CAT, STAT_MON, STAT_GROUP, STAT_GROUP_CAT
-) = range(11)
+    STAT_CAT, STAT_MON, STAT_GROUP, STAT_GROUP_CAT,
+    STAT_DATE_FROM, STAT_DATE_TO, STAT_CURRENCY_CONVERT
+) = range(14)
 
 
 # -------- Helpers ----------
@@ -154,14 +157,105 @@ def sheet_append(row):
     sheet.append_row(row, value_input_option="USER_ENTERED")
 
 
-def compute_stats(cat, month, group_by_category=False):
+def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
+    """Получает курс валют через API exchangerate-api.com."""
+    try:
+        if from_currency == to_currency:
+            return 1.0
+        
+        # Маппинг валют для API
+        currency_map = {
+            "₽": "RUB",
+            "дин": "RSD", 
+            "€": "EUR",
+            "¥": "JPY",
+            "$": "USD"
+        }
+        
+        from_cur = currency_map.get(from_currency, from_currency)
+        to_cur = currency_map.get(to_currency, to_currency)
+        
+        # Используем exchangerate-api.com (бесплатный)
+        url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            rate = data.get("rates", {}).get(to_cur)
+            if rate:
+                return float(rate)
+        
+        return None
+    except Exception as e:
+        print(f"Ошибка получения курса: {e}")
+        return None
+
+
+def get_last_n_records(n: int = 3) -> str:
+    """Возвращает последние N записей из Google Sheets."""
+    try:
+        all_records = sheet.get_all_records()
+        if not all_records:
+            return "📭 Нет записей"
+        
+        # Берем последние N записей
+        last_records = all_records[-n:]
+        last_records.reverse()  # Показываем от новых к старым
+        
+        lines = [f"📋 Последние {n} записи:\n"]
+        for i, record in enumerate(last_records, 1):
+            date = record.get("Date", "?")
+            category = record.get("Category", "?")
+            amount = record.get("Amount", 0)
+            currency = record.get("Currency", "?")
+            spender = record.get("Кто внес", "?")
+            comment = record.get("Comment", "")
+            
+            comment_text = f" ({comment})" if comment else ""
+            lines.append(
+                f"{i}. 📅 {date} | {category} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
+            )
+        
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ Ошибка при получении записей: {e}"
+
+
+def compute_stats(cat, month=None, date_from=None, date_to=None, 
+                 group_by_category=False, convert_to_currency=None):
+    """Вычисляет статистику с поддержкой произвольных периодов и конвертации валют."""
     df = pd.DataFrame(sheet.get_all_records())
-    df = df[df["Month"] == month]
+    
+    # Фильтрация по периоду
+    if month:
+        df = df[df["Month"] == month]
+    elif date_from and date_to:
+        # Конвертируем даты в datetime для сравнения
+        df["Date"] = pd.to_datetime(df["Date"], format=DATE_FMT, errors='coerce')
+        date_from_dt = pd.to_datetime(date_from, format=DATE_FMT)
+        date_to_dt = pd.to_datetime(date_to, format=DATE_FMT)
+        df = df[(df["Date"] >= date_from_dt) & (df["Date"] <= date_to_dt)]
+        df["Date"] = df["Date"].dt.strftime(DATE_FMT)  # Возвращаем обратно в строку
+    
     if cat != "Все":
         df = df[df["Category"] == cat]
     
     if df.empty:
         return "Нет данных 🤷"
+    
+    # Конвертация валют, если указана
+    if convert_to_currency and convert_to_currency != "Оставить как есть":
+        df_converted = df.copy()
+        for currency in df["Currency"].unique():
+            if currency != convert_to_currency:
+                rate = get_exchange_rate(currency, convert_to_currency)
+                if rate:
+                    mask = df_converted["Currency"] == currency
+                    df_converted.loc[mask, "Amount"] = df_converted.loc[mask, "Amount"] * rate
+                    df_converted.loc[mask, "Currency"] = convert_to_currency
+                else:
+                    return f"❌ Не удалось получить курс для {currency} → {convert_to_currency}"
+        df = df_converted
     
     if not group_by_category:
         # Обычная статистика по валютам
@@ -204,7 +298,8 @@ def compute_stats(cat, month, group_by_category=False):
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [["Добавить трату", "Показать статистику"]]
+    kb = [["💰 Добавить трату", "📊 Показать статистику"]]
+    kb.append(["🏠 К началу"])
 
     # message может быть None, если пришёл CallbackQuery
     if update.message:
@@ -213,7 +308,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target = update.callback_query.message  # сообщение, на которое кликнули
 
     await target.reply_text(
-        "Привет! Что делаем?",
+        "👋 Привет! Что делаем?",
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True),
     )
     return CHOOSE_ACTION
@@ -221,16 +316,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text == "Добавить трату":
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    if text == "💰 Добавить трату" or text == "Добавить трату":
         kb = [[c] for c in CATS]
+        kb.append(["🏠 К началу"])
         await update.message.reply_text(
-            "Выберите категорию:", reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+            "📂 Выберите категорию:", 
+            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return CHOOSE_CAT
-    elif text == "Показать статистику":
+    elif text == "📊 Показать статистику" or text == "Показать статистику":
         kb = [[c] for c in ["Все"] + CATS]
+        kb.append(["📜 Последние 3 записи"])
+        kb.append(["🏠 К началу"])
         await update.message.reply_text(
-            "По какой категории?", reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+            "📂 По какой категории?", 
+            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return STAT_CAT
     else:
@@ -240,26 +347,57 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ----- Add expense flow -----
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["cat"] = update.message.text
-    await update.message.reply_text("Введите сумму:")
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    context.user_data["cat"] = text
+    kb = [["🏠 К началу"]]
+    await update.message.reply_text(
+        "💵 Введите сумму:",
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
+    )
     return TYPING_AMT
 
 
 async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
     try:
-        amt = float(update.message.text.replace(",", "."))
+        amt = float(text.replace(",", "."))
     except ValueError:
-        await update.message.reply_text("Нужно число. Попробуем ещё раз:")
+        await update.message.reply_text("❌ Нужно число. Попробуем ещё раз:")
         return TYPING_AMT
     context.user_data["amt"] = amt
     kb = [[c] for c in CURS]
-    await update.message.reply_text("Валюта?",
-                                    reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True))
+    kb.append(["🏠 К началу"])
+    await update.message.reply_text(
+        "💱 Валюта?",
+        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+    )
     return CHOOSE_CUR
 
 
 async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["cur"] = update.message.text
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    context.user_data["cur"] = text
     
     # Автоматически определяем пользователя
     user_name, username = get_user_info(update)
@@ -267,10 +405,11 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Сразу переходим к комментарию
     buttons = [
-        [InlineKeyboardButton("Пропустить", callback_data="skip")]
+        [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
+        [InlineKeyboardButton("🏠 К началу", callback_data="to_start")]
     ]
     await update.message.reply_text(
-        f"👤 Автоматически определен: {user_name}\n\nДобавьте комментарий или нажмите «Пропустить»",
+        f"👤 Автоматически определен: {user_name}\n\n💬 Добавьте комментарий или нажмите «Пропустить»",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return TYPING_CMNT
@@ -279,39 +418,65 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Этот обработчик вызывается и для текстовых сообщений, и для нажатия кнопки "skip"
     if update.callback_query:
-        # Нажали «Пропустить»
         await update.callback_query.answer()
+        if update.callback_query.data == "to_start":
+            context.user_data.clear()
+            await start(update, context)
+            return CHOOSE_ACTION
         context.user_data["comment"] = ""
     else:
-        context.user_data["comment"] = update.message.text
+        text = update.message.text
+        if text == "🏠 К началу" or text == "К началу":
+            context.user_data.clear()
+            await start(update, context)
+            return CHOOSE_ACTION
+        context.user_data["comment"] = text
 
     # далее выбираем дату
     buttons = [
-        [InlineKeyboardButton("Сегодня", callback_data="today"),
-         InlineKeyboardButton("Указать дату", callback_data="custom")]
+        [InlineKeyboardButton("📅 Сегодня", callback_data="today"),
+         InlineKeyboardButton("📆 Указать дату", callback_data="custom")],
+        [InlineKeyboardButton("🏠 К началу", callback_data="to_start")]
     ]
     # Используем update.effective_message для ответа, т.к. может быть и Message, и CallbackQuery
-    await update.effective_message.reply_text("Дата траты:", reply_markup=InlineKeyboardMarkup(buttons))
+    await update.effective_message.reply_text(
+        "📅 Дата траты:", 
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
     return CHOOSE_DT
 
 
 async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    if query.data == "to_start":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
     if query.data == "today":
         date_str = datetime.now().strftime(DATE_FMT)
         await save_row(update, context, date_str)
         return CHOOSE_ACTION
     else:
-        await query.edit_message_text("Введите дату в формате дд.мм.гггг:")
+        await query.edit_message_text("📅 Введите дату в формате дд.мм.гггг:")
         return TYPING_DT
 
 
 async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
     try:
-        date_str = dparser.parse(update.message.text, dayfirst=True).strftime(DATE_FMT)
+        date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
     except Exception:
-        await update.message.reply_text("Не могу разобрать дату, попробуйте 13.07.2025")
+        await update.message.reply_text("❌ Не могу разобрать дату, попробуйте 13.07.2025")
         return TYPING_DT
     await save_row(update, context, date_str)
     return CHOOSE_ACTION
@@ -341,21 +506,128 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
 
 # ----- Stats flow -----
 async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["stat_cat"] = update.message.text
-    # список последних 12 месяцев
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    # Обработка "Последние записи"
+    if text == "📜 Последние 3 записи":
+        last_records = get_last_n_records(3)
+        await update.message.reply_text(last_records)
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    context.user_data["stat_cat"] = text
+    
+    # список последних 12 месяцев + опция произвольного периода
     now = datetime.now()
     months = [(now.replace(day=1) - pd.DateOffset(months=i)).strftime(MONTH_FMT) for i in range(12)]
     kb = [[m] for m in months]
-    await update.message.reply_text("За какой месяц?",
-                                    reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True))
+    kb.append(["📅 Выбрать период"])
+    kb.append(["🏠 К началу"])
+    
+    await update.message.reply_text(
+        "📅 За какой период?",
+        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+    )
     return STAT_MON
 
 
 async def stat_mon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["stat_month"] = update.message.text
+    text = update.message.text
+    
+    # Обработка кнопки "К началу"
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    if text == "📅 Выбрать период":
+        kb = [["🏠 К началу"]]
+        await update.message.reply_text(
+            "📅 Введите начальную дату (дд.мм.гггг):",
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
+        )
+        return STAT_DATE_FROM
+    else:
+        context.user_data["stat_month"] = text
+        kb = [["Да", "Нет"]]
+        kb.append(["🏠 К началу"])
+        await update.message.reply_text(
+            "📊 Нужна ли группировка по категориям?",
+            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return STAT_GROUP
+
+
+async def stat_date_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    try:
+        date_from = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
+        context.user_data["stat_date_from"] = date_from
+        kb = [["🏠 К началу"]]
+        await update.message.reply_text(
+            "📅 Введите конечную дату (дд.мм.гггг):",
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
+        )
+        return STAT_DATE_TO
+    except Exception:
+        await update.message.reply_text("❌ Не могу разобрать дату, попробуйте 13.07.2025")
+        return STAT_DATE_FROM
+
+
+async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    try:
+        date_to = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
+        context.user_data["stat_date_to"] = date_to
+        
+        # Спрашиваем про конвертацию валют
+        kb = [["₽", "дин", "€", "¥"]]
+        kb.append(["Оставить как есть"])
+        kb.append(["🏠 К началу"])
+        await update.message.reply_text(
+            "💱 К какой валюте привести все траты? (или оставить как есть)",
+            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return STAT_CURRENCY_CONVERT
+    except Exception:
+        await update.message.reply_text("❌ Не могу разобрать дату, попробуйте 13.07.2025")
+        return STAT_DATE_TO
+
+
+async def stat_currency_convert(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    
+    if text == "🏠 К началу" or text == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
+    convert_to = text if text != "Оставить как есть" else None
+    context.user_data["stat_convert_to"] = convert_to
+    
+    # Спрашиваем про группировку
     kb = [["Да", "Нет"]]
+    kb.append(["🏠 К началу"])
     await update.message.reply_text(
-        "Нужна ли группировка по категориям?",
+        "📊 Нужна ли группировка по категориям?",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
     )
     return STAT_GROUP
@@ -364,30 +636,39 @@ async def stat_mon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stat_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает выбор группировки."""
     choice = update.message.text
-    month = context.user_data["stat_month"]
+    
+    if choice == "🏠 К началу" or choice == "К началу":
+        context.user_data.clear()
+        await start(update, context)
+        return CHOOSE_ACTION
+    
     cat = context.user_data["stat_cat"]
+    group_by = choice == "Да"
     
-    if choice == "Да":
-        # Если выбрана конкретная категория, группировка не нужна
-        if cat != "Все":
-            stats = compute_stats(cat, month, group_by_category=False)
-            await update.message.reply_text(
-                f"Статистика за {month}, категория {cat}:\n{stats}"
-            )
-        else:
-            # Для "Все" категорий показываем группировку
-            stats = compute_stats(cat, month, group_by_category=True)
-            await update.message.reply_text(
-                f"Статистика за {month} (группировка по категориям):\n{stats}"
-            )
+    # Определяем период
+    month = context.user_data.get("stat_month")
+    date_from = context.user_data.get("stat_date_from")
+    date_to = context.user_data.get("stat_date_to")
+    convert_to = context.user_data.get("stat_convert_to")
+    
+    if month:
+        stats = compute_stats(cat, month=month, group_by_category=group_by, 
+                            convert_to_currency=convert_to)
+        period_text = f"за {month}"
+    elif date_from and date_to:
+        stats = compute_stats(cat, date_from=date_from, date_to=date_to, 
+                            group_by_category=group_by, convert_to_currency=convert_to)
+        period_text = f"с {date_from} по {date_to}"
     else:
-        # Обычная статистика без группировки
-        stats = compute_stats(cat, month, group_by_category=False)
-        await update.message.reply_text(
-            f"Статистика за {month}, категория {cat}:\n{stats}"
-        )
+        stats = "❌ Ошибка: не указан период"
+        period_text = ""
     
-    # Возвращаемся в главное меню
+    if convert_to:
+        stats_text = f"📊 Статистика {period_text}, категория {cat} (в {convert_to}):\n{stats}"
+    else:
+        stats_text = f"📊 Статистика {period_text}, категория {cat}:\n{stats}"
+    
+    await update.message.reply_text(stats_text)
     await start(update, context)
     return CHOOSE_ACTION
 
@@ -479,7 +760,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     context.user_data.clear()  # очищаем всё накопленное
     await update.message.reply_text(
-        "Действие отменено. Начинаем заново 🙂"
+        "❌ Действие отменено. Начинаем заново 🙂"
     )
     # Показываем ту же клавиатуру, что и в start()
     await start(update, context)
@@ -508,17 +789,21 @@ def main():
             CHOOSE_CUR: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cur)],
             TYPING_CMNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, type_comment),
-                CallbackQueryHandler(type_comment, pattern="^skip$")
+                CallbackQueryHandler(type_comment, pattern="^(skip|to_start)$")
             ],
             CHOOSE_DT: [CallbackQueryHandler(choose_dt)],
             TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
             STAT_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_cat)],
             STAT_MON: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_mon)],
+            STAT_DATE_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_from)],
+            STAT_DATE_TO: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_to)],
+            STAT_CURRENCY_CONVERT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_currency_convert)],
             STAT_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_group)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
             CommandHandler("stop", cancel),
+            CommandHandler("start", start),  # Добавляем start как fallback
         ],
         allow_reentry=True,
     )
