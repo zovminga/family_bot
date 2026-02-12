@@ -313,37 +313,99 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
                  group_by_currency=True, convert_to_currency=None):
     """Computes statistics with support for custom periods and currency conversion.
     Returns tuple: (stats_text, conversion_details_dict)"""
-    df = pd.DataFrame(sheet.get_all_records())
     conversion_details = {}
     
-    # Normalize column names (support both English and Russian)
-    column_mapping = {
-        "Amount": "Amount",
-        "Сумма": "Amount",
-        "Currency": "Currency",
-        "Валюта": "Currency",
-        "Category": "Category",
-        "Категория": "Category",
-        "Date": "Date",
-        "Дата": "Date",
-        "Month": "Month",
-        "Месяц": "Month"
-    }
+    # Get raw values to properly handle comma decimal separators
+    # Use get_all_values() to get string values - we'll parse them correctly
+    all_values = sheet.get_all_values()
     
-    # Rename columns to standard English names
-    for old_name, new_name in column_mapping.items():
-        if old_name in df.columns:
-            df.rename(columns={old_name: new_name}, inplace=True)
+    if not all_values or len(all_values) < 2:
+        return "No data 🤷", {}
     
-    # Convert Amount column to float explicitly (handles string values from Google Sheets)
-    # Replace commas with dots and convert to float
-    if "Amount" not in df.columns:
+    headers = all_values[0]
+    rows = all_values[1:]
+    
+    # Find column indices
+    amount_col_idx = None
+    currency_col_idx = None
+    category_col_idx = None
+    date_col_idx = None
+    month_col_idx = None
+    
+    for i, header in enumerate(headers):
+        header_lower = str(header).strip().lower()
+        if header_lower in ["amount", "сумма"]:
+            amount_col_idx = i
+        elif header_lower in ["currency", "валюта"]:
+            currency_col_idx = i
+        elif header_lower in ["category", "категория"]:
+            category_col_idx = i
+        elif header_lower in ["date", "дата"]:
+            date_col_idx = i
+        elif header_lower in ["month", "месяц"]:
+            month_col_idx = i
+    
+    if amount_col_idx is None:
         return "❌ Error: Amount column not found", {}
     
-    df["Amount"] = pd.to_numeric(
-        df["Amount"].astype(str).str.replace(",", "."), 
-        errors='coerce'
-    ).fillna(0)
+    # Parse data rows with proper comma handling
+    data_rows = []
+    for row in rows:
+        if len(row) <= amount_col_idx:
+            continue
+        
+        # Get amount value - handle both string and numeric types
+        amount_raw = row[amount_col_idx]
+        
+        # If it's already a number, use it directly
+        if isinstance(amount_raw, (int, float)):
+            amount = float(amount_raw)
+        else:
+            # It's a string - need to parse it
+            amount_str = str(amount_raw).strip()
+            if not amount_str:
+                continue
+            
+            # Critical: Handle comma as decimal separator
+            # If string contains comma and looks like decimal (e.g., "7,65", "123,45")
+            # Replace comma with dot before parsing
+            # But be careful: if it's "1,234" it might be thousand separator
+            # Simple heuristic: if comma is followed by 1-3 digits at the end, it's decimal separator
+            if ',' in amount_str:
+                # Check if comma is decimal separator (followed by 1-3 digits, possibly at end)
+                parts = amount_str.split(',')
+                if len(parts) == 2 and len(parts[1]) <= 3:
+                    # This is decimal separator: "7,65" -> "7.65"
+                    amount_str = amount_str.replace(",", ".")
+                # Otherwise assume it's thousand separator and remove it: "1,234" -> "1234"
+                else:
+                    amount_str = amount_str.replace(",", "")
+            
+            # Remove spaces and other potential separators
+            amount_str = amount_str.replace(" ", "").replace("'", "").replace(" ", "")
+            
+            try:
+                amount = float(amount_str)
+            except (ValueError, TypeError):
+                continue
+        
+        currency = row[currency_col_idx].strip() if currency_col_idx and len(row) > currency_col_idx else ""
+        category = row[category_col_idx].strip() if category_col_idx and len(row) > category_col_idx else ""
+        date = row[date_col_idx].strip() if date_col_idx and len(row) > date_col_idx else ""
+        month_val = row[month_col_idx].strip() if month_col_idx and len(row) > month_col_idx else ""
+        
+        data_rows.append({
+            "Amount": amount,
+            "Currency": currency,
+            "Category": category,
+            "Date": date,
+            "Month": month_val
+        })
+    
+    if not data_rows:
+        return "No data 🤷", {}
+    
+    df = pd.DataFrame(data_rows)
     
     # Filter by period
     if month:
