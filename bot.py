@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser as dparser
 from typing import Optional
 
@@ -255,7 +255,14 @@ def get_last_n_records(n: int = 3, category: str = None) -> str:
                 for i, row in enumerate(last_records, 1):
                     date = row[0] if len(row) > 0 else "?"
                     cat = row[2] if len(row) > 2 else "?"
-                    amount = float(row[3]) if len(row) > 3 and row[3] else 0
+                    # Handle amount conversion with comma/dot support
+                    if len(row) > 3 and row[3]:
+                        try:
+                            amount = float(str(row[3]).replace(",", "."))
+                        except (ValueError, TypeError):
+                            amount = 0
+                    else:
+                        amount = 0
                     currency = row[4] if len(row) > 4 else "?"
                     spender = row[5] if len(row) > 5 else "?"
                     comment = row[6] if len(row) > 6 else ""
@@ -275,7 +282,12 @@ def get_last_n_records(n: int = 3, category: str = None) -> str:
         for i, record in enumerate(last_records, 1):
             date = record.get("Date", record.get("Дата", "?"))
             cat = record.get("Category", record.get("Категория", "?"))
-            amount = record.get("Amount", record.get("Сумма", 0))
+            # Handle amount conversion with comma/dot support
+            amount_raw = record.get("Amount", record.get("Сумма", 0))
+            try:
+                amount = float(str(amount_raw).replace(",", "."))
+            except (ValueError, TypeError):
+                amount = 0
             currency = record.get("Currency", record.get("Валюта", "?"))
             
             # Use found key or try different variants
@@ -304,11 +316,44 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
     df = pd.DataFrame(sheet.get_all_records())
     conversion_details = {}
     
+    # Normalize column names (support both English and Russian)
+    column_mapping = {
+        "Amount": "Amount",
+        "Сумма": "Amount",
+        "Currency": "Currency",
+        "Валюта": "Currency",
+        "Category": "Category",
+        "Категория": "Category",
+        "Date": "Date",
+        "Дата": "Date",
+        "Month": "Month",
+        "Месяц": "Month"
+    }
+    
+    # Rename columns to standard English names
+    for old_name, new_name in column_mapping.items():
+        if old_name in df.columns:
+            df.rename(columns={old_name: new_name}, inplace=True)
+    
+    # Convert Amount column to float explicitly (handles string values from Google Sheets)
+    # Replace commas with dots and convert to float
+    if "Amount" not in df.columns:
+        return "❌ Error: Amount column not found", {}
+    
+    df["Amount"] = pd.to_numeric(
+        df["Amount"].astype(str).str.replace(",", "."), 
+        errors='coerce'
+    ).fillna(0)
+    
     # Filter by period
     if month:
+        if "Month" not in df.columns:
+            return "❌ Error: Month column not found", {}
         df = df[df["Month"] == month]
     elif date_from and date_to:
         # Convert dates to datetime for comparison
+        if "Date" not in df.columns:
+            return "❌ Error: Date column not found", {}
         df["Date"] = pd.to_datetime(df["Date"], format=DATE_FMT, errors='coerce')
         date_from_dt = pd.to_datetime(date_from, format=DATE_FMT)
         date_to_dt = pd.to_datetime(date_to, format=DATE_FMT)
@@ -316,6 +361,8 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
         df["Date"] = df["Date"].dt.strftime(DATE_FMT)
     
     if cat != "All":
+        if "Category" not in df.columns:
+            return "❌ Error: Category column not found", {}
         df = df[df["Category"] == cat]
     
     if df.empty:
@@ -496,7 +543,8 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Choose date
     buttons = [
         [InlineKeyboardButton("📅 Today", callback_data="today"),
-         InlineKeyboardButton("📆 Enter date", callback_data="custom")],
+         InlineKeyboardButton("📆 Yesterday", callback_data="yesterday")],
+        [InlineKeyboardButton("📆 Enter date", callback_data="custom")],
         [InlineKeyboardButton("🏠 To start", callback_data="to_start")]
     ]
     # Use update.effective_message for reply, as it can be both Message and CallbackQuery
@@ -518,6 +566,10 @@ async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "today":
         date_str = datetime.now().strftime(DATE_FMT)
+        await save_row(update, context, date_str)
+        return CHOOSE_ACTION
+    elif query.data == "yesterday":
+        date_str = (datetime.now() - timedelta(days=1)).strftime(DATE_FMT)
         await save_row(update, context, date_str)
         return CHOOSE_ACTION
     else:
