@@ -1,4 +1,5 @@
 venv/
+secrets/
 creds.json
 .env
 .idea/

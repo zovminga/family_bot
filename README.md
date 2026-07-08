@@ -15,12 +15,21 @@ Telegram bot for family expense tracking with Google Sheets integration.
 ## Commands
 
 - `/start` - Start bot
+- `/dashboard` - Send the latest expenses dashboard as an HTML file (open in a browser)
 - `/categories` - Show categories
 - `/reloadcats` - Reload categories
 - `/test_connection` - Test Google Sheets connection
 - `/whoami` - Show profile
 - `/register NAME` - Register user
 - `/cancel` or `/stop` - Cancel current action
+
+> The `📈 Dashboard` button in the main menu is a shortcut for `/dashboard`.
+>
+> **The bot does not build the dashboard** — it is built on a separate machine
+> (see [`dashboard/README.md`](dashboard/README.md)). Each build uploads the HTML to
+> Telegram and stores the resulting `file_id` in a `Meta` worksheet; `/dashboard`
+> just re-sends that latest `file_id`, so it is instant and needs no `ANTHROPIC_API_KEY`
+> on the server.
 
 ## Quick Start
 
@@ -32,6 +41,11 @@ GOOGLE_CREDS_PATH=/path/to/credentials.json
 SHEET_NAME=your_google_sheet_name
 RENDER_EXTERNAL_URL=https://your-app.onrender.com  # for Render deployment
 ```
+
+> **`/dashboard` on the server** needs nothing extra: the bot only reads the latest
+> `file_id` from the `Meta` sheet and re-sends it. Building/classification
+> (`ANTHROPIC_API_KEY`, `DASHBOARD_CHAT_ID`) happens on the build machine — see
+> [`dashboard/README.md`](dashboard/README.md).
 
 ### 2. Google Sheets Setup
 
