@@ -1,0 +1,10 @@
+# Generated artifacts and any real financial data must never be committed
+# (this repo is PUBLIC)
+output/
+secrets/
+*.html
+!template.html
+*.csv
+.env
+__pycache__/
+venv/

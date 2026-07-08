@@ -134,6 +134,50 @@ TELEGRAM_USERS = {
 ) = range(15)
 
 
+# ---------- Dashboard delivery ----------
+# The dashboard is BUILT on a separate machine (see dashboard/run.sh): that build
+# uploads the HTML to Telegram and stores the resulting file_id in the "Meta"
+# worksheet. The bot itself never builds — it just re-sends that latest file_id,
+# so opening the dashboard from the phone is instant and needs no server-side work.
+META_SHEET = "Meta"
+META_FILE_ID_CELL = "B1"
+
+
+def get_dashboard_file_id() -> Optional[str]:
+    """Read the latest dashboard Telegram file_id from the Meta worksheet."""
+    try:
+        ws = open_sheet(META_SHEET)
+        value = ws.acell(META_FILE_ID_CELL).value
+        return value.strip() if value else None
+    except Exception as e:
+        print(f"Error reading dashboard file_id: {e}")
+        return None
+
+
+async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the latest built dashboard to the chat by its stored file_id."""
+    msg = update.effective_message
+    file_id = get_dashboard_file_id()
+    if not file_id:
+        await msg.reply_text(
+            "📊 Дашборд ещё не собран. Собери его на компьютере "
+            "(dashboard/run.sh) — после сборки он появится здесь."
+        )
+        return
+    try:
+        await msg.reply_document(
+            document=file_id,
+            caption="Открой файл в браузере — актуальный дашборд трат. 💰",
+        )
+    except Exception as e:  # noqa: BLE001 - report failures to the user
+        await msg.reply_text(f"❌ Не удалось отправить дашборд: {e}")
+
+
+async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/dashboard — send the latest built dashboard."""
+    await send_dashboard(update, context)
+
+
 # -------- Helpers ----------
 def month_of(date_str: str) -> str:
     return datetime.strptime(date_str, DATE_FMT).strftime(MONTH_FMT)
@@ -469,6 +513,7 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [["💰 Add expense", "📊 Show statistics"]]
+    kb.append(["📈 Dashboard"])
     kb.append(["🏠 To start"])
 
     # message may be None if CallbackQuery came
@@ -492,7 +537,11 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         await start(update, context)
         return CHOOSE_ACTION
-    
+
+    if text in ("📈 Dashboard", "Dashboard"):
+        await send_dashboard(update, context)
+        return CHOOSE_ACTION
+
     if text == "💰 Add expense" or text == "Add expense":
         kb = [[c] for c in CATS]
         kb.append(["🏠 To start"])
@@ -1092,6 +1141,7 @@ def main():
     )
 
     app.add_handler(conv)
+    app.add_handler(CommandHandler("dashboard", dashboard_cmd))
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))
