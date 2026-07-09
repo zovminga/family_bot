@@ -4,7 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Семейные траты — дашборд</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Chart.js is inlined at build time (see __CHARTJS__) so the file is fully
+     self-contained: it renders offline and inside in-app browsers (Telegram)
+     without needing to reach a CDN. -->
+<script>__CHARTJS__</script>
 <style>
   :root {
     --bg: #0e1116;
@@ -143,6 +146,19 @@
 </style>
 </head>
 <body>
+<noscript>
+  <div style="max-width:640px;margin:40px auto;padding:20px;border:1px solid #272d38;
+              border-radius:12px;background:#171b22;color:#e6e9ef;line-height:1.5">
+    Этот дашборд интерактивный и работает через JavaScript. Похоже, он открыт
+    во встроенном просмотрщике, где скрипты отключены. Открой файл в обычном
+    браузере: в Telegram нажми «⋯» → «Открыть в браузере» (Safari / Chrome).
+  </div>
+</noscript>
+<div id="fatalError" style="display:none;max-width:640px;margin:40px auto;padding:20px;
+     border:1px solid #f87171;border-radius:12px;background:#171b22;color:#e6e9ef;line-height:1.5">
+  Не удалось построить дашборд. Открой файл в обычном браузере (Telegram → «⋯» →
+  «Открыть в браузере»). Если не поможет — пересобери дашборд на компьютере.
+</div>
 <div class="wrap">
   <header>
     <div>
@@ -497,8 +513,13 @@ function renderInsights(rows) {
 
 // ---- charts ----
 function makeChart(id, cfg) {
+  // Degrade gracefully if the charting lib failed to load: the rest of the
+  // dashboard (KPIs, tables, insights) must still render.
+  if (typeof Chart === "undefined") return;
+  const el = document.getElementById(id);
+  if (!el) return;
   if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(document.getElementById(id), cfg);
+  charts[id] = new Chart(el, cfg);
 }
 const axisColor = "#8b95a7", gridColor = "rgba(255,255,255,0.06)";
 const baseScales = {
@@ -859,13 +880,14 @@ function closeDrill() { document.getElementById("drillModal").style.display = "n
 // ---- orchestration ----
 function render() {
   const rows = filteredRows();
-  renderKpis(rows);
-  renderInsights(rows);
-  renderMonthlyMonitor(rows);
-  renderOptimization(rows);
-  renderCharts(rows);
-  renderGrouping(rows);
-  renderTable(rows);
+  // Each section is isolated: a failure in one (e.g. charts) must not blank
+  // the others. Errors are logged, not thrown.
+  const sections = [renderKpis, renderInsights, renderMonthlyMonitor,
+                    renderOptimization, renderCharts, renderGrouping, renderTable];
+  for (const fn of sections) {
+    try { fn(rows); }
+    catch (err) { console.error(`render section ${fn.name} failed:`, err); }
+  }
 }
 
 function init() {
@@ -952,7 +974,14 @@ function init() {
 
   render();
 }
-init();
+
+try {
+  init();
+} catch (err) {
+  console.error("Dashboard init failed:", err);
+  const box = document.getElementById("fatalError");
+  if (box) box.style.display = "block";
+}
 </script>
 </body>
 </html>

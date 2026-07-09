@@ -8,3 +8,5 @@ secrets/
 .env
 __pycache__/
 venv/
+# Third-party bundle fetched+cached at build time (inlined into the output)
+vendor/
