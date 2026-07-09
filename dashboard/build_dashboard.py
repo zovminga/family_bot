@@ -67,7 +67,7 @@ ISO_TO_SYMBOL = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 # NOTE: "Лиза" (July) and "snezhi" (from August) are treated as the same person.
 SPENDER_NORMALIZE = {
     "азат": "Азат", "azat": "Азат",
-    "лиза": "Лиза", "snezhi": "Лиза", "снежи": "Лиза", "лиса": "Лиза",
+    "лиза": "Лиза", "lisa": "Лиза", "snezhi": "Лиза", "снежи": "Лиза", "лиса": "Лиза",
 }
 
 # Comments matching this are ATM cash withdrawals / cash-outs, not real

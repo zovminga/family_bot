@@ -20,6 +20,7 @@ from telegram.ext import (
 )
 
 import voice_input as vx
+import regular
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -118,6 +119,20 @@ def initialize_categories():
     return CATS
 
 CATS = initialize_categories()
+
+
+def load_templates() -> list[dict]:
+    """Load one-off quick-templates from the Regular_expenses sheet."""
+    try:
+        items = regular.load_regular()["oneoff"]
+        print(f"✅ Loaded {len(items)} quick templates")
+        return items
+    except Exception as e:  # noqa: BLE001 - degrade to no templates
+        print(f"⚠️  Could not load templates: {e}")
+        return []
+
+
+TEMPLATES = load_templates()
 CURS = ["₽", "дин", "€", "¥"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
@@ -183,6 +198,27 @@ async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/dashboard — send the latest built dashboard."""
     await send_dashboard(update, context)
+
+
+async def regular_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/regular — post this month's recurring expenses now (idempotent).
+
+    Use '/regular force' to post again even if this month was already done.
+    """
+    force = bool(context.args) and context.args[0].lower() in ("force", "--force")
+    await update.effective_message.reply_text("⏳ Добавляю регулярные траты…")
+    try:
+        res = await asyncio.to_thread(regular.append_monthly, force)
+    except Exception as e:  # noqa: BLE001 - report to user
+        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
+        return
+    if res["skipped"]:
+        await update.effective_message.reply_text(
+            f"↷ Пропущено: {res['skipped']}\n"
+            "Добавить принудительно: /regular force")
+    else:
+        await update.effective_message.reply_text(
+            f"✅ Добавлено регулярных: {len(res['added'])}\n" + ", ".join(res["added"]))
 
 
 # -------- Helpers ----------
@@ -763,10 +799,16 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        kb = [[c] for c in CATS]
+        # Quick templates (from Regular_expenses «разовые траты») first — two per
+        # row — then the regular category list.
+        tmpl_labels = [f"⚡ {t['name']}" for t in TEMPLATES]
+        kb = [tmpl_labels[i:i + 2] for i in range(0, len(tmpl_labels), 2)]
+        kb += [[c] for c in CATS]
         kb.append(["🏠 To start"])
+        prompt = ("📂 Choose category or ⚡ quick template:"
+                  if TEMPLATES else "📂 Choose category:")
         await update.message.reply_text(
-            "📂 Choose category:", 
+            prompt,
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return CHOOSE_CAT
@@ -793,7 +835,23 @@ async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         await start(update, context)
         return CHOOSE_ACTION
-    
+
+    # Quick template tapped (⚡ prefix): save instantly with today's date.
+    if text.startswith("⚡"):
+        name = text.replace("⚡", "", 1).strip()
+        tmpl = next((t for t in TEMPLATES if t["name"] == name), None)
+        if tmpl:
+            who, _ = get_user_info(update)
+            date_str = datetime.now().strftime(DATE_FMT)
+            sheet_append([date_str, month_of(date_str), tmpl["category"],
+                          tmpl["amount"], tmpl["currency"], who, tmpl["name"]])
+            await update.message.reply_text(
+                f"✅ Сохранено: {tmpl['name']} — {tmpl['amount']:,.2f} "
+                f"{tmpl['currency']} · {date_str}")
+            await start(update, context)
+            return CHOOSE_ACTION
+        # Unknown template (list changed) — fall through to normal handling.
+
     context.user_data["cat"] = text
     kb = [["🏠 To start"]]
     await update.message.reply_text(
@@ -1288,10 +1346,11 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reloads categories from Google Sheets."""
-    global CATS
+    """Reloads categories (and quick templates) from Google Sheets."""
+    global CATS, TEMPLATES
     old_cats = CATS.copy()
     CATS = load_categories()
+    TEMPLATES = load_templates()
     
     if CATS:
         if old_cats == CATS:
@@ -1367,6 +1426,7 @@ def main():
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))
+    app.add_handler(CommandHandler("regular", regular_cmd))
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))
