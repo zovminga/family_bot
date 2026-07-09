@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regular expenses: parse the 'Regular_expenses' sheet and post monthly ones.
+"""Default (preset) expenses: parse the 'Regular_expenses' sheet.
 
 The sheet is human-friendly (one row per item; the amount lives in a
 per-currency column) and split into two sections by divider rows:
@@ -10,16 +10,13 @@ per-currency column) and split into two sections by divider rows:
     разовые траты
     баня              | 3850   |      |         |       | Beauty ... | Both
 
-- Rows under «ежемесячные траты» are auto-posted to Data on the 1st of a month.
-- Rows under «разовые траты» power the quick-template buttons in the bot.
-
-This module is self-contained (its own gspread auth) so the monthly launchd
-script can use it without importing the Telegram bot.
+Both sections are surfaced in the bot as one-tap «default expense» buttons; the
+only difference is the label section. This module just reads and parses the
+sheet — no posting logic here.
 """
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -29,15 +26,8 @@ BOT_DIR = Path(__file__).resolve().parent
 CURRENCY_WORDS = [("динар", "дин"), ("евро", "€"), ("доллар", "$"), ("рубл", "₽")]
 
 REGULAR_SHEET = "Regular_expenses"
-DATA_SHEET = "Data"
-META_SHEET = "Meta"
-META_MONTH_CELL = "B3"       # stores the last month regular expenses were posted
-META_MONTH_LABEL_CELL = "A3"
 
 
-# ---------------------------------------------------------------------------
-# Google Sheets access (self-contained)
-# ---------------------------------------------------------------------------
 def _open_spreadsheet():
     import gspread
     from oauth2client.service_account import ServiceAccountCredentials
@@ -57,9 +47,6 @@ def _open_spreadsheet():
     return gspread.authorize(creds).open(sheet_name)
 
 
-# ---------------------------------------------------------------------------
-# Parsing
-# ---------------------------------------------------------------------------
 def _num(raw) -> Optional[float]:
     text = str(raw).strip().replace(" ", "").replace("\u00a0", "")
     if not text:
@@ -129,61 +116,15 @@ def parse_regular(values: list[list[str]]) -> dict:
     return result
 
 
-def load_regular() -> dict:
-    """Read and parse the Regular_expenses sheet from Google Sheets."""
-    sp = _open_spreadsheet()
-    values = sp.worksheet(REGULAR_SHEET).get_all_values()
-    return parse_regular(values)
+def load_defaults() -> list[dict]:
+    """Return all preset expenses (monthly first, then one-off) as a flat list.
 
-
-# ---------------------------------------------------------------------------
-# Monthly posting (idempotent)
-# ---------------------------------------------------------------------------
-def _get_or_create_meta(sp):
-    import gspread
-    try:
-        return sp.worksheet(META_SHEET)
-    except gspread.WorksheetNotFound:
-        return sp.add_worksheet(title=META_SHEET, rows=10, cols=2)
-
-
-def append_monthly(force: bool = False) -> dict:
-    """Append every «ежемесячные» expense to Data with date = 1st of this month.
-
-    Idempotent: a month is posted at most once (guarded by a cell in Meta),
-    unless force=True. Returns {'added': [names], 'skipped': reason_or_None}.
+    Each item carries a 'section' key ('monthly'|'oneoff') for optional grouping.
     """
-    sp = _open_spreadsheet()
-    monthly = parse_regular(sp.worksheet(REGULAR_SHEET).get_all_values())["monthly"]
-    if not monthly:
-        return {"added": [], "skipped": "no monthly expenses found"}
-
-    now = datetime.now()
-    month = now.strftime("%Y-%m")
-    first_day = now.replace(day=1).strftime("%d.%m.%Y")
-
-    meta = _get_or_create_meta(sp)
-    if not force and (meta.acell(META_MONTH_CELL).value or "").strip() == month:
-        return {"added": [], "skipped": f"already posted for {month}"}
-
-    rows = [[first_day, month, it["category"], it["amount"], it["currency"],
-             it["who"], it["name"]] for it in monthly]
-    sp.worksheet(DATA_SHEET).append_rows(rows, value_input_option="USER_ENTERED")
-
-    meta.update_acell(META_MONTH_LABEL_CELL, "regular_last_month")
-    meta.update_acell(META_MONTH_CELL, month)
-    return {"added": [it["name"] for it in monthly], "skipped": None}
-
-
-if __name__ == "__main__":
-    import sys
-    from dotenv import load_dotenv
-
-    load_dotenv(BOT_DIR / ".env")
-    forced = "--force" in sys.argv[1:]
-    outcome = append_monthly(force=forced)
-    if outcome["skipped"]:
-        print(f"↷ Skipped: {outcome['skipped']}")
-    else:
-        print(f"✅ Posted {len(outcome['added'])} monthly expense(s): "
-              f"{', '.join(outcome['added'])}")
+    values = _open_spreadsheet().worksheet(REGULAR_SHEET).get_all_values()
+    parsed = parse_regular(values)
+    items = []
+    for section in ("monthly", "oneoff"):
+        for it in parsed[section]:
+            items.append({**it, "section": section})
+    return items

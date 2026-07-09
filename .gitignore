@@ -6,5 +6,3 @@ creds.json
 .DS_Store
 # Offline speech-to-text model (downloaded at runtime, ~45MB)
 models/
-# launchd logs for the monthly recurring-expenses job
-regular.log

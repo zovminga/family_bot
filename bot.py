@@ -121,18 +121,18 @@ def initialize_categories():
 CATS = initialize_categories()
 
 
-def load_templates() -> list[dict]:
-    """Load one-off quick-templates from the Regular_expenses sheet."""
+def load_defaults() -> list[dict]:
+    """Load all preset expenses (monthly + one-off) from Regular_expenses."""
     try:
-        items = regular.load_regular()["oneoff"]
-        print(f"✅ Loaded {len(items)} quick templates")
+        items = regular.load_defaults()
+        print(f"✅ Loaded {len(items)} default expenses")
         return items
-    except Exception as e:  # noqa: BLE001 - degrade to no templates
-        print(f"⚠️  Could not load templates: {e}")
+    except Exception as e:  # noqa: BLE001 - degrade to no defaults
+        print(f"⚠️  Could not load default expenses: {e}")
         return []
 
 
-TEMPLATES = load_templates()
+DEFAULTS = load_defaults()
 CURS = ["₽", "дин", "€", "¥"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
@@ -198,27 +198,6 @@ async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/dashboard — send the latest built dashboard."""
     await send_dashboard(update, context)
-
-
-async def regular_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/regular — post this month's recurring expenses now (idempotent).
-
-    Use '/regular force' to post again even if this month was already done.
-    """
-    force = bool(context.args) and context.args[0].lower() in ("force", "--force")
-    await update.effective_message.reply_text("⏳ Добавляю регулярные траты…")
-    try:
-        res = await asyncio.to_thread(regular.append_monthly, force)
-    except Exception as e:  # noqa: BLE001 - report to user
-        await update.effective_message.reply_text(f"❌ Ошибка: {e}")
-        return
-    if res["skipped"]:
-        await update.effective_message.reply_text(
-            f"↷ Пропущено: {res['skipped']}\n"
-            "Добавить принудительно: /regular force")
-    else:
-        await update.effective_message.reply_text(
-            f"✅ Добавлено регулярных: {len(res['added'])}\n" + ", ".join(res["added"]))
 
 
 # -------- Helpers ----------
@@ -768,8 +747,8 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [["💰 Add expense", "📊 Show statistics"]]
-    kb.append(["📈 Dashboard"])
+    kb = [["💰 Add expense", "🧾 Add default expense"]]
+    kb.append(["📊 Show statistics", "📈 Dashboard"])
     kb.append(["🏠 To start"])
 
     # message may be None if CallbackQuery came
@@ -799,16 +778,25 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        # Quick templates (from Regular_expenses «разовые траты») first — two per
-        # row — then the regular category list.
-        tmpl_labels = [f"⚡ {t['name']}" for t in TEMPLATES]
-        kb = [tmpl_labels[i:i + 2] for i in range(0, len(tmpl_labels), 2)]
-        kb += [[c] for c in CATS]
+        kb = [[c] for c in CATS]
         kb.append(["🏠 To start"])
-        prompt = ("📂 Choose category or ⚡ quick template:"
-                  if TEMPLATES else "📂 Choose category:")
         await update.message.reply_text(
-            prompt,
+            "📂 Choose category:",
+            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return CHOOSE_CAT
+
+    if text in ("🧾 Add default expense", "Add default expense"):
+        if not DEFAULTS:
+            await update.message.reply_text(
+                "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
+            return CHOOSE_ACTION
+        # All presets (monthly + one-off) as ⚡ one-tap buttons, two per row.
+        labels = [f"⚡ {t['name']}" for t in DEFAULTS]
+        kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
+        kb.append(["🏠 To start"])
+        await update.message.reply_text(
+            "🧾 Выбери заготовку — сохранится сразу с сегодняшней датой:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return CHOOSE_CAT
@@ -836,21 +824,22 @@ async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return CHOOSE_ACTION
 
-    # Quick template tapped (⚡ prefix): save instantly with today's date.
+    # Default expense tapped (⚡ prefix): save instantly with today's date.
     if text.startswith("⚡"):
         name = text.replace("⚡", "", 1).strip()
-        tmpl = next((t for t in TEMPLATES if t["name"] == name), None)
-        if tmpl:
-            who, _ = get_user_info(update)
+        preset = next((t for t in DEFAULTS if t["name"] == name), None)
+        if preset:
+            # Author comes from the sheet's «кто» column (falls back to the tapper).
+            who = preset.get("who") or get_user_info(update)[0]
             date_str = datetime.now().strftime(DATE_FMT)
-            sheet_append([date_str, month_of(date_str), tmpl["category"],
-                          tmpl["amount"], tmpl["currency"], who, tmpl["name"]])
+            sheet_append([date_str, month_of(date_str), preset["category"],
+                          preset["amount"], preset["currency"], who, preset["name"]])
             await update.message.reply_text(
-                f"✅ Сохранено: {tmpl['name']} — {tmpl['amount']:,.2f} "
-                f"{tmpl['currency']} · {date_str}")
+                f"✅ Сохранено: {preset['name']} — {preset['amount']:,.2f} "
+                f"{preset['currency']} · {date_str}")
             await start(update, context)
             return CHOOSE_ACTION
-        # Unknown template (list changed) — fall through to normal handling.
+        # Unknown preset (list changed) — fall through to normal handling.
 
     context.user_data["cat"] = text
     kb = [["🏠 To start"]]
@@ -1346,11 +1335,11 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reloads categories (and quick templates) from Google Sheets."""
-    global CATS, TEMPLATES
+    """Reloads categories (and default expenses) from Google Sheets."""
+    global CATS, DEFAULTS
     old_cats = CATS.copy()
     CATS = load_categories()
-    TEMPLATES = load_templates()
+    DEFAULTS = load_defaults()
     
     if CATS:
         if old_cats == CATS:
@@ -1426,7 +1415,6 @@ def main():
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))
-    app.add_handler(CommandHandler("regular", regular_cmd))
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))
