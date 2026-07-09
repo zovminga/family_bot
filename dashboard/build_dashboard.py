@@ -35,6 +35,13 @@ OUTPUT_DIR = DASHBOARD_DIR / "output"
 TEMPLATE_PATH = DASHBOARD_DIR / "template.html"
 DATA_PLACEHOLDER = "__DASHBOARD_DATA__"
 
+# Chart.js is inlined into the output so the HTML is fully self-contained and
+# renders offline / inside in-app browsers (Telegram) without hitting a CDN.
+CHARTJS_PLACEHOLDER = "__CHARTJS__"
+CHARTJS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+VENDOR_DIR = DASHBOARD_DIR / "vendor"
+CHARTJS_PATH = VENDOR_DIR / "chart.umd.min.js"
+
 # Per-provider default model for LLM comment grouping.
 DEFAULT_LLM_MODELS = {
     "anthropic": "claude-sonnet-5",   # stronger reasoning for comment classification
@@ -290,6 +297,22 @@ def fetch_rates(base_iso: str) -> dict[str, float]:
     rates = resp.json().get("rates", {})
     rates[base_iso] = 1.0
     return rates
+
+
+def get_chartjs() -> str:
+    """Return the Chart.js UMD bundle to inline, caching it under vendor/.
+
+    Downloaded once from the CDN and cached on disk so subsequent builds work
+    offline. The output HTML embeds this so it renders without any network.
+    """
+    if CHARTJS_PATH.exists():
+        return CHARTJS_PATH.read_text(encoding="utf-8")
+    print("→ Fetching Chart.js to inline (first run; cached under vendor/)…")
+    resp = requests.get(CHARTJS_CDN, timeout=30)
+    resp.raise_for_status()
+    VENDOR_DIR.mkdir(parents=True, exist_ok=True)
+    CHARTJS_PATH.write_text(resp.text, encoding="utf-8")
+    return resp.text
 
 
 def to_base(amount: float, iso: str, base_iso: str, rates: dict[str, float]) -> Optional[float]:
@@ -595,6 +618,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     payload = json.dumps(data, ensure_ascii=False)
     html = template.replace(DATA_PLACEHOLDER, payload)
+    # Inline Chart.js so the file is self-contained (works offline / in-app browsers).
+    html = html.replace(CHARTJS_PLACEHOLDER, get_chartjs())
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / "expenses_dashboard.html"
