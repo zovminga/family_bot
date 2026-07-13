@@ -33,6 +33,20 @@ MODEL_URL = f"https://alphacephei.com/vosk/models/{DEFAULT_MODEL_NAME}.zip"
 SAMPLE_RATE = 16000
 DEFAULT_LLM_MODEL = os.getenv("VX_LLM_MODEL", "claude-sonnet-5")
 
+# Known merchants/brands → category hints for the LLM. Vosk often mangles brand
+# names (especially Latin ones like "DM"), so we also list phonetic ASR variants.
+# When Claude sees any of these in the transcript it maps the expense to the given
+# category and writes a clean merchant name into the comment.
+# Extend this list whenever you notice a store being misclassified.
+#   name     — canonical merchant name to put in the comment
+#   aliases  — spellings/phonetic variants Vosk may produce
+#   category — target category (should exist in the Config category list)
+#   note     — optional human hint appended to the prompt line
+MERCHANT_HINTS: list[dict] = [
+    {"name": "DM", "aliases": ["dm", "дм", "де эм", "дэ эм", "деэм", "дэ-эм", "деем"],
+     "category": "Household", "note": "дрогери-маркет (Drogerie Markt), бытовая химия/косметика"},
+]
+
 # Lazily-loaded Vosk model (loading is slow and memory-heavy — do it once).
 _model = None
 
@@ -119,6 +133,23 @@ def _extract_json_object(text: str) -> dict:
     return json.loads(text)
 
 
+def _merchant_hints_block() -> str:
+    """Render the MERCHANT_HINTS table as a prompt section (empty if none)."""
+    if not MERCHANT_HINTS:
+        return ""
+    lines = []
+    for m in MERCHANT_HINTS:
+        aliases = ", ".join(m.get("aliases", []))
+        note = f" — {m['note']}" if m.get("note") else ""
+        alias_part = f" (в речи может звучать как: {aliases})" if aliases else ""
+        lines.append(f"- «{m['name']}»{alias_part} → категория «{m['category']}»{note}")
+    return (
+        "Известные магазины/бренды. Если в тексте встречается такое слово или "
+        "что-то похожее по звучанию — это магазин: поставь указанную категорию, а в "
+        "comment запиши каноническое название магазина:\n" + "\n".join(lines) + "\n\n"
+    )
+
+
 def _build_prompt(transcript: str, categories: list[str], currencies: list[str],
                   today: str, who: str, default_currency: str) -> str:
     cats = "\n".join(f"- {c}" for c in categories)
@@ -130,6 +161,7 @@ def _build_prompt(transcript: str, categories: list[str], currencies: list[str],
         f"Допустимые КАТЕГОРИИ (выбери ровно одну для каждой траты):\n{cats}\n\n"
         f"Допустимые ВАЛЮТЫ (символы): {curs}. Валюта по умолчанию, если не "
         f"названа: {default_currency}.\n\n"
+        + _merchant_hints_block() +
         "Правила:\n"
         "- Числа могут быть словами («сто», «двести пятьдесят») — переведи в число.\n"
         "- Слова валют: рубль/рублей→₽, динар/динаров→дин, евро→€, иена/йен→¥, "
