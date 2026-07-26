@@ -60,6 +60,7 @@ SYMBOL_TO_ISO = {
     "€": "EUR",
     "¥": "JPY",
     "$": "USD",
+    "£": "GBP",
 }
 ISO_TO_SYMBOL = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 

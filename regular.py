@@ -23,7 +23,13 @@ from typing import Optional
 BOT_DIR = Path(__file__).resolve().parent
 
 # Currency column header (substring) -> symbol used in the Data sheet.
-CURRENCY_WORDS = [("динар", "дин"), ("евро", "€"), ("доллар", "$"), ("рубл", "₽")]
+CURRENCY_WORDS = [
+    ("динар", "дин"),
+    ("евро", "€"),
+    ("доллар", "$"),
+    ("рубл", "₽"),
+    ("фунт", "£"),
+]
 
 REGULAR_SHEET = "Regular_expenses"
 

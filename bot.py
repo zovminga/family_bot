@@ -20,6 +20,7 @@ from telegram.ext import (
 )
 
 import voice_input as vx
+import photo_input as px
 import regular
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
@@ -133,7 +134,7 @@ def load_defaults() -> list[dict]:
 
 
 DEFAULTS = load_defaults()
-CURS = ["₽", "дин", "€", "¥"]
+CURS = ["₽", "дин", "€", "¥", "£"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
 SPENDERS = ["Lisa", "Azat"]
@@ -235,7 +236,8 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
             "дин": "RSD", 
             "€": "EUR",
             "¥": "JPY",
-            "$": "USD"
+            "$": "USD",
+            "£": "GBP",
         }
         
         from_cur = currency_map.get(from_currency, from_currency)
@@ -548,7 +550,10 @@ def vx_card_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     items = context.user_data.get("vx_items", [])
     transcript = context.user_data.get("vx_transcript", "")
     note = context.user_data.get("vx_note", "")
-    lines = [f"🎧 Расшифровка: «{transcript}»", ""]
+    # The confirmation card is shared by voice and receipt-photo input; the source
+    # sets its own header (via vx_header), otherwise fall back to the voice one.
+    header = context.user_data.get("vx_header")
+    lines = [header, ""] if header else [f"🎧 Расшифровка: «{transcript}»", ""]
     if len(items) == 1:
         it = items[0]
         lines += [
@@ -670,8 +675,68 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for it in items:
         it["who"] = who
+    context.user_data.pop("vx_header", None)  # this draft is voice, not a receipt
     context.user_data["vx_items"] = items
     context.user_data["vx_transcript"] = transcript
+    context.user_data["vx_note"] = result.get("note", "")
+    await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+
+
+# ---------- Receipt photo input ----------
+# A receipt photo is read by Claude Vision (photo_input.py): items are extracted,
+# categorized, and grouped by category into draft expenses. The user reviews the
+# SAME confirmation card as voice input and can fix category/date/currency before
+# saving. Needs ANTHROPIC_API_KEY (already used for voice).
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Read a receipt photo/image and show an editable, category-grouped draft."""
+    msg = update.effective_message
+    who, _ = get_user_info(update)
+    status = await msg.reply_text("🧾 Читаю чек…")
+
+    # Photos come as a list of sizes (largest last); images can also arrive as a
+    # document with an image mime type.
+    media_type = None
+    if msg.photo:
+        file_id = msg.photo[-1].file_id
+        media_type = "image/jpeg"  # Telegram always re-encodes photos to JPEG
+    elif msg.document and (msg.document.mime_type or "").startswith("image/"):
+        file_id = msg.document.file_id
+        media_type = msg.document.mime_type
+    else:
+        await status.edit_text("🤔 Пришли фото чека картинкой.")
+        return
+
+    try:
+        tg_file = await context.bot.get_file(file_id)
+        buf = await tg_file.download_as_bytearray()
+    except Exception as e:  # noqa: BLE001 - report to user
+        await status.edit_text(f"❌ Не смог скачать фото: {e}")
+        return
+
+    today = datetime.now().strftime(DATE_FMT)
+    try:
+        result = await asyncio.to_thread(
+            px.extract_receipt, bytes(buf), media_type, CATS, CURS,
+            today, who, DEFAULT_CURRENCY)
+    except Exception as e:  # noqa: BLE001
+        await status.edit_text(f"❌ Не смог распознать чек: {e}")
+        return
+
+    items = result.get("expenses", [])
+    if not items:
+        note = result.get("note", "")
+        await status.edit_text(
+            "🧾 Не нашёл позиций на чеке. Сфотографируй чётче, при хорошем свете."
+            + (f"\nℹ️ {note}" if note else ""))
+        return
+
+    for it in items:
+        it["who"] = who
+    merchant = result.get("merchant", "")
+    header = "🧾 Чек" + (f" · {merchant}" if merchant else "") + " — черновик"
+    context.user_data["vx_header"] = header
+    context.user_data["vx_items"] = items
+    context.user_data["vx_transcript"] = merchant
     context.user_data["vx_note"] = result.get("note", "")
     await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
 
@@ -685,6 +750,7 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "cancel":
         context.user_data.pop("vx_items", None)
+        context.user_data.pop("vx_header", None)
         await query.edit_message_text("❌ Отменено.")
         return
 
@@ -703,6 +769,7 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sheet_append([it["date"], month_of(it["date"]), it["category"],
                           it["amount"], it["currency"], it["who"], it["comment"]])
         context.user_data.pop("vx_items", None)
+        context.user_data.pop("vx_header", None)
         if len(items) == 1:
             it = items[0]
             await query.edit_message_text(
@@ -1408,9 +1475,10 @@ def main():
         allow_reentry=True,
     )
 
-    # Voice-driven expense entry works from any state, so register it before the
-    # conversation handler (same group, earlier match wins).
+    # Voice- and photo-driven expense entry work from any state, so register them
+    # before the conversation handler (same group, earlier match wins).
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, voice_handler))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_handler))
     app.add_handler(CallbackQueryHandler(vx_callback, pattern="^vx:"))
 
     app.add_handler(conv)
