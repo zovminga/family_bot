@@ -5,7 +5,12 @@ Telegram bot for family expense tracking with Google Sheets integration.
 ## Features
 
 - Add expenses by category
-- Multi-currency support (₽, дин, €, ¥)
+- Voice input (offline STT + Claude parsing)
+- Receipt photos: send a photo of a receipt — Claude Vision reads the items and
+  splits them into meaningful rows by sense (beer on its own line, sweets/snacks
+  on their own line, all ordinary groceries collapsed into one line), then shows
+  an editable draft before saving
+- Multi-currency support (₽, дин, €, ¥, £)
 - Auto user detection by Telegram ID
 - Statistics: last 3 records, custom period, by months
 - Currency conversion with exchange rates
@@ -22,6 +27,20 @@ Telegram bot for family expense tracking with Google Sheets integration.
 - `/whoami` - Show profile
 - `/register NAME` - Register user
 - `/cancel` or `/stop` - Cancel current action
+
+## Receipt photos 🧾
+
+Send a photo of a receipt (or an image file) to the bot in any state. Claude
+Vision (`photo_input.py`) reads every line item, classifies each one into your
+existing `Config` categories, and groups them into **meaningful rows by sense**:
+alcohol on its own line, sweets/snacks on their own line, and all ordinary
+groceries collapsed into a single line (not one row per product). You get the
+same editable confirmation card as voice input (fix category/date/currency,
+then save). Items are summed **in Python** per group, so totals are reliable.
+
+Requires `ANTHROPIC_API_KEY` on the server (already used for voice input). No QR
+decoding or extra system libraries are needed — Vision reads the item names
+straight from the photo, so it works for any receipt regardless of country.
 
 > The `📈 Dashboard` button in the main menu is a shortcut for `/dashboard`.
 >
