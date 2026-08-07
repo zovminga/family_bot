@@ -31,6 +31,13 @@ if str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sheets import open_client
+from sheet_data import (
+    ISO_TO_SYMBOL,
+    SYMBOL_TO_ISO,
+    normalize_month,
+    parse_amount,
+    resolve_columns,
+)
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -58,17 +65,6 @@ DEFAULT_LLM_MODELS = {
 def cache_path(provider: str) -> Path:
     """Cache file is provider-specific so switching provider re-classifies."""
     return OUTPUT_DIR / f"llm_cache_{provider}.json"
-
-# Map currency symbols used in the sheet to ISO codes (mirrors bot.py).
-SYMBOL_TO_ISO = {
-    "₽": "RUB",
-    "дин": "RSD",
-    "€": "EUR",
-    "¥": "JPY",
-    "$": "USD",
-    "£": "GBP",
-}
-ISO_TO_SYMBOL = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 
 # Spender name normalization (Latin/Cyrillic + nickname → one canonical name).
 # NOTE: "Лиза" (July) and "snezhi" (from August) are treated as the same person.
@@ -203,64 +199,6 @@ def classify_theme(comment: str) -> Optional[str]:
         if any(kw in text for kw in keywords):
             return theme
     return None
-
-# Header aliases (English + Russian), matched case-insensitively.
-HEADER_ALIASES = {
-    "date": ["date", "дата"],
-    "month": ["month", "месяц"],
-    "category": ["category", "категория"],
-    "amount": ["amount", "сумма"],
-    "currency": ["currency", "валюта"],
-    "who": ["who", "кто внес", "spender", "кто"],
-    "comment": ["comment", "комментарий", "коммент"],
-}
-
-
-# ---------------------------------------------------------------------------
-# Google Sheets (via shared SheetsClient)
-# ---------------------------------------------------------------------------
-def resolve_columns(headers: list[str]) -> dict[str, int]:
-    """Map logical field names to column indices using the alias table."""
-    lowered = [str(h).strip().lower() for h in headers]
-    columns: dict[str, int] = {}
-    for field, aliases in HEADER_ALIASES.items():
-        for alias in aliases:
-            if alias in lowered:
-                columns[field] = lowered.index(alias)
-                break
-    return columns
-
-
-def parse_amount(raw) -> Optional[float]:
-    """Parse an amount cell, tolerating comma decimals and thousands separators."""
-    if isinstance(raw, (int, float)):
-        return float(raw)
-    text = str(raw).strip()
-    if not text:
-        return None
-    text = text.replace(" ", "").replace("\u00a0", "")
-    # If both separators present, assume '.' thousands and ',' decimal (RU style).
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def normalize_month(date_str: str, month_str: str) -> str:
-    """Return a YYYY-MM month key, deriving it from the date when needed."""
-    if month_str and len(month_str.strip()) >= 7:
-        return month_str.strip()[:7]
-    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(date_str.strip(), fmt).strftime("%Y-%m")
-        except (ValueError, AttributeError):
-            continue
-    return ""
-
 
 # ---------------------------------------------------------------------------
 # FX rates
