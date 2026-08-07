@@ -20,6 +20,7 @@ from telegram.ext import (
 import voice_input as vx
 import photo_input as px
 import regular
+import draft_expense as draft
 from expense import ExpenseRecord, append_expense
 from sheets import SheetsClient, open_client
 
@@ -507,102 +508,30 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
 
 
 # ---------- Voice expense input ----------
-# A voice message is transcribed offline (Vosk) and parsed into a list of
-# expenses by Claude (voice_input.py). The user reviews a confirmation card and
-# can quickly fix category/date/currency before everything is saved to the sheet.
+# ---------- Voice / photo Draft confirmation ----------
+# Extraction lives in voice_input / photo_input; review/edit/save lives in
+# draft_expense. Handlers here are thin Telegram adapters.
 DEFAULT_CURRENCY = "дин"  # used when the currency wasn't spoken
 
 
-def _short(text: str, n: int = 20) -> str:
-    text = (text or "—").strip() or "—"
-    return text if len(text) <= n else text[: n - 1] + "…"
-
-
-def vx_card_text(context: ContextTypes.DEFAULT_TYPE) -> str:
-    items = context.user_data.get("vx_items", [])
-    transcript = context.user_data.get("vx_transcript", "")
-    note = context.user_data.get("vx_note", "")
-    # The confirmation card is shared by voice and receipt-photo input; the source
-    # sets its own header (via vx_header), otherwise fall back to the voice one.
-    header = context.user_data.get("vx_header")
-    lines = [header, ""] if header else [f"🎧 Расшифровка: «{transcript}»", ""]
-    if len(items) == 1:
-        it = items[0]
-        lines += [
-            "📝 Черновик траты",
-            f"• Товар/коммент: {it['comment'] or '—'}",
-            f"• Сумма: {it['amount']:,.2f} {it['currency']}",
-            f"• Категория: {it['category']}",
-            f"• Дата: {it['date']}",
-            f"• Кто: {it['who']}",
-        ]
-    else:
-        lines.append(f"📝 Черновик: {len(items)} трат(ы)")
-        for i, it in enumerate(items, 1):
-            lines.append(
-                f"{i}. {it['comment'] or '—'} — {it['amount']:,.2f} {it['currency']}"
-                f" · {it['category']} · {it['date']}"
-            )
-    if note:
-        lines += ["", f"ℹ️ {note}"]
-    lines += ["", "Проверь и сохрани 👇"]
-    return "\n".join(lines)
-
-
-def vx_main_markup(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup:
-    items = context.user_data.get("vx_items", [])
-    rows = [[
-        InlineKeyboardButton("✅ Сохранить", callback_data="vx:save"),
-        InlineKeyboardButton("❌ Отмена", callback_data="vx:cancel"),
-    ]]
-    if len(items) == 1:
-        rows.append([
-            InlineKeyboardButton("✏️ Категория", callback_data="vx:cat:0"),
-            InlineKeyboardButton("📅 Дата", callback_data="vx:date:0"),
-            InlineKeyboardButton("💱 Валюта", callback_data="vx:cur:0"),
-        ])
-    else:
-        for i, it in enumerate(items):
-            rows.append([InlineKeyboardButton(
-                f"✏️ #{i + 1} {_short(it['comment'], 18)}", callback_data=f"vx:ed:{i}")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_item_edit_markup(i: int) -> InlineKeyboardMarkup:
+def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Категория", callback_data=f"vx:cat:{i}"),
-         InlineKeyboardButton("📅 Дата", callback_data=f"vx:date:{i}"),
-         InlineKeyboardButton("💱 Валюта", callback_data=f"vx:cur:{i}")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")],
+        [InlineKeyboardButton(label, callback_data=cb) for label, cb in row]
+        for row in rows
     ])
 
 
-def vx_cat_markup(i: int) -> InlineKeyboardMarkup:
-    rows, row = [], []
-    for idx, c in enumerate(CATS):
-        row.append(InlineKeyboardButton(c, callback_data=f"vx:setcat:{i}:{idx}"))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
-    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_cur_markup(i: int) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(c, callback_data=f"vx:setcur:{i}:{idx}")
-             for idx, c in enumerate(CURS)]]
-    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_date_markup(i: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Сегодня", callback_data=f"vx:setdate:{i}:t"),
-         InlineKeyboardButton("📆 Вчера", callback_data=f"vx:setdate:{i}:y")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")],
-    ])
+async def _apply_draft_outcome(query, user_data: dict, outcome: draft.CallbackOutcome) -> None:
+    if outcome.clear_session:
+        draft.DraftSession.clear(user_data)
+    if outcome.markup_only and outcome.buttons is not None:
+        await query.edit_message_reply_markup(reply_markup=_inline_markup(outcome.buttons))
+        return
+    if outcome.text is not None:
+        kwargs = {}
+        if outcome.buttons is not None:
+            kwargs["reply_markup"] = _inline_markup(outcome.buttons)
+        await query.edit_message_text(outcome.text, **kwargs)
 
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -645,20 +574,15 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "например: «чипсы сто динар сегодня»." + (f"\nℹ️ {note}" if note else ""))
         return
 
-    for it in items:
-        it["who"] = who
-    context.user_data.pop("vx_header", None)  # this draft is voice, not a receipt
-    context.user_data["vx_items"] = items
-    context.user_data["vx_transcript"] = transcript
-    context.user_data["vx_note"] = result.get("note", "")
-    await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    session = draft.session_from_voice(
+        items, who=who, transcript=transcript, note=result.get("note", ""))
+    session.store(context.user_data)
+    await status.edit_text(
+        draft.card_text(session),
+        reply_markup=_inline_markup(draft.main_buttons(session)),
+    )
 
 
-# ---------- Receipt photo input ----------
-# A receipt photo is read by Claude Vision (photo_input.py): items are extracted,
-# categorized, and grouped by category into draft expenses. The user reviews the
-# SAME confirmation card as voice input and can fix category/date/currency before
-# saving. Needs ANTHROPIC_API_KEY (already used for voice).
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Read a receipt photo/image and show an editable, category-grouped draft."""
     msg = update.effective_message
@@ -702,92 +626,30 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\nℹ️ {note}" if note else ""))
         return
 
-    for it in items:
-        it["who"] = who
-    merchant = result.get("merchant", "")
-    header = "🧾 Чек" + (f" · {merchant}" if merchant else "") + " — черновик"
-    context.user_data["vx_header"] = header
-    context.user_data["vx_items"] = items
-    context.user_data["vx_transcript"] = merchant
-    context.user_data["vx_note"] = result.get("note", "")
-    await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    session = draft.session_from_receipt(
+        items,
+        who=who,
+        merchant=result.get("merchant", ""),
+        note=result.get("note", ""),
+    )
+    session.store(context.user_data)
+    await status.edit_text(
+        draft.card_text(session),
+        reply_markup=_inline_markup(draft.main_buttons(session)),
+    )
 
 
 async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the confirmation-card buttons (callback_data starts with 'vx:')."""
     query = update.callback_query
     await query.answer()
-    data = query.data[len("vx:"):]
-    items = context.user_data.get("vx_items", [])
-
-    if data == "cancel":
-        context.user_data.pop("vx_items", None)
-        context.user_data.pop("vx_header", None)
-        await query.edit_message_text("❌ Отменено.")
-        return
-
-    if data == "menu":
-        if not items:
-            await query.edit_message_text("Черновик уже не активен.")
-            return
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-        return
-
-    if data == "save":
-        if not items:
-            await query.edit_message_text("Нечего сохранять — черновик пуст.")
-            return
-        for it in items:
-            append_expense(get_sheets(), ExpenseRecord(
-                date=it["date"],
-                category=it["category"],
-                amount=it["amount"],
-                currency=it["currency"],
-                who=it["who"],
-                comment=it["comment"],
-            ))
-        context.user_data.pop("vx_items", None)
-        context.user_data.pop("vx_header", None)
-        if len(items) == 1:
-            it = items[0]
-            await query.edit_message_text(
-                f"✅ Сохранено: {it['comment'] or it['category']} — "
-                f"{it['amount']:,.2f} {it['currency']} · {it['date']}")
-        else:
-            await query.edit_message_text(f"✅ Сохранено трат: {len(items)}")
-        return
-
-    # Editing sub-commands: "<action>:<i>[:<arg>]".
-    parts = data.split(":")
-    action = parts[0]
-    try:
-        i = int(parts[1])
-    except (IndexError, ValueError):
-        return
-    if not (0 <= i < len(items)):
-        await query.edit_message_text("Черновик изменился, начни заново.")
-        return
-
-    if action == "ed":
-        await query.edit_message_text(
-            vx_card_text(context) + f"\n\n✏️ Правим #{i + 1}",
-            reply_markup=vx_item_edit_markup(i))
-    elif action == "cat":
-        await query.edit_message_reply_markup(reply_markup=vx_cat_markup(i))
-    elif action == "cur":
-        await query.edit_message_reply_markup(reply_markup=vx_cur_markup(i))
-    elif action == "date":
-        await query.edit_message_reply_markup(reply_markup=vx_date_markup(i))
-    elif action == "setcat":
-        items[i]["category"] = CATS[int(parts[2])]
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-    elif action == "setcur":
-        items[i]["currency"] = CURS[int(parts[2])]
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-    elif action == "setdate":
-        base = datetime.now() - timedelta(days=1) if parts[2] == "y" else datetime.now()
-        items[i]["date"] = base.strftime(DATE_FMT)
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    data = query.data[len(draft.CALLBACK_PREFIX):]
+    session = draft.DraftSession.load(context.user_data)
+    outcome = draft.apply_callback(
+        data, session, CATS, CURS, get_sheets())
+    if not outcome.clear_session:
+        session.store(context.user_data)
+    await _apply_draft_outcome(query, context.user_data, outcome)
 
 
 # ---------- Conversation steps ----------
