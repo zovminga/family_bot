@@ -8,9 +8,7 @@ from typing import Optional
 
 import pandas as pd
 import requests
-import gspread
 from dotenv import load_dotenv
-from oauth2client.service_account import ServiceAccountCredentials
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -22,42 +20,35 @@ from telegram.ext import (
 import voice_input as vx
 import photo_input as px
 import regular
+from sheets import SheetsClient, open_client
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 
-# ---------- Google Sheets ----------
-def test_google_sheets_connection():
+# ---------- Google Sheets (via SheetsClient) ----------
+# Process-wide client; set in main() and also used at import for categories/presets.
+sheets: Optional[SheetsClient] = None
+
+
+def get_sheets() -> SheetsClient:
+    """Return the process SheetsClient, opening one from env if needed."""
+    global sheets
+    if sheets is None:
+        sheets = open_client()
+    return sheets
+
+
+def test_google_sheets_connection() -> bool:
     """Tests connection to Google Sheets."""
     try:
-        open_sheet("Config")
-        print("✅ Google Sheets connection successful")
-        return True
+        ok = get_sheets().test_connection()
+        if ok:
+            print("✅ Google Sheets connection successful")
+        return ok
     except Exception as e:
         print(f"❌ Google Sheets connection error: {e}")
         return False
-
-
-def open_sheet(sheet_name="Data"):
-    scope = ["https://www.googleapis.com/auth/drive",
-             "https://www.googleapis.com/auth/spreadsheets"]
-
-    # Get file path from environment variable
-    creds_path = os.getenv("GOOGLE_CREDS_PATH")
-    if not creds_path:
-        raise RuntimeError("Environment variable GOOGLE_CREDS_PATH not found.")
-
-    # Authorize using file at specified path
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
-
-    gc = gspread.authorize(creds)
-    sheet_name_env = os.getenv("SHEET_NAME")
-    if not sheet_name_env:
-        raise RuntimeError("Environment variable SHEET_NAME not found.")
-
-    sh = gc.open(sheet_name_env)
-    return sh.worksheet(sheet_name)
 
 
 def validate_categories(categories: list[str]) -> list[str]:
@@ -80,13 +71,7 @@ def validate_categories(categories: list[str]) -> list[str]:
 def load_categories() -> list[str]:
     """Reads category list from column A of Config sheet."""
     try:
-        cfg_ws = open_sheet("Config")  # ← sheet name where list is stored
-        col = cfg_ws.col_values(1)  # A:A
-        col = [c.strip() for c in col if c.strip()]  # remove empty
-        categories = col[1:] if len(col) > 1 else []  # skip header
-        
-        # Validate categories
-        categories = validate_categories(categories)
+        categories = validate_categories(get_sheets().read_categories())
         
         # Check that categories are not empty
         if not categories:
@@ -125,7 +110,7 @@ CATS = initialize_categories()
 def load_defaults() -> list[dict]:
     """Load all preset expenses (monthly + one-off) from Regular_expenses."""
     try:
-        items = regular.load_defaults()
+        items = regular.load_defaults(get_sheets())
         print(f"✅ Loaded {len(items)} default expenses")
         return items
     except Exception as e:  # noqa: BLE001 - degrade to no defaults
@@ -138,9 +123,6 @@ CURS = ["₽", "дин", "€", "¥", "£"]
 MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
 SPENDERS = ["Lisa", "Azat"]
-
-# Global variable for data sheet
-sheet = None
 
 # Dictionary to map Telegram ID to user names
 # Replace with real Telegram user IDs
@@ -162,16 +144,12 @@ TELEGRAM_USERS = {
 # uploads the HTML to Telegram and stores the resulting file_id in the "Meta"
 # worksheet. The bot itself never builds — it just re-sends that latest file_id,
 # so opening the dashboard from the phone is instant and needs no server-side work.
-META_SHEET = "Meta"
-META_FILE_ID_CELL = "B1"
 
 
 def get_dashboard_file_id() -> Optional[str]:
     """Read the latest dashboard Telegram file_id from the Meta worksheet."""
     try:
-        ws = open_sheet(META_SHEET)
-        value = ws.acell(META_FILE_ID_CELL).value
-        return value.strip() if value else None
+        return get_sheets().get_dashboard_file_id()
     except Exception as e:
         print(f"Error reading dashboard file_id: {e}")
         return None
@@ -221,7 +199,7 @@ def get_user_info(update: Update) -> tuple[str, str]:
 
 
 def sheet_append(row):
-    sheet.append_row(row, value_input_option="USER_ENTERED")
+    get_sheets().append_data_row(row)
 
 
 def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
@@ -262,7 +240,7 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
 def get_currencies_from_sheet() -> list[str]:
     """Gets list of unique currencies from Google Sheets."""
     try:
-        all_records = sheet.get_all_records()
+        all_records = get_sheets().read_data_records()
         if not all_records:
             return CURS  # Return default currencies if no data
         
@@ -282,7 +260,8 @@ def get_currencies_from_sheet() -> list[str]:
 def get_last_n_records(n: int = 3, category: str = None) -> str:
     """Returns last N records from Google Sheets, optionally filtered by category."""
     try:
-        all_records = sheet.get_all_records()
+        client = get_sheets()
+        all_records = client.read_data_records()
         if not all_records:
             return "📭 No records"
         
@@ -294,7 +273,7 @@ def get_last_n_records(n: int = 3, category: str = None) -> str:
             return f"📭 No records for category: {category}"
         
         # Get headers to determine correct column name
-        headers = sheet.row_values(1) if sheet.row_values(1) else []
+        headers = client.read_data_headers()
         
         # Determine "Spender" column name - try different variants
         spender_key = None
@@ -306,7 +285,7 @@ def get_last_n_records(n: int = 3, category: str = None) -> str:
         
         # If not found by name, use index (6th column, index 5)
         if not spender_key and len(headers) > 5:
-            all_values = sheet.get_all_values()
+            all_values = client.read_data_values()
             if len(all_values) > 0:
                 # Filter by category if needed
                 if category and category != "All":
@@ -384,8 +363,8 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
     conversion_details = {}
     
     # Get raw values to properly handle comma decimal separators
-    # Use get_all_values() to get string values - we'll parse them correctly
-    all_values = sheet.get_all_values()
+    # Use read_data_values() to get string values - we'll parse them correctly
+    all_values = get_sheets().read_data_values()
     
     if not all_values or len(all_values) < 2:
         return "No data 🤷", {}
@@ -1440,8 +1419,8 @@ def main():
         raise RuntimeError("Environment variable BOT_TOKEN not found.")
 
     # Initialize Google Sheets connection
-    global sheet
-    sheet = open_sheet()
+    global sheets
+    sheets = open_client()
 
     app = Application.builder().token(bot_token).build()
 
