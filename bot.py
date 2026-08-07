@@ -7,7 +7,6 @@ from dateutil import parser as dparser
 from typing import Optional
 
 import pandas as pd
-import requests
 from dotenv import load_dotenv
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,8 +21,9 @@ import photo_input as px
 import regular
 import draft_expense as draft
 from expense import ExpenseRecord, append_expense
-from sheet_data import normalize_rows, SYMBOL_TO_ISO
+from sheet_data import normalize_rows
 from sheets import SheetsClient, open_client
+import analytics
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -197,47 +197,23 @@ def get_user_info(update: Update) -> tuple[str, str]:
         return username, username
 
 
+def load_expense_rows() -> list[dict]:
+    """Read and normalize Data-sheet rows for analytics."""
+    all_values = get_sheets().read_data_values()
+    if not all_values or len(all_values) < 2:
+        return []
+    return normalize_rows(all_values[0], all_values[1:])
+
+
 def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
     """Gets exchange rate via exchangerate-api.com API."""
-    try:
-        if from_currency == to_currency:
-            return 1.0
-        
-        # Currency mapping for API
-        from_cur = SYMBOL_TO_ISO.get(from_currency, from_currency)
-        to_cur = SYMBOL_TO_ISO.get(to_currency, to_currency)
-        
-        # Use exchangerate-api.com (free)
-        url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
-        response = requests.get(url, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            rate = data.get("rates", {}).get(to_cur)
-            if rate:
-                return float(rate)
-        
-        return None
-    except Exception as e:
-        print(f"Error getting exchange rate: {e}")
-        return None
+    return analytics.http_exchange_rate(from_currency, to_currency)
 
 
 def get_currencies_from_sheet() -> list[str]:
     """Gets list of unique currencies from Google Sheets."""
     try:
-        all_records = get_sheets().read_data_records()
-        if not all_records:
-            return CURS  # Return default currencies if no data
-        
-        currencies = set()
-        for record in all_records:
-            currency = record.get("Currency") or record.get("Валюта")
-            if currency:
-                currencies.add(currency)
-        
-        # Return sorted list, or default if empty
-        return sorted(list(currencies)) if currencies else CURS
+        return analytics.unique_currencies(load_expense_rows(), fallback=CURS)
     except Exception as e:
         print(f"Error getting currencies: {e}")
         return CURS
@@ -246,125 +222,27 @@ def get_currencies_from_sheet() -> list[str]:
 def get_last_n_records(n: int = 3, category: str = None) -> str:
     """Returns last N records from Google Sheets, optionally filtered by category."""
     try:
-        all_values = get_sheets().read_data_values()
-        if not all_values or len(all_values) < 2:
-            return "📭 No records"
-
-        records = normalize_rows(all_values[0], all_values[1:])
-        if category and category != "All":
-            records = [r for r in records if r.get("category") == category]
-
-        if not records:
-            return (
-                f"📭 No records for category: {category}"
-                if category and category != "All"
-                else "📭 No records"
-            )
-
-        last_records = list(reversed(records[-n:]))
-        lines = [f"📋 Last {n} records:\n"]
-        for i, record in enumerate(last_records, 1):
-            amount = record["amount"]
-            comment = record.get("comment") or ""
-            comment_text = f" ({comment})" if comment else ""
-            lines.append(
-                f"{i}. 📅 {record['date'] or '?'} | {record['category'] or '?'} | "
-                f"{amount:,.2f} {record['currency'] or '?'} | "
-                f"👤 {record['who'] or '?'}{comment_text}"
-            )
-        return "\n".join(lines)
+        return analytics.format_last_n(load_expense_rows(), n=n, category=category)
     except Exception as e:
         return f"❌ Error getting records: {e}"
 
 
-def compute_stats(cat, month=None, date_from=None, date_to=None, 
+def compute_stats(cat, month=None, date_from=None, date_to=None,
                  group_by_currency=True, convert_to_currency=None):
     """Computes statistics with support for custom periods and currency conversion.
     Returns tuple: (stats_text, conversion_details_dict)"""
-    conversion_details = {}
-    
-    all_values = get_sheets().read_data_values()
-    
-    if not all_values or len(all_values) < 2:
-        return "No data 🤷", {}
-
-    normalized = normalize_rows(all_values[0], all_values[1:])
-    if not normalized:
-        return "No data 🤷", {}
-
-    data_rows = [
-        {
-            "Amount": r["amount"],
-            "Currency": r["currency"],
-            "Category": r["category"],
-            "Date": r["date"],
-            "Month": r["month"],
-        }
-        for r in normalized
-    ]
-    
-    df = pd.DataFrame(data_rows)
-    
-    # Filter by period
-    if month:
-        if "Month" not in df.columns:
-            return "❌ Error: Month column not found", {}
-        df = df[df["Month"] == month]
-    elif date_from and date_to:
-        # Convert dates to datetime for comparison
-        if "Date" not in df.columns:
-            return "❌ Error: Date column not found", {}
-        df["Date"] = pd.to_datetime(df["Date"], format=DATE_FMT, errors='coerce')
-        date_from_dt = pd.to_datetime(date_from, format=DATE_FMT)
-        date_to_dt = pd.to_datetime(date_to, format=DATE_FMT)
-        df = df[(df["Date"] >= date_from_dt) & (df["Date"] <= date_to_dt)]
-        df["Date"] = df["Date"].dt.strftime(DATE_FMT)
-    
-    if cat != "All":
-        if "Category" not in df.columns:
-            return "❌ Error: Category column not found", {}
-        df = df[df["Category"] == cat]
-    
-    if df.empty:
-        return "No data 🤷", {}
-    
-    # Currency conversion if specified
-    if convert_to_currency:
-        df_converted = df.copy()
-        original_currencies = df["Currency"].unique()
-        
-        for currency in original_currencies:
-            if currency != convert_to_currency:
-                rate = get_exchange_rate(currency, convert_to_currency)
-                if rate:
-                    mask = df_converted["Currency"] == currency
-                    original_amount = df_converted.loc[mask, "Amount"].sum()
-                    df_converted.loc[mask, "Amount"] = df_converted.loc[mask, "Amount"] * rate
-                    df_converted.loc[mask, "Currency"] = convert_to_currency
-                    
-                    # Store conversion details
-                    conversion_details[currency] = {
-                        "rate": rate,
-                        "original_amount": original_amount,
-                        "converted_amount": original_amount * rate
-                    }
-                else:
-                    return f"❌ Failed to get exchange rate for {currency} → {convert_to_currency}", {}
-        df = df_converted
-    
-    if group_by_currency:
-        # Statistics grouped by currency
-        total = df.groupby("Currency")["Amount"].sum()
-        lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
-        return "\n".join(lines) if lines else "No data 🤷", conversion_details
-    else:
-        # Simple total without grouping
-        total_overall = df["Amount"].sum()
-        currency = convert_to_currency if convert_to_currency else df["Currency"].iloc[0] if len(df) > 0 else "?"
-        return f"💰 Total: {total_overall:,.2f} {currency}", conversion_details
+    return analytics.aggregate(
+        load_expense_rows(),
+        category=cat,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        group_by_currency=group_by_currency,
+        convert_to_currency=convert_to_currency,
+        get_rate=analytics.http_exchange_rate,
+    )
 
 
-# ---------- Voice expense input ----------
 # ---------- Voice / photo Draft confirmation ----------
 # Extraction lives in voice_input / photo_input; review/edit/save lives in
 # draft_expense. Handlers here are thin Telegram adapters.
