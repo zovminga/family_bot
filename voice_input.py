@@ -22,6 +22,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from sheet_data import parse_amount
+
 BOT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BOT_DIR / "models"
 
@@ -213,10 +215,8 @@ def _snap_date(value: Optional[str], today: str) -> str:
 
 
 def _snap_amount(value) -> Optional[float]:
-    try:
-        return round(float(str(value).replace(",", ".").strip()), 2)
-    except (TypeError, ValueError):
-        return None
+    amount = parse_amount(value)
+    return None if amount is None else round(amount, 2)
 
 
 def extract_expenses(transcript: str, categories: list[str], currencies: list[str],

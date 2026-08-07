@@ -7,10 +7,7 @@ from dateutil import parser as dparser
 from typing import Optional
 
 import pandas as pd
-import requests
-import gspread
 from dotenv import load_dotenv
-from oauth2client.service_account import ServiceAccountCredentials
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -22,42 +19,47 @@ from telegram.ext import (
 import voice_input as vx
 import photo_input as px
 import regular
+import draft_expense as draft
+import flow_preset
+import navigation as nav
+from conversation_states import (
+    CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR, TYPING_CMNT, CHOOSE_DT, TYPING_DT,
+    CHOOSE_PRESET,
+    STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
+    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
+)
+from expense import ExpenseRecord, append_expense
+from sheet_data import normalize_rows
+from sheets import SheetsClient, open_client
+import analytics
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 
-# ---------- Google Sheets ----------
-def test_google_sheets_connection():
+# ---------- Google Sheets (via SheetsClient) ----------
+# Process-wide client; set in main() and also used at import for categories/presets.
+sheets: Optional[SheetsClient] = None
+
+
+def get_sheets() -> SheetsClient:
+    """Return the process SheetsClient, opening one from env if needed."""
+    global sheets
+    if sheets is None:
+        sheets = open_client()
+    return sheets
+
+
+def test_google_sheets_connection() -> bool:
     """Tests connection to Google Sheets."""
     try:
-        open_sheet("Config")
-        print("✅ Google Sheets connection successful")
-        return True
+        ok = get_sheets().test_connection()
+        if ok:
+            print("✅ Google Sheets connection successful")
+        return ok
     except Exception as e:
         print(f"❌ Google Sheets connection error: {e}")
         return False
-
-
-def open_sheet(sheet_name="Data"):
-    scope = ["https://www.googleapis.com/auth/drive",
-             "https://www.googleapis.com/auth/spreadsheets"]
-
-    # Get file path from environment variable
-    creds_path = os.getenv("GOOGLE_CREDS_PATH")
-    if not creds_path:
-        raise RuntimeError("Environment variable GOOGLE_CREDS_PATH not found.")
-
-    # Authorize using file at specified path
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
-
-    gc = gspread.authorize(creds)
-    sheet_name_env = os.getenv("SHEET_NAME")
-    if not sheet_name_env:
-        raise RuntimeError("Environment variable SHEET_NAME not found.")
-
-    sh = gc.open(sheet_name_env)
-    return sh.worksheet(sheet_name)
 
 
 def validate_categories(categories: list[str]) -> list[str]:
@@ -80,13 +82,7 @@ def validate_categories(categories: list[str]) -> list[str]:
 def load_categories() -> list[str]:
     """Reads category list from column A of Config sheet."""
     try:
-        cfg_ws = open_sheet("Config")  # ← sheet name where list is stored
-        col = cfg_ws.col_values(1)  # A:A
-        col = [c.strip() for c in col if c.strip()]  # remove empty
-        categories = col[1:] if len(col) > 1 else []  # skip header
-        
-        # Validate categories
-        categories = validate_categories(categories)
+        categories = validate_categories(get_sheets().read_categories())
         
         # Check that categories are not empty
         if not categories:
@@ -125,7 +121,7 @@ CATS = initialize_categories()
 def load_defaults() -> list[dict]:
     """Load all preset expenses (monthly + one-off) from Regular_expenses."""
     try:
-        items = regular.load_defaults()
+        items = regular.load_defaults(get_sheets())
         print(f"✅ Loaded {len(items)} default expenses")
         return items
     except Exception as e:  # noqa: BLE001 - degrade to no defaults
@@ -139,22 +135,12 @@ MONTH_FMT = "%Y-%m"
 DATE_FMT = "%d.%m.%Y"
 SPENDERS = ["Lisa", "Azat"]
 
-# Global variable for data sheet
-sheet = None
-
 # Dictionary to map Telegram ID to user names
 # Replace with real Telegram user IDs
 TELEGRAM_USERS = {
     # Example: 123456789: "Lisa",
     248826020: "Azat",
 }
-(
-    CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
-    TYPING_CMNT,
-    CHOOSE_DT, TYPING_DT,
-    STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
-    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS
-) = range(15)
 
 
 # ---------- Dashboard delivery ----------
@@ -162,16 +148,12 @@ TELEGRAM_USERS = {
 # uploads the HTML to Telegram and stores the resulting file_id in the "Meta"
 # worksheet. The bot itself never builds — it just re-sends that latest file_id,
 # so opening the dashboard from the phone is instant and needs no server-side work.
-META_SHEET = "Meta"
-META_FILE_ID_CELL = "B1"
 
 
 def get_dashboard_file_id() -> Optional[str]:
     """Read the latest dashboard Telegram file_id from the Meta worksheet."""
     try:
-        ws = open_sheet(META_SHEET)
-        value = ws.acell(META_FILE_ID_CELL).value
-        return value.strip() if value else None
+        return get_sheets().get_dashboard_file_id()
     except Exception as e:
         print(f"Error reading dashboard file_id: {e}")
         return None
@@ -202,10 +184,6 @@ async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # -------- Helpers ----------
-def month_of(date_str: str) -> str:
-    return datetime.strptime(date_str, DATE_FMT).strftime(MONTH_FMT)
-
-
 def get_user_info(update: Update) -> tuple[str, str]:
     """Gets user information from Telegram."""
     user = update.effective_user
@@ -220,60 +198,23 @@ def get_user_info(update: Update) -> tuple[str, str]:
         return username, username
 
 
-def sheet_append(row):
-    sheet.append_row(row, value_input_option="USER_ENTERED")
+def load_expense_rows() -> list[dict]:
+    """Read and normalize Data-sheet rows for analytics."""
+    all_values = get_sheets().read_data_values()
+    if not all_values or len(all_values) < 2:
+        return []
+    return normalize_rows(all_values[0], all_values[1:])
 
 
 def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
     """Gets exchange rate via exchangerate-api.com API."""
-    try:
-        if from_currency == to_currency:
-            return 1.0
-        
-        # Currency mapping for API
-        currency_map = {
-            "₽": "RUB",
-            "дин": "RSD", 
-            "€": "EUR",
-            "¥": "JPY",
-            "$": "USD",
-            "£": "GBP",
-        }
-        
-        from_cur = currency_map.get(from_currency, from_currency)
-        to_cur = currency_map.get(to_currency, to_currency)
-        
-        # Use exchangerate-api.com (free)
-        url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
-        response = requests.get(url, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            rate = data.get("rates", {}).get(to_cur)
-            if rate:
-                return float(rate)
-        
-        return None
-    except Exception as e:
-        print(f"Error getting exchange rate: {e}")
-        return None
+    return analytics.http_exchange_rate(from_currency, to_currency)
 
 
 def get_currencies_from_sheet() -> list[str]:
     """Gets list of unique currencies from Google Sheets."""
     try:
-        all_records = sheet.get_all_records()
-        if not all_records:
-            return CURS  # Return default currencies if no data
-        
-        currencies = set()
-        for record in all_records:
-            currency = record.get("Currency") or record.get("Валюта")
-            if currency:
-                currencies.add(currency)
-        
-        # Return sorted list, or default if empty
-        return sorted(list(currencies)) if currencies else CURS
+        return analytics.unique_currencies(load_expense_rows(), fallback=CURS)
     except Exception as e:
         print(f"Error getting currencies: {e}")
         return CURS
@@ -282,355 +223,51 @@ def get_currencies_from_sheet() -> list[str]:
 def get_last_n_records(n: int = 3, category: str = None) -> str:
     """Returns last N records from Google Sheets, optionally filtered by category."""
     try:
-        all_records = sheet.get_all_records()
-        if not all_records:
-            return "📭 No records"
-        
-        # Filter by category if specified
-        if category and category != "All":
-            all_records = [r for r in all_records if r.get("Category") == category]
-        
-        if not all_records:
-            return f"📭 No records for category: {category}"
-        
-        # Get headers to determine correct column name
-        headers = sheet.row_values(1) if sheet.row_values(1) else []
-        
-        # Determine "Spender" column name - try different variants
-        spender_key = None
-        possible_keys = ["Кто внес", "Who", "Spender", "Кто", "Who внес"]
-        for key in possible_keys:
-            if key in headers:
-                spender_key = key
-                break
-        
-        # If not found by name, use index (6th column, index 5)
-        if not spender_key and len(headers) > 5:
-            all_values = sheet.get_all_values()
-            if len(all_values) > 0:
-                # Filter by category if needed
-                if category and category != "All":
-                    filtered_rows = []
-                    for i, row in enumerate(all_values[1:], 1):  # Skip header
-                        if len(row) > 2 and row[2] == category:
-                            filtered_rows.append(row)
-                    last_records = filtered_rows[-n:] if len(filtered_rows) > n else filtered_rows
-                else:
-                    last_records = all_values[-n:] if len(all_values) > n else all_values[1:]
-                last_records.reverse()
-                
-                lines = [f"📋 Last {n} records:\n"]
-                for i, row in enumerate(last_records, 1):
-                    date = row[0] if len(row) > 0 else "?"
-                    cat = row[2] if len(row) > 2 else "?"
-                    # Handle amount conversion with comma/dot support
-                    if len(row) > 3 and row[3]:
-                        try:
-                            amount = float(str(row[3]).replace(",", "."))
-                        except (ValueError, TypeError):
-                            amount = 0
-                    else:
-                        amount = 0
-                    currency = row[4] if len(row) > 4 else "?"
-                    spender = row[5] if len(row) > 5 else "?"
-                    comment = row[6] if len(row) > 6 else ""
-                    
-                    comment_text = f" ({comment})" if comment else ""
-                    lines.append(
-                        f"{i}. 📅 {date} | {cat} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
-                    )
-                
-                return "\n".join(lines)
-        
-        # Get last N records
-        last_records = all_records[-n:]
-        last_records.reverse()  # Show newest first
-        
-        lines = [f"📋 Last {n} records:\n"]
-        for i, record in enumerate(last_records, 1):
-            date = record.get("Date", record.get("Дата", "?"))
-            cat = record.get("Category", record.get("Категория", "?"))
-            # Handle amount conversion with comma/dot support
-            amount_raw = record.get("Amount", record.get("Сумма", 0))
-            try:
-                amount = float(str(amount_raw).replace(",", "."))
-            except (ValueError, TypeError):
-                amount = 0
-            currency = record.get("Currency", record.get("Валюта", "?"))
-            
-            # Use found key or try different variants
-            if spender_key:
-                spender = record.get(spender_key, "?")
-            else:
-                spender = (record.get("Кто внес") or record.get("Who") or 
-                          record.get("Spender") or record.get("Кто") or "?")
-            
-            comment = record.get("Comment", record.get("Комментарий", ""))
-            
-            comment_text = f" ({comment})" if comment else ""
-            lines.append(
-                f"{i}. 📅 {date} | {cat} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
-            )
-        
-        return "\n".join(lines)
+        return analytics.format_last_n(load_expense_rows(), n=n, category=category)
     except Exception as e:
         return f"❌ Error getting records: {e}"
 
 
-def compute_stats(cat, month=None, date_from=None, date_to=None, 
+def compute_stats(cat, month=None, date_from=None, date_to=None,
                  group_by_currency=True, convert_to_currency=None):
     """Computes statistics with support for custom periods and currency conversion.
     Returns tuple: (stats_text, conversion_details_dict)"""
-    conversion_details = {}
-    
-    # Get raw values to properly handle comma decimal separators
-    # Use get_all_values() to get string values - we'll parse them correctly
-    all_values = sheet.get_all_values()
-    
-    if not all_values or len(all_values) < 2:
-        return "No data 🤷", {}
-    
-    headers = all_values[0]
-    rows = all_values[1:]
-    
-    # Find column indices
-    amount_col_idx = None
-    currency_col_idx = None
-    category_col_idx = None
-    date_col_idx = None
-    month_col_idx = None
-    
-    for i, header in enumerate(headers):
-        header_lower = str(header).strip().lower()
-        if header_lower in ["amount", "сумма"]:
-            amount_col_idx = i
-        elif header_lower in ["currency", "валюта"]:
-            currency_col_idx = i
-        elif header_lower in ["category", "категория"]:
-            category_col_idx = i
-        elif header_lower in ["date", "дата"]:
-            date_col_idx = i
-        elif header_lower in ["month", "месяц"]:
-            month_col_idx = i
-    
-    if amount_col_idx is None:
-        return "❌ Error: Amount column not found", {}
-    
-    # Parse data rows with proper comma handling
-    data_rows = []
-    for row in rows:
-        if len(row) <= amount_col_idx:
-            continue
-        
-        # Get amount value - handle both string and numeric types
-        amount_raw = row[amount_col_idx]
-        
-        # If it's already a number, use it directly
-        if isinstance(amount_raw, (int, float)):
-            amount = float(amount_raw)
-        else:
-            # It's a string - need to parse it
-            amount_str = str(amount_raw).strip()
-            if not amount_str:
-                continue
-            
-            # Critical: Handle comma as decimal separator
-            # If string contains comma and looks like decimal (e.g., "7,65", "123,45")
-            # Replace comma with dot before parsing
-            # But be careful: if it's "1,234" it might be thousand separator
-            # Simple heuristic: if comma is followed by 1-3 digits at the end, it's decimal separator
-            if ',' in amount_str:
-                # Check if comma is decimal separator (followed by 1-3 digits, possibly at end)
-                parts = amount_str.split(',')
-                if len(parts) == 2 and len(parts[1]) <= 3:
-                    # This is decimal separator: "7,65" -> "7.65"
-                    amount_str = amount_str.replace(",", ".")
-                # Otherwise assume it's thousand separator and remove it: "1,234" -> "1234"
-                else:
-                    amount_str = amount_str.replace(",", "")
-            
-            # Remove spaces and other potential separators
-            amount_str = amount_str.replace(" ", "").replace("'", "").replace(" ", "")
-            
-            try:
-                amount = float(amount_str)
-            except (ValueError, TypeError):
-                continue
-        
-        currency = row[currency_col_idx].strip() if currency_col_idx and len(row) > currency_col_idx else ""
-        category = row[category_col_idx].strip() if category_col_idx and len(row) > category_col_idx else ""
-        date = row[date_col_idx].strip() if date_col_idx and len(row) > date_col_idx else ""
-        month_val = row[month_col_idx].strip() if month_col_idx and len(row) > month_col_idx else ""
-        
-        data_rows.append({
-            "Amount": amount,
-            "Currency": currency,
-            "Category": category,
-            "Date": date,
-            "Month": month_val
-        })
-    
-    if not data_rows:
-        return "No data 🤷", {}
-    
-    df = pd.DataFrame(data_rows)
-    
-    # Filter by period
-    if month:
-        if "Month" not in df.columns:
-            return "❌ Error: Month column not found", {}
-        df = df[df["Month"] == month]
-    elif date_from and date_to:
-        # Convert dates to datetime for comparison
-        if "Date" not in df.columns:
-            return "❌ Error: Date column not found", {}
-        df["Date"] = pd.to_datetime(df["Date"], format=DATE_FMT, errors='coerce')
-        date_from_dt = pd.to_datetime(date_from, format=DATE_FMT)
-        date_to_dt = pd.to_datetime(date_to, format=DATE_FMT)
-        df = df[(df["Date"] >= date_from_dt) & (df["Date"] <= date_to_dt)]
-        df["Date"] = df["Date"].dt.strftime(DATE_FMT)
-    
-    if cat != "All":
-        if "Category" not in df.columns:
-            return "❌ Error: Category column not found", {}
-        df = df[df["Category"] == cat]
-    
-    if df.empty:
-        return "No data 🤷", {}
-    
-    # Currency conversion if specified
-    if convert_to_currency:
-        df_converted = df.copy()
-        original_currencies = df["Currency"].unique()
-        
-        for currency in original_currencies:
-            if currency != convert_to_currency:
-                rate = get_exchange_rate(currency, convert_to_currency)
-                if rate:
-                    mask = df_converted["Currency"] == currency
-                    original_amount = df_converted.loc[mask, "Amount"].sum()
-                    df_converted.loc[mask, "Amount"] = df_converted.loc[mask, "Amount"] * rate
-                    df_converted.loc[mask, "Currency"] = convert_to_currency
-                    
-                    # Store conversion details
-                    conversion_details[currency] = {
-                        "rate": rate,
-                        "original_amount": original_amount,
-                        "converted_amount": original_amount * rate
-                    }
-                else:
-                    return f"❌ Failed to get exchange rate for {currency} → {convert_to_currency}", {}
-        df = df_converted
-    
-    if group_by_currency:
-        # Statistics grouped by currency
-        total = df.groupby("Currency")["Amount"].sum()
-        lines = [f"{cur}: {amt:,.2f}" for cur, amt in total.items()]
-        return "\n".join(lines) if lines else "No data 🤷", conversion_details
-    else:
-        # Simple total without grouping
-        total_overall = df["Amount"].sum()
-        currency = convert_to_currency if convert_to_currency else df["Currency"].iloc[0] if len(df) > 0 else "?"
-        return f"💰 Total: {total_overall:,.2f} {currency}", conversion_details
+    return analytics.aggregate(
+        load_expense_rows(),
+        category=cat,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        group_by_currency=group_by_currency,
+        convert_to_currency=convert_to_currency,
+        get_rate=analytics.http_exchange_rate,
+    )
 
 
-# ---------- Voice expense input ----------
-# A voice message is transcribed offline (Vosk) and parsed into a list of
-# expenses by Claude (voice_input.py). The user reviews a confirmation card and
-# can quickly fix category/date/currency before everything is saved to the sheet.
+# ---------- Voice / photo Draft confirmation ----------
+# Extraction lives in voice_input / photo_input; review/edit/save lives in
+# draft_expense. Handlers here are thin Telegram adapters.
 DEFAULT_CURRENCY = "дин"  # used when the currency wasn't spoken
 
 
-def _short(text: str, n: int = 20) -> str:
-    text = (text or "—").strip() or "—"
-    return text if len(text) <= n else text[: n - 1] + "…"
-
-
-def vx_card_text(context: ContextTypes.DEFAULT_TYPE) -> str:
-    items = context.user_data.get("vx_items", [])
-    transcript = context.user_data.get("vx_transcript", "")
-    note = context.user_data.get("vx_note", "")
-    # The confirmation card is shared by voice and receipt-photo input; the source
-    # sets its own header (via vx_header), otherwise fall back to the voice one.
-    header = context.user_data.get("vx_header")
-    lines = [header, ""] if header else [f"🎧 Расшифровка: «{transcript}»", ""]
-    if len(items) == 1:
-        it = items[0]
-        lines += [
-            "📝 Черновик траты",
-            f"• Товар/коммент: {it['comment'] or '—'}",
-            f"• Сумма: {it['amount']:,.2f} {it['currency']}",
-            f"• Категория: {it['category']}",
-            f"• Дата: {it['date']}",
-            f"• Кто: {it['who']}",
-        ]
-    else:
-        lines.append(f"📝 Черновик: {len(items)} трат(ы)")
-        for i, it in enumerate(items, 1):
-            lines.append(
-                f"{i}. {it['comment'] or '—'} — {it['amount']:,.2f} {it['currency']}"
-                f" · {it['category']} · {it['date']}"
-            )
-    if note:
-        lines += ["", f"ℹ️ {note}"]
-    lines += ["", "Проверь и сохрани 👇"]
-    return "\n".join(lines)
-
-
-def vx_main_markup(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup:
-    items = context.user_data.get("vx_items", [])
-    rows = [[
-        InlineKeyboardButton("✅ Сохранить", callback_data="vx:save"),
-        InlineKeyboardButton("❌ Отмена", callback_data="vx:cancel"),
-    ]]
-    if len(items) == 1:
-        rows.append([
-            InlineKeyboardButton("✏️ Категория", callback_data="vx:cat:0"),
-            InlineKeyboardButton("📅 Дата", callback_data="vx:date:0"),
-            InlineKeyboardButton("💱 Валюта", callback_data="vx:cur:0"),
-        ])
-    else:
-        for i, it in enumerate(items):
-            rows.append([InlineKeyboardButton(
-                f"✏️ #{i + 1} {_short(it['comment'], 18)}", callback_data=f"vx:ed:{i}")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_item_edit_markup(i: int) -> InlineKeyboardMarkup:
+def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Категория", callback_data=f"vx:cat:{i}"),
-         InlineKeyboardButton("📅 Дата", callback_data=f"vx:date:{i}"),
-         InlineKeyboardButton("💱 Валюта", callback_data=f"vx:cur:{i}")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")],
+        [InlineKeyboardButton(label, callback_data=cb) for label, cb in row]
+        for row in rows
     ])
 
 
-def vx_cat_markup(i: int) -> InlineKeyboardMarkup:
-    rows, row = [], []
-    for idx, c in enumerate(CATS):
-        row.append(InlineKeyboardButton(c, callback_data=f"vx:setcat:{i}:{idx}"))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
-    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_cur_markup(i: int) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(c, callback_data=f"vx:setcur:{i}:{idx}")
-             for idx, c in enumerate(CURS)]]
-    rows.append([InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")])
-    return InlineKeyboardMarkup(rows)
-
-
-def vx_date_markup(i: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Сегодня", callback_data=f"vx:setdate:{i}:t"),
-         InlineKeyboardButton("📆 Вчера", callback_data=f"vx:setdate:{i}:y")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="vx:menu")],
-    ])
+async def _apply_draft_outcome(query, user_data: dict, outcome: draft.CallbackOutcome) -> None:
+    if outcome.clear_session:
+        draft.DraftSession.clear(user_data)
+    if outcome.markup_only and outcome.buttons is not None:
+        await query.edit_message_reply_markup(reply_markup=_inline_markup(outcome.buttons))
+        return
+    if outcome.text is not None:
+        kwargs = {}
+        if outcome.buttons is not None:
+            kwargs["reply_markup"] = _inline_markup(outcome.buttons)
+        await query.edit_message_text(outcome.text, **kwargs)
 
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -673,20 +310,15 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "например: «чипсы сто динар сегодня»." + (f"\nℹ️ {note}" if note else ""))
         return
 
-    for it in items:
-        it["who"] = who
-    context.user_data.pop("vx_header", None)  # this draft is voice, not a receipt
-    context.user_data["vx_items"] = items
-    context.user_data["vx_transcript"] = transcript
-    context.user_data["vx_note"] = result.get("note", "")
-    await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    session = draft.session_from_voice(
+        items, who=who, transcript=transcript, note=result.get("note", ""))
+    session.store(context.user_data)
+    await status.edit_text(
+        draft.card_text(session),
+        reply_markup=_inline_markup(draft.main_buttons(session)),
+    )
 
 
-# ---------- Receipt photo input ----------
-# A receipt photo is read by Claude Vision (photo_input.py): items are extracted,
-# categorized, and grouped by category into draft expenses. The user reviews the
-# SAME confirmation card as voice input and can fix category/date/currency before
-# saving. Needs ANTHROPIC_API_KEY (already used for voice).
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Read a receipt photo/image and show an editable, category-grouped draft."""
     msg = update.effective_message
@@ -730,115 +362,43 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\nℹ️ {note}" if note else ""))
         return
 
-    for it in items:
-        it["who"] = who
-    merchant = result.get("merchant", "")
-    header = "🧾 Чек" + (f" · {merchant}" if merchant else "") + " — черновик"
-    context.user_data["vx_header"] = header
-    context.user_data["vx_items"] = items
-    context.user_data["vx_transcript"] = merchant
-    context.user_data["vx_note"] = result.get("note", "")
-    await status.edit_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    session = draft.session_from_receipt(
+        items,
+        who=who,
+        merchant=result.get("merchant", ""),
+        note=result.get("note", ""),
+    )
+    session.store(context.user_data)
+    await status.edit_text(
+        draft.card_text(session),
+        reply_markup=_inline_markup(draft.main_buttons(session)),
+    )
 
 
 async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the confirmation-card buttons (callback_data starts with 'vx:')."""
     query = update.callback_query
     await query.answer()
-    data = query.data[len("vx:"):]
-    items = context.user_data.get("vx_items", [])
-
-    if data == "cancel":
-        context.user_data.pop("vx_items", None)
-        context.user_data.pop("vx_header", None)
-        await query.edit_message_text("❌ Отменено.")
-        return
-
-    if data == "menu":
-        if not items:
-            await query.edit_message_text("Черновик уже не активен.")
-            return
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-        return
-
-    if data == "save":
-        if not items:
-            await query.edit_message_text("Нечего сохранять — черновик пуст.")
-            return
-        for it in items:
-            sheet_append([it["date"], month_of(it["date"]), it["category"],
-                          it["amount"], it["currency"], it["who"], it["comment"]])
-        context.user_data.pop("vx_items", None)
-        context.user_data.pop("vx_header", None)
-        if len(items) == 1:
-            it = items[0]
-            await query.edit_message_text(
-                f"✅ Сохранено: {it['comment'] or it['category']} — "
-                f"{it['amount']:,.2f} {it['currency']} · {it['date']}")
-        else:
-            await query.edit_message_text(f"✅ Сохранено трат: {len(items)}")
-        return
-
-    # Editing sub-commands: "<action>:<i>[:<arg>]".
-    parts = data.split(":")
-    action = parts[0]
-    try:
-        i = int(parts[1])
-    except (IndexError, ValueError):
-        return
-    if not (0 <= i < len(items)):
-        await query.edit_message_text("Черновик изменился, начни заново.")
-        return
-
-    if action == "ed":
-        await query.edit_message_text(
-            vx_card_text(context) + f"\n\n✏️ Правим #{i + 1}",
-            reply_markup=vx_item_edit_markup(i))
-    elif action == "cat":
-        await query.edit_message_reply_markup(reply_markup=vx_cat_markup(i))
-    elif action == "cur":
-        await query.edit_message_reply_markup(reply_markup=vx_cur_markup(i))
-    elif action == "date":
-        await query.edit_message_reply_markup(reply_markup=vx_date_markup(i))
-    elif action == "setcat":
-        items[i]["category"] = CATS[int(parts[2])]
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-    elif action == "setcur":
-        items[i]["currency"] = CURS[int(parts[2])]
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
-    elif action == "setdate":
-        base = datetime.now() - timedelta(days=1) if parts[2] == "y" else datetime.now()
-        items[i]["date"] = base.strftime(DATE_FMT)
-        await query.edit_message_text(vx_card_text(context), reply_markup=vx_main_markup(context))
+    data = query.data[len(draft.CALLBACK_PREFIX):]
+    session = draft.DraftSession.load(context.user_data)
+    outcome = draft.apply_callback(
+        data, session, CATS, CURS, get_sheets())
+    if not outcome.clear_session:
+        session.store(context.user_data)
+    await _apply_draft_outcome(query, context.user_data, outcome)
 
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [["💰 Add expense", "🧾 Add default expense"]]
-    kb.append(["📊 Show statistics", "📈 Dashboard"])
-    kb.append(["🏠 To start"])
-
-    # message may be None if CallbackQuery came
-    if update.message:
-        target = update.message
-    else:
-        target = update.callback_query.message
-
-    await target.reply_text(
-        "👋 Hi! What would you like to do?",
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True),
-    )
+    await nav.show_main_menu(update, context)
     return CHOOSE_ACTION
 
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
 
     if text in ("📈 Dashboard", "Dashboard"):
         await send_dashboard(update, context)
@@ -846,7 +406,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "💰 Add expense" or text == "Add expense":
         kb = [[c] for c in CATS]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📂 Choose category:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -854,62 +414,42 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_CAT
 
     if text in ("🧾 Add default expense", "Add default expense"):
-        if not DEFAULTS:
-            await update.message.reply_text(
-                "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
-            return CHOOSE_ACTION
-        # All presets (monthly + one-off) as ⚡ one-tap buttons, two per row.
-        labels = [f"⚡ {t['name']}" for t in DEFAULTS]
-        kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
-        kb.append(["🏠 To start"])
-        await update.message.reply_text(
-            "🧾 Выбери заготовку — сохранится сразу с сегодняшней датой:",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return CHOOSE_CAT
-    elif text == "📊 Show statistics" or text == "Show statistics":
-        # First ask: All categories or specific
+        return await flow_preset.begin_preset_picker(update, context, DEFAULTS)
+
+    if text == "📊 Show statistics" or text == "Show statistics":
         kb = [["All categories", "Specific category"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
-            "📊 Statistics for all categories or specific?", 
+            "📊 Statistics for all categories or specific?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return STAT_CAT
-    else:
-        await update.message.reply_text("Please press a button 😉")
-        return CHOOSE_ACTION
+
+    await update.message.reply_text("Please press a button 😉")
+    return CHOOSE_ACTION
 
 
-# ----- Add expense flow -----
+# ----- Preset flow -----
+async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await flow_preset.choose_preset(
+        update,
+        context,
+        defaults=DEFAULTS,
+        sheets=get_sheets(),
+        date_fmt=DATE_FMT,
+        resolve_who=lambda u: get_user_info(u)[0],
+    )
+
+
+# ----- Manual add-expense flow -----
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
 
-    # Default expense tapped (⚡ prefix): save instantly with today's date.
-    if text.startswith("⚡"):
-        name = text.replace("⚡", "", 1).strip()
-        preset = next((t for t in DEFAULTS if t["name"] == name), None)
-        if preset:
-            # Author comes from the sheet's «кто» column (falls back to the tapper).
-            who = preset.get("who") or get_user_info(update)[0]
-            date_str = datetime.now().strftime(DATE_FMT)
-            sheet_append([date_str, month_of(date_str), preset["category"],
-                          preset["amount"], preset["currency"], who, preset["name"]])
-            await update.message.reply_text(
-                f"✅ Сохранено: {preset['name']} — {preset['amount']:,.2f} "
-                f"{preset['currency']} · {date_str}")
-            await start(update, context)
-            return CHOOSE_ACTION
-        # Unknown preset (list changed) — fall through to normal handling.
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
 
     context.user_data["cat"] = text
-    kb = [["🏠 To start"]]
+    kb = [nav.home_row()]
     await update.message.reply_text(
         "💵 Enter amount:",
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -921,10 +461,8 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         amt = float(text.replace(",", "."))
@@ -933,7 +471,7 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return TYPING_AMT
     context.user_data["amt"] = amt
     kb = [[c] for c in CURS]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         "💱 Currency?",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -945,10 +483,8 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["cur"] = text
     
@@ -959,7 +495,7 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Go to comment
     buttons = [
         [InlineKeyboardButton("⏭️ Skip", callback_data="skip")],
-        [InlineKeyboardButton("🏠 To start", callback_data="to_start")]
+        [nav.home_inline_button()]
     ]
     await update.message.reply_text(
         f"👤 Auto-detected: {user_name}\n\n💬 Add comment or press «Skip»",
@@ -972,17 +508,13 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # This handler is called for both text messages and "skip" button press
     if update.callback_query:
         await update.callback_query.answer()
-        if update.callback_query.data == "to_start":
-            context.user_data.clear()
-            await start(update, context)
-            return CHOOSE_ACTION
+        if nav.is_home_callback(update.callback_query.data):
+            return await nav.go_home(update, context)
         context.user_data["comment"] = ""
     else:
         text = update.message.text
-        if text == "🏠 To start" or text == "To start":
-            context.user_data.clear()
-            await start(update, context)
-            return CHOOSE_ACTION
+        if nav.is_home_text(text):
+            return await nav.go_home(update, context)
         context.user_data["comment"] = text
 
     # Choose date
@@ -990,11 +522,11 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📅 Today", callback_data="today"),
          InlineKeyboardButton("📆 Yesterday", callback_data="yesterday")],
         [InlineKeyboardButton("📆 Enter date", callback_data="custom")],
-        [InlineKeyboardButton("🏠 To start", callback_data="to_start")]
+        [nav.home_inline_button()]
     ]
     # Use update.effective_message for reply, as it can be both Message and CallbackQuery
     await update.effective_message.reply_text(
-        "📅 Expense date:", 
+        "📅 Expense date:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return CHOOSE_DT
@@ -1003,20 +535,16 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data == "to_start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_callback(query.data):
+        return await nav.go_home(update, context)
+
     if query.data == "today":
         date_str = datetime.now().strftime(DATE_FMT)
-        await save_row(update, context, date_str)
-        return CHOOSE_ACTION
+        return await save_row(update, context, date_str)
     elif query.data == "yesterday":
         date_str = (datetime.now() - timedelta(days=1)).strftime(DATE_FMT)
-        await save_row(update, context, date_str)
-        return CHOOSE_ACTION
+        return await save_row(update, context, date_str)
     else:
         await query.edit_message_text("📅 Enter date in format DD.MM.YYYY:")
         return TYPING_DT
@@ -1024,30 +552,32 @@ async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
+
     try:
         date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
     except Exception:
         await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
         return TYPING_DT
-    await save_row(update, context, date_str)
-    return CHOOSE_ACTION
+    return await save_row(update, context, date_str)
 
 
 async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
-    month_str = month_of(date_str)
     cat = context.user_data["cat"]
     amt = context.user_data["amt"]
     cur = context.user_data["cur"]
     who = context.user_data["spender"]
     cmnt = context.user_data.get("comment", "")
-    sheet_append([date_str, month_str, cat, amt, cur, who, cmnt])
+    append_expense(get_sheets(), ExpenseRecord(
+        date=date_str,
+        category=cat,
+        amount=amt,
+        currency=cur,
+        who=who,
+        comment=cmnt,
+    ))
 
     text = f"✅ Saved: {cat} – {amt:.2f} {cur} on {date_str}"
 
@@ -1057,9 +587,7 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
     else:
         await update.message.reply_text(text)
 
-    # Show main menu
-    await start(update, context)
-    return CHOOSE_ACTION
+    return await nav.go_home(update, context)
 
 
 # ----- Stats flow -----
@@ -1068,17 +596,15 @@ async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     if text == "All categories":
         context.user_data["stat_cat"] = "All"
     elif text == "Specific category":
         # Show list of categories
         kb = [[c] for c in CATS]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📂 Choose category:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1091,7 +617,7 @@ async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Now ask for statistics type
     cat = context.user_data["stat_cat"]
     kb = [["📜 Last 3 records", "📅 Custom period", "📆 By months"]]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         f"📊 Statistics type for category '{cat}':",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1104,22 +630,19 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     if text == "📜 Last 3 records":
         # Show last 3 records immediately
         cat = context.user_data.get("stat_cat", "All")
         last_records = get_last_n_records(3, cat if cat != "All" else None)
         await update.message.reply_text(last_records)
-        await start(update, context)
-        return CHOOSE_ACTION
+        return await nav.go_home(update, context)
     
     elif text == "📅 Custom period":
         # Ask for start date
-        kb = [["🏠 To start"]]
+        kb = [nav.home_row()]
         await update.message.reply_text(
             "📅 Enter start date (DD.MM.YYYY):",
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -1131,7 +654,7 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now()
         months = [(now.replace(day=1) - pd.DateOffset(months=i)).strftime(MONTH_FMT) for i in range(12)]
         kb = [[m] for m in months]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📆 Choose month:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1147,15 +670,13 @@ async def stat_date_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles start date input for custom period."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         date_from = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
         context.user_data["stat_date_from"] = date_from
-        kb = [["🏠 To start"]]
+        kb = [nav.home_row()]
         await update.message.reply_text(
             "📅 Enter end date (DD.MM.YYYY):",
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -1170,10 +691,8 @@ async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles end date input for custom period."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         date_to = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
@@ -1181,7 +700,7 @@ async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Ask about currency grouping
         kb = [["Yes", "No"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "💱 Group by currencies?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1196,16 +715,14 @@ async def stat_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles month selection for statistics."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["stat_month"] = text
     
     # Ask about currency grouping
     kb = [["Yes", "No"]]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         "💱 Group by currencies?",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1217,10 +734,8 @@ async def stat_group_currency(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handles currency grouping choice."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     group_by_currency = text == "Yes"
     context.user_data["stat_group_currency"] = group_by_currency
@@ -1233,7 +748,7 @@ async def stat_group_currency(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Ask for currency to convert to
         currencies = get_currencies_from_sheet()
         kb = [[c] for c in currencies]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "💱 Convert all expenses to which currency?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -1245,10 +760,8 @@ async def stat_convert_currency(update: Update, context: ContextTypes.DEFAULT_TY
     """Handles currency selection for conversion."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["stat_convert_to"] = text
     
@@ -1260,14 +773,11 @@ async def stat_convert_currency(update: Update, context: ContextTypes.DEFAULT_TY
 async def stat_show_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles showing conversion details or finishing."""
     text = update.message.text
-    
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
+
     if text == "Show details":
-        # Show conversion details
         conversion_details = context.user_data.get("conversion_details", {})
         if conversion_details:
             lines = ["💱 Conversion details:\n"]
@@ -1276,14 +786,14 @@ async def stat_show_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{from_cur} → {context.user_data.get('stat_convert_to', '?')}:\n"
                     f"  Rate: {details['rate']:.4f}\n"
                     f"  Original: {details['original_amount']:,.2f} {from_cur}\n"
-                    f"  Converted: {details['converted_amount']:,.2f} {context.user_data.get('stat_convert_to', '?')}\n"
+                    f"  Converted: {details['converted_amount']:,.2f} "
+                    f"{context.user_data.get('stat_convert_to', '?')}\n"
                 )
             await update.message.reply_text("\n".join(lines))
         else:
             await update.message.reply_text("No conversion details available")
-    
-    await start(update, context)
-    return CHOOSE_ACTION
+
+    return await nav.go_home(update, context)
 
 
 async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_TYPE, ask_details: bool = False):
@@ -1291,15 +801,14 @@ async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_T
     cat = context.user_data.get("stat_cat", "All")
     group_by_currency = context.user_data.get("stat_group_currency", True)
     convert_to = context.user_data.get("stat_convert_to")
-    
-    # Determine period
+
     month = context.user_data.get("stat_month")
     date_from = context.user_data.get("stat_date_from")
     date_to = context.user_data.get("stat_date_to")
-    
+
     if month:
         stats, conversion_details = compute_stats(
-            cat, month=month, group_by_currency=group_by_currency, 
+            cat, month=month, group_by_currency=group_by_currency,
             convert_to_currency=convert_to
         )
         period_text = f"for {month}"
@@ -1313,29 +822,26 @@ async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_T
         stats = "❌ Error: period not specified"
         conversion_details = {}
         period_text = ""
-    
-    # Store conversion details for later use
+
     if conversion_details:
         context.user_data["conversion_details"] = conversion_details
-    
-    # Build result text
+
     if convert_to:
         stats_text = f"📊 Statistics {period_text}, category '{cat}' (in {convert_to}):\n{stats}"
     else:
         stats_text = f"📊 Statistics {period_text}, category '{cat}':\n{stats}"
-    
+
     await update.message.reply_text(stats_text)
-    
+
     if ask_details and conversion_details:
-        # Ask if user wants to see details
         kb = [["Show details", "Done (thanks)"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "Would you like to see conversion details?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
     else:
-        await start(update, context)
+        await nav.show_main_menu(update, context)
 
 
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1423,13 +929,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Clears temporary data and returns user to action selection.
     """
-    context.user_data.clear()  # clear all accumulated data
     await update.message.reply_text(
         "❌ Action cancelled. Starting over 🙂"
     )
-    # Show the same keyboard as in start()
-    await start(update, context)
-    return CHOOSE_ACTION
+    return await nav.go_home(update, context)
 
 
 # ---------- Main ----------
@@ -1440,8 +943,8 @@ def main():
         raise RuntimeError("Environment variable BOT_TOKEN not found.")
 
     # Initialize Google Sheets connection
-    global sheet
-    sheet = open_sheet()
+    global sheets
+    sheets = open_client()
 
     app = Application.builder().token(bot_token).build()
 
@@ -1458,6 +961,7 @@ def main():
             ],
             CHOOSE_DT: [CallbackQueryHandler(choose_dt)],
             TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
+            CHOOSE_PRESET: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_preset)],
             STAT_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_cat)],
             STAT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_type)],
             STAT_DATE_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_from)],

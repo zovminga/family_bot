@@ -2,7 +2,7 @@
 """Build a standalone HTML dashboard for family expenses.
 
 Pipeline:
-  1. Connect to the same Google Sheet the Telegram bot writes to (gspread).
+  1. Connect to the same Google Sheet the Telegram bot writes to (SheetsClient).
   2. Parse rows robustly (English/Russian headers, comma decimals).
   3. Convert every amount to a base currency (default RSD) using live FX rates.
   4. Group free-text comments into themes (rule-based by default; optional LLM).
@@ -25,6 +25,19 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+
+# Allow importing shared modules from family_bot/ (SheetsClient, etc.).
+if str(Path(__file__).resolve().parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sheets import open_client
+from sheet_data import (
+    ISO_TO_SYMBOL,
+    SYMBOL_TO_ISO,
+    normalize_month,
+    parse_amount,
+    resolve_columns,
+)
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -52,17 +65,6 @@ DEFAULT_LLM_MODELS = {
 def cache_path(provider: str) -> Path:
     """Cache file is provider-specific so switching provider re-classifies."""
     return OUTPUT_DIR / f"llm_cache_{provider}.json"
-
-# Map currency symbols used in the sheet to ISO codes (mirrors bot.py).
-SYMBOL_TO_ISO = {
-    "₽": "RUB",
-    "дин": "RSD",
-    "€": "EUR",
-    "¥": "JPY",
-    "$": "USD",
-    "£": "GBP",
-}
-ISO_TO_SYMBOL = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 
 # Spender name normalization (Latin/Cyrillic + nickname → one canonical name).
 # NOTE: "Лиза" (July) and "snezhi" (from August) are treated as the same person.
@@ -197,95 +199,6 @@ def classify_theme(comment: str) -> Optional[str]:
         if any(kw in text for kw in keywords):
             return theme
     return None
-
-# Header aliases (English + Russian), matched case-insensitively.
-HEADER_ALIASES = {
-    "date": ["date", "дата"],
-    "month": ["month", "месяц"],
-    "category": ["category", "категория"],
-    "amount": ["amount", "сумма"],
-    "currency": ["currency", "валюта"],
-    "who": ["who", "кто внес", "spender", "кто"],
-    "comment": ["comment", "комментарий", "коммент"],
-}
-
-
-# ---------------------------------------------------------------------------
-# Google Sheets
-# ---------------------------------------------------------------------------
-def open_data_sheet():
-    """Authorize with the service account and return the 'Data' worksheet."""
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-
-    scope = [
-        "https://www.googleapis.com/auth/drive",
-        "https://www.googleapis.com/auth/spreadsheets",
-    ]
-
-    creds_path = os.getenv("GOOGLE_CREDS_PATH")
-    if not creds_path:
-        raise RuntimeError("GOOGLE_CREDS_PATH is not set (check family_bot/.env).")
-
-    # Resolve relative creds path against the bot directory.
-    creds_file = Path(creds_path)
-    if not creds_file.is_absolute():
-        creds_file = (BOT_DIR / creds_file).resolve()
-    if not creds_file.exists():
-        raise FileNotFoundError(f"Service account file not found: {creds_file}")
-
-    sheet_name = os.getenv("SHEET_NAME")
-    if not sheet_name:
-        raise RuntimeError("SHEET_NAME is not set (check family_bot/.env).")
-
-    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_file), scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open(sheet_name)
-    return spreadsheet.worksheet("Data"), spreadsheet
-
-
-def resolve_columns(headers: list[str]) -> dict[str, int]:
-    """Map logical field names to column indices using the alias table."""
-    lowered = [str(h).strip().lower() for h in headers]
-    columns: dict[str, int] = {}
-    for field, aliases in HEADER_ALIASES.items():
-        for alias in aliases:
-            if alias in lowered:
-                columns[field] = lowered.index(alias)
-                break
-    return columns
-
-
-def parse_amount(raw) -> Optional[float]:
-    """Parse an amount cell, tolerating comma decimals and thousands separators."""
-    if isinstance(raw, (int, float)):
-        return float(raw)
-    text = str(raw).strip()
-    if not text:
-        return None
-    text = text.replace(" ", "").replace("\u00a0", "")
-    # If both separators present, assume '.' thousands and ',' decimal (RU style).
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def normalize_month(date_str: str, month_str: str) -> str:
-    """Return a YYYY-MM month key, deriving it from the date when needed."""
-    if month_str and len(month_str.strip()) >= 7:
-        return month_str.strip()[:7]
-    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(date_str.strip(), fmt).strftime("%Y-%m")
-        except (ValueError, AttributeError):
-            continue
-    return ""
-
 
 # ---------------------------------------------------------------------------
 # FX rates
@@ -489,9 +402,9 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         headers, raw_rows = read_csv(Path(csv_path))
     else:
         print("→ Connecting to Google Sheets…")
-        worksheet, spreadsheet = open_data_sheet()
-        spreadsheet_url = getattr(spreadsheet, "url", None)
-        values = worksheet.get_all_values()
+        client = open_client()
+        spreadsheet_url = client.url
+        values = client.read_data_values()
         if len(values) < 2:
             raise RuntimeError("Sheet 'Data' has no rows to analyze.")
         headers, raw_rows = values[0], values[1:]
@@ -633,37 +546,11 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
 # Publish to Telegram (build machine only)
 # ---------------------------------------------------------------------------
 def _store_file_id_in_sheet(file_id: str) -> None:
-    """Write the latest dashboard file_id + timestamp to the 'Meta' worksheet.
+    """Write the latest dashboard file_id + timestamp to the Meta worksheet.
 
     The Telegram bot reads this cell to re-send the latest dashboard on demand.
     """
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-
-    scope = [
-        "https://www.googleapis.com/auth/drive",
-        "https://www.googleapis.com/auth/spreadsheets",
-    ]
-    creds_path = os.getenv("GOOGLE_CREDS_PATH")
-    if not creds_path:
-        raise RuntimeError("GOOGLE_CREDS_PATH is not set (check family_bot/.env).")
-    creds_file = Path(creds_path)
-    if not creds_file.is_absolute():
-        creds_file = (BOT_DIR / creds_file).resolve()
-
-    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_file), scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open(os.getenv("SHEET_NAME"))
-    try:
-        ws = spreadsheet.worksheet("Meta")
-    except gspread.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet(title="Meta", rows=10, cols=2)
-    # Stable across gspread versions: single-cell updates.
-    ws.update_acell("A1", "dashboard_file_id")
-    ws.update_acell("B1", file_id)
-    ws.update_acell("A2", "updated_at")
-    ws.update_acell("B2", datetime.now().strftime("%Y-%m-%d %H:%M"))
-
+    open_client().set_dashboard_file_id(file_id)
 
 def publish_to_telegram(html_path: Path) -> None:
     """Upload the built dashboard to Telegram and store its file_id in the sheet.
