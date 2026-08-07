@@ -1,85 +1,82 @@
 #!/usr/bin/env python3
-"""
-Скрипт для тестирования подключения к Google Sheets
-"""
+"""Manual script to test Google Sheets connection via SheetsClient."""
 
 import os
 import sys
 
-# Добавляем текущую директорию в путь для импорта
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from bot import test_google_sheets_connection, load_categories, open_sheet
+from sheets import open_client
+
 
 def main():
-    print("🔍 Тестирование подключения к Google Sheets...")
+    print("🔍 Testing Google Sheets connection...")
     print("=" * 50)
-    
-    # Проверяем переменные окружения
-    print("📋 Проверка переменных окружения:")
+
+    print("📋 Environment variables:")
     creds_path = os.getenv("GOOGLE_CREDS_PATH")
     sheet_name = os.getenv("SHEET_NAME")
-    
+
     if creds_path:
         print(f"✅ GOOGLE_CREDS_PATH: {creds_path}")
         if os.path.exists(creds_path):
-            print("✅ Файл credentials найден")
+            print("✅ Credentials file found")
         else:
-            print("❌ Файл credentials не найден")
+            print("❌ Credentials file not found")
     else:
-        print("❌ GOOGLE_CREDS_PATH не установлена")
-    
+        print("❌ GOOGLE_CREDS_PATH is not set")
+
     if sheet_name:
         print(f"✅ SHEET_NAME: {sheet_name}")
     else:
-        print("❌ SHEET_NAME не установлена")
-    
-    print("\n🔗 Тестирование подключения:")
-    
-    # Тестируем подключение
-    if test_google_sheets_connection():
-        print("✅ Подключение к Google Sheets успешно!")
-        
-        # Пытаемся загрузить категории
-        print("\n📋 Загрузка категорий:")
-        try:
-            categories = load_categories()
-            if categories:
-                print(f"✅ Загружено {len(categories)} категорий:")
-                for i, cat in enumerate(categories, 1):
-                    print(f"  {i}. {cat}")
-            else:
-                print("⚠️  Категории не найдены в листе Config")
-        except Exception as e:
-            print(f"❌ Ошибка при загрузке категорий: {e}")
-        
-        # Пытаемся открыть основной лист данных
-        print("\n📊 Тестирование основного листа данных:")
-        try:
-            data_sheet = open_sheet("Data")
-            print("✅ Лист Data доступен")
-            
-            # Пытаемся получить несколько строк
-            rows = data_sheet.get_all_values()
-            if rows:
-                print(f"✅ Найдено {len(rows)} строк данных")
-                if len(rows) > 1:
-                    print("📋 Заголовки столбцов:")
-                    headers = rows[0]
-                    for i, header in enumerate(headers):
-                        print(f"  {i+1}. {header}")
-            else:
-                print("⚠️  Лист Data пуст")
-        except Exception as e:
-            print(f"❌ Ошибка при доступе к листу Data: {e}")
-    
-    else:
-        print("❌ Не удалось подключиться к Google Sheets")
-        print("\n💡 Возможные причины:")
-        print("1. Неправильный путь к файлу credentials")
-        print("2. Неправильное название таблицы")
-        print("3. Проблемы с правами доступа")
-        print("4. Проблемы с интернет-соединением")
+        print("❌ SHEET_NAME is not set")
+
+    print("\n🔗 Connection test:")
+
+    try:
+        client = open_client()
+    except Exception as e:
+        print(f"❌ Could not open SheetsClient: {e}")
+        print("\n💡 Possible causes:")
+        print("1. Wrong credentials path")
+        print("2. Wrong spreadsheet name")
+        print("3. Access permissions")
+        print("4. Network issues")
+        return
+
+    if not client.test_connection():
+        print("❌ Could not connect to Google Sheets")
+        return
+
+    print("✅ Connected to Google Sheets!")
+
+    print("\n📋 Loading categories:")
+    try:
+        categories = client.read_categories()
+        if categories:
+            print(f"✅ Loaded {len(categories)} categories:")
+            for i, cat in enumerate(categories, 1):
+                print(f"  {i}. {cat}")
+        else:
+            print("⚠️  No categories found in Config sheet")
+    except Exception as e:
+        print(f"❌ Error loading categories: {e}")
+
+    print("\n📊 Testing Data sheet:")
+    try:
+        rows = client.read_data_values()
+        print("✅ Data sheet accessible")
+        if rows:
+            print(f"✅ Found {len(rows)} rows")
+            if len(rows) > 1:
+                print("📋 Column headers:")
+                for i, header in enumerate(rows[0], 1):
+                    print(f"  {i}. {header}")
+        else:
+            print("⚠️  Data sheet is empty")
+    except Exception as e:
+        print(f"❌ Error accessing Data sheet: {e}")
+
 
 if __name__ == "__main__":
     main()

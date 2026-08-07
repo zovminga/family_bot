@@ -36,3 +36,4 @@ gunicorn
 vosk>=0.3.44
 av==12.3.0
 anthropic>=0.40.0
+pytest>=8.0.0
