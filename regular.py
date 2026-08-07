@@ -16,11 +16,10 @@ sheet — no posting logic here.
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Optional
 
-BOT_DIR = Path(__file__).resolve().parent
+from sheets import SheetsClient, open_client
+from sheet_data import parse_amount
 
 # Currency column header (substring) -> symbol used in the Data sheet.
 CURRENCY_WORDS = [
@@ -30,41 +29,6 @@ CURRENCY_WORDS = [
     ("рубл", "₽"),
     ("фунт", "£"),
 ]
-
-REGULAR_SHEET = "Regular_expenses"
-
-
-def _open_spreadsheet():
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-
-    scope = ["https://www.googleapis.com/auth/drive",
-             "https://www.googleapis.com/auth/spreadsheets"]
-    creds_path = os.getenv("GOOGLE_CREDS_PATH")
-    if not creds_path:
-        raise RuntimeError("GOOGLE_CREDS_PATH is not set.")
-    creds_file = Path(creds_path)
-    if not creds_file.is_absolute():
-        creds_file = (BOT_DIR / creds_file).resolve()
-    sheet_name = os.getenv("SHEET_NAME")
-    if not sheet_name:
-        raise RuntimeError("SHEET_NAME is not set.")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_file), scope)
-    return gspread.authorize(creds).open(sheet_name)
-
-
-def _num(raw) -> Optional[float]:
-    text = str(raw).strip().replace(" ", "").replace("\u00a0", "")
-    if not text:
-        return None
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 def _find_col(header: list[str], substr: str) -> Optional[int]:
@@ -105,7 +69,7 @@ def parse_regular(values: list[list[str]]) -> dict:
         amount = currency = None
         for idx, sym in cur_cols.items():
             if idx < len(row) and str(row[idx]).strip():
-                value = _num(row[idx])
+                value = parse_amount(row[idx])
                 if value is not None:
                     amount, currency = value, sym
                     break
@@ -122,12 +86,13 @@ def parse_regular(values: list[list[str]]) -> dict:
     return result
 
 
-def load_defaults() -> list[dict]:
+def load_defaults(client: SheetsClient | None = None) -> list[dict]:
     """Return all preset expenses (monthly first, then one-off) as a flat list.
 
     Each item carries a 'section' key ('monthly'|'oneoff') for optional grouping.
     """
-    values = _open_spreadsheet().worksheet(REGULAR_SHEET).get_all_values()
+    sheets = client or open_client()
+    values = sheets.read_regular_values()
     parsed = parse_regular(values)
     items = []
     for section in ("monthly", "oneoff"):
