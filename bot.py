@@ -20,6 +20,14 @@ import voice_input as vx
 import photo_input as px
 import regular
 import draft_expense as draft
+import flow_preset
+import navigation as nav
+from conversation_states import (
+    CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR, TYPING_CMNT, CHOOSE_DT, TYPING_DT,
+    CHOOSE_PRESET,
+    STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
+    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
+)
 from expense import ExpenseRecord, append_expense
 from sheet_data import normalize_rows
 from sheets import SheetsClient, open_client
@@ -133,13 +141,6 @@ TELEGRAM_USERS = {
     # Example: 123456789: "Lisa",
     248826020: "Azat",
 }
-(
-    CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR,
-    TYPING_CMNT,
-    CHOOSE_DT, TYPING_DT,
-    STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
-    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS
-) = range(15)
 
 
 # ---------- Dashboard delivery ----------
@@ -389,31 +390,15 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [["💰 Add expense", "🧾 Add default expense"]]
-    kb.append(["📊 Show statistics", "📈 Dashboard"])
-    kb.append(["🏠 To start"])
-
-    # message may be None if CallbackQuery came
-    if update.message:
-        target = update.message
-    else:
-        target = update.callback_query.message
-
-    await target.reply_text(
-        "👋 Hi! What would you like to do?",
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True),
-    )
+    await nav.show_main_menu(update, context)
     return CHOOSE_ACTION
 
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
 
     if text in ("📈 Dashboard", "Dashboard"):
         await send_dashboard(update, context)
@@ -421,7 +406,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "💰 Add expense" or text == "Add expense":
         kb = [[c] for c in CATS]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📂 Choose category:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -429,68 +414,42 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_CAT
 
     if text in ("🧾 Add default expense", "Add default expense"):
-        if not DEFAULTS:
-            await update.message.reply_text(
-                "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
-            return CHOOSE_ACTION
-        # All presets (monthly + one-off) as ⚡ one-tap buttons, two per row.
-        labels = [f"⚡ {t['name']}" for t in DEFAULTS]
-        kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
-        kb.append(["🏠 To start"])
-        await update.message.reply_text(
-            "🧾 Выбери заготовку — сохранится сразу с сегодняшней датой:",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return CHOOSE_CAT
-    elif text == "📊 Show statistics" or text == "Show statistics":
-        # First ask: All categories or specific
+        return await flow_preset.begin_preset_picker(update, context, DEFAULTS)
+
+    if text == "📊 Show statistics" or text == "Show statistics":
         kb = [["All categories", "Specific category"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
-            "📊 Statistics for all categories or specific?", 
+            "📊 Statistics for all categories or specific?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
         return STAT_CAT
-    else:
-        await update.message.reply_text("Please press a button 😉")
-        return CHOOSE_ACTION
+
+    await update.message.reply_text("Please press a button 😉")
+    return CHOOSE_ACTION
 
 
-# ----- Add expense flow -----
+# ----- Preset flow -----
+async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await flow_preset.choose_preset(
+        update,
+        context,
+        defaults=DEFAULTS,
+        sheets=get_sheets(),
+        date_fmt=DATE_FMT,
+        resolve_who=lambda u: get_user_info(u)[0],
+    )
+
+
+# ----- Manual add-expense flow -----
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
 
-    # Default expense tapped (⚡ prefix): save instantly with today's date.
-    if text.startswith("⚡"):
-        name = text.replace("⚡", "", 1).strip()
-        preset = next((t for t in DEFAULTS if t["name"] == name), None)
-        if preset:
-            # Author comes from the sheet's «кто» column (falls back to the tapper).
-            who = preset.get("who") or get_user_info(update)[0]
-            date_str = datetime.now().strftime(DATE_FMT)
-            append_expense(get_sheets(), ExpenseRecord(
-                date=date_str,
-                category=preset["category"],
-                amount=preset["amount"],
-                currency=preset["currency"],
-                who=who,
-                comment=preset["name"],
-            ))
-            await update.message.reply_text(
-                f"✅ Сохранено: {preset['name']} — {preset['amount']:,.2f} "
-                f"{preset['currency']} · {date_str}")
-            await start(update, context)
-            return CHOOSE_ACTION
-        # Unknown preset (list changed) — fall through to normal handling.
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
 
     context.user_data["cat"] = text
-    kb = [["🏠 To start"]]
+    kb = [nav.home_row()]
     await update.message.reply_text(
         "💵 Enter amount:",
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -502,10 +461,8 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         amt = float(text.replace(",", "."))
@@ -514,7 +471,7 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return TYPING_AMT
     context.user_data["amt"] = amt
     kb = [[c] for c in CURS]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         "💱 Currency?",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -526,10 +483,8 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["cur"] = text
     
@@ -540,7 +495,7 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Go to comment
     buttons = [
         [InlineKeyboardButton("⏭️ Skip", callback_data="skip")],
-        [InlineKeyboardButton("🏠 To start", callback_data="to_start")]
+        [nav.home_inline_button()]
     ]
     await update.message.reply_text(
         f"👤 Auto-detected: {user_name}\n\n💬 Add comment or press «Skip»",
@@ -553,17 +508,13 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # This handler is called for both text messages and "skip" button press
     if update.callback_query:
         await update.callback_query.answer()
-        if update.callback_query.data == "to_start":
-            context.user_data.clear()
-            await start(update, context)
-            return CHOOSE_ACTION
+        if nav.is_home_callback(update.callback_query.data):
+            return await nav.go_home(update, context)
         context.user_data["comment"] = ""
     else:
         text = update.message.text
-        if text == "🏠 To start" or text == "To start":
-            context.user_data.clear()
-            await start(update, context)
-            return CHOOSE_ACTION
+        if nav.is_home_text(text):
+            return await nav.go_home(update, context)
         context.user_data["comment"] = text
 
     # Choose date
@@ -571,11 +522,11 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📅 Today", callback_data="today"),
          InlineKeyboardButton("📆 Yesterday", callback_data="yesterday")],
         [InlineKeyboardButton("📆 Enter date", callback_data="custom")],
-        [InlineKeyboardButton("🏠 To start", callback_data="to_start")]
+        [nav.home_inline_button()]
     ]
     # Use update.effective_message for reply, as it can be both Message and CallbackQuery
     await update.effective_message.reply_text(
-        "📅 Expense date:", 
+        "📅 Expense date:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
     return CHOOSE_DT
@@ -584,20 +535,16 @@ async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data == "to_start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_callback(query.data):
+        return await nav.go_home(update, context)
+
     if query.data == "today":
         date_str = datetime.now().strftime(DATE_FMT)
-        await save_row(update, context, date_str)
-        return CHOOSE_ACTION
+        return await save_row(update, context, date_str)
     elif query.data == "yesterday":
         date_str = (datetime.now() - timedelta(days=1)).strftime(DATE_FMT)
-        await save_row(update, context, date_str)
-        return CHOOSE_ACTION
+        return await save_row(update, context, date_str)
     else:
         await query.edit_message_text("📅 Enter date in format DD.MM.YYYY:")
         return TYPING_DT
@@ -605,20 +552,16 @@ async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
-    # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
+
     try:
         date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
     except Exception:
         await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
         return TYPING_DT
-    await save_row(update, context, date_str)
-    return CHOOSE_ACTION
+    return await save_row(update, context, date_str)
 
 
 async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
@@ -644,9 +587,7 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
     else:
         await update.message.reply_text(text)
 
-    # Show main menu
-    await start(update, context)
-    return CHOOSE_ACTION
+    return await nav.go_home(update, context)
 
 
 # ----- Stats flow -----
@@ -655,17 +596,15 @@ async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     if text == "All categories":
         context.user_data["stat_cat"] = "All"
     elif text == "Specific category":
         # Show list of categories
         kb = [[c] for c in CATS]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📂 Choose category:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -678,7 +617,7 @@ async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Now ask for statistics type
     cat = context.user_data["stat_cat"]
     kb = [["📜 Last 3 records", "📅 Custom period", "📆 By months"]]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         f"📊 Statistics type for category '{cat}':",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -691,22 +630,19 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     # Handle "To start" button
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     if text == "📜 Last 3 records":
         # Show last 3 records immediately
         cat = context.user_data.get("stat_cat", "All")
         last_records = get_last_n_records(3, cat if cat != "All" else None)
         await update.message.reply_text(last_records)
-        await start(update, context)
-        return CHOOSE_ACTION
+        return await nav.go_home(update, context)
     
     elif text == "📅 Custom period":
         # Ask for start date
-        kb = [["🏠 To start"]]
+        kb = [nav.home_row()]
         await update.message.reply_text(
             "📅 Enter start date (DD.MM.YYYY):",
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -718,7 +654,7 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now()
         months = [(now.replace(day=1) - pd.DateOffset(months=i)).strftime(MONTH_FMT) for i in range(12)]
         kb = [[m] for m in months]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "📆 Choose month:",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -734,15 +670,13 @@ async def stat_date_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles start date input for custom period."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         date_from = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
         context.user_data["stat_date_from"] = date_from
-        kb = [["🏠 To start"]]
+        kb = [nav.home_row()]
         await update.message.reply_text(
             "📅 Enter end date (DD.MM.YYYY):",
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -757,10 +691,8 @@ async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles end date input for custom period."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     try:
         date_to = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
@@ -768,7 +700,7 @@ async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Ask about currency grouping
         kb = [["Yes", "No"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "💱 Group by currencies?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -783,16 +715,14 @@ async def stat_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles month selection for statistics."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["stat_month"] = text
     
     # Ask about currency grouping
     kb = [["Yes", "No"]]
-    kb.append(["🏠 To start"])
+    kb.append(nav.home_row())
     await update.message.reply_text(
         "💱 Group by currencies?",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -804,10 +734,8 @@ async def stat_group_currency(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handles currency grouping choice."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     group_by_currency = text == "Yes"
     context.user_data["stat_group_currency"] = group_by_currency
@@ -820,7 +748,7 @@ async def stat_group_currency(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Ask for currency to convert to
         currencies = get_currencies_from_sheet()
         kb = [[c] for c in currencies]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "💱 Convert all expenses to which currency?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
@@ -832,10 +760,8 @@ async def stat_convert_currency(update: Update, context: ContextTypes.DEFAULT_TY
     """Handles currency selection for conversion."""
     text = update.message.text
     
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
     
     context.user_data["stat_convert_to"] = text
     
@@ -847,14 +773,11 @@ async def stat_convert_currency(update: Update, context: ContextTypes.DEFAULT_TY
 async def stat_show_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles showing conversion details or finishing."""
     text = update.message.text
-    
-    if text == "🏠 To start" or text == "To start":
-        context.user_data.clear()
-        await start(update, context)
-        return CHOOSE_ACTION
-    
+
+    if nav.is_home_text(text):
+        return await nav.go_home(update, context)
+
     if text == "Show details":
-        # Show conversion details
         conversion_details = context.user_data.get("conversion_details", {})
         if conversion_details:
             lines = ["💱 Conversion details:\n"]
@@ -863,14 +786,14 @@ async def stat_show_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{from_cur} → {context.user_data.get('stat_convert_to', '?')}:\n"
                     f"  Rate: {details['rate']:.4f}\n"
                     f"  Original: {details['original_amount']:,.2f} {from_cur}\n"
-                    f"  Converted: {details['converted_amount']:,.2f} {context.user_data.get('stat_convert_to', '?')}\n"
+                    f"  Converted: {details['converted_amount']:,.2f} "
+                    f"{context.user_data.get('stat_convert_to', '?')}\n"
                 )
             await update.message.reply_text("\n".join(lines))
         else:
             await update.message.reply_text("No conversion details available")
-    
-    await start(update, context)
-    return CHOOSE_ACTION
+
+    return await nav.go_home(update, context)
 
 
 async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_TYPE, ask_details: bool = False):
@@ -878,15 +801,14 @@ async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_T
     cat = context.user_data.get("stat_cat", "All")
     group_by_currency = context.user_data.get("stat_group_currency", True)
     convert_to = context.user_data.get("stat_convert_to")
-    
-    # Determine period
+
     month = context.user_data.get("stat_month")
     date_from = context.user_data.get("stat_date_from")
     date_to = context.user_data.get("stat_date_to")
-    
+
     if month:
         stats, conversion_details = compute_stats(
-            cat, month=month, group_by_currency=group_by_currency, 
+            cat, month=month, group_by_currency=group_by_currency,
             convert_to_currency=convert_to
         )
         period_text = f"for {month}"
@@ -900,29 +822,26 @@ async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_T
         stats = "❌ Error: period not specified"
         conversion_details = {}
         period_text = ""
-    
-    # Store conversion details for later use
+
     if conversion_details:
         context.user_data["conversion_details"] = conversion_details
-    
-    # Build result text
+
     if convert_to:
         stats_text = f"📊 Statistics {period_text}, category '{cat}' (in {convert_to}):\n{stats}"
     else:
         stats_text = f"📊 Statistics {period_text}, category '{cat}':\n{stats}"
-    
+
     await update.message.reply_text(stats_text)
-    
+
     if ask_details and conversion_details:
-        # Ask if user wants to see details
         kb = [["Show details", "Done (thanks)"]]
-        kb.append(["🏠 To start"])
+        kb.append(nav.home_row())
         await update.message.reply_text(
             "Would you like to see conversion details?",
             reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
         )
     else:
-        await start(update, context)
+        await nav.show_main_menu(update, context)
 
 
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1010,13 +929,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Clears temporary data and returns user to action selection.
     """
-    context.user_data.clear()  # clear all accumulated data
     await update.message.reply_text(
         "❌ Action cancelled. Starting over 🙂"
     )
-    # Show the same keyboard as in start()
-    await start(update, context)
-    return CHOOSE_ACTION
+    return await nav.go_home(update, context)
 
 
 # ---------- Main ----------
@@ -1045,6 +961,7 @@ def main():
             ],
             CHOOSE_DT: [CallbackQueryHandler(choose_dt)],
             TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
+            CHOOSE_PRESET: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_preset)],
             STAT_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_cat)],
             STAT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_type)],
             STAT_DATE_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_from)],
