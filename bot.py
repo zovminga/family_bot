@@ -20,6 +20,7 @@ from telegram.ext import (
 import voice_input as vx
 import photo_input as px
 import regular
+from expense import ExpenseRecord, append_expense
 from sheets import SheetsClient, open_client
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
@@ -180,10 +181,6 @@ async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # -------- Helpers ----------
-def month_of(date_str: str) -> str:
-    return datetime.strptime(date_str, DATE_FMT).strftime(MONTH_FMT)
-
-
 def get_user_info(update: Update) -> tuple[str, str]:
     """Gets user information from Telegram."""
     user = update.effective_user
@@ -196,10 +193,6 @@ def get_user_info(update: Update) -> tuple[str, str]:
     else:
         # If user not found, return their name from Telegram
         return username, username
-
-
-def sheet_append(row):
-    get_sheets().append_data_row(row)
 
 
 def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
@@ -745,8 +738,14 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Нечего сохранять — черновик пуст.")
             return
         for it in items:
-            sheet_append([it["date"], month_of(it["date"]), it["category"],
-                          it["amount"], it["currency"], it["who"], it["comment"]])
+            append_expense(get_sheets(), ExpenseRecord(
+                date=it["date"],
+                category=it["category"],
+                amount=it["amount"],
+                currency=it["currency"],
+                who=it["who"],
+                comment=it["comment"],
+            ))
         context.user_data.pop("vx_items", None)
         context.user_data.pop("vx_header", None)
         if len(items) == 1:
@@ -878,8 +877,14 @@ async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Author comes from the sheet's «кто» column (falls back to the tapper).
             who = preset.get("who") or get_user_info(update)[0]
             date_str = datetime.now().strftime(DATE_FMT)
-            sheet_append([date_str, month_of(date_str), preset["category"],
-                          preset["amount"], preset["currency"], who, preset["name"]])
+            append_expense(get_sheets(), ExpenseRecord(
+                date=date_str,
+                category=preset["category"],
+                amount=preset["amount"],
+                currency=preset["currency"],
+                who=who,
+                comment=preset["name"],
+            ))
             await update.message.reply_text(
                 f"✅ Сохранено: {preset['name']} — {preset['amount']:,.2f} "
                 f"{preset['currency']} · {date_str}")
@@ -1020,13 +1025,19 @@ async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
-    month_str = month_of(date_str)
     cat = context.user_data["cat"]
     amt = context.user_data["amt"]
     cur = context.user_data["cur"]
     who = context.user_data["spender"]
     cmnt = context.user_data.get("comment", "")
-    sheet_append([date_str, month_str, cat, amt, cur, who, cmnt])
+    append_expense(get_sheets(), ExpenseRecord(
+        date=date_str,
+        category=cat,
+        amount=amt,
+        currency=cur,
+        who=who,
+        comment=cmnt,
+    ))
 
     text = f"✅ Saved: {cat} – {amt:.2f} {cur} on {date_str}"
 
