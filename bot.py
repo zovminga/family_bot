@@ -22,6 +22,7 @@ import photo_input as px
 import regular
 import draft_expense as draft
 from expense import ExpenseRecord, append_expense
+from sheet_data import normalize_rows, SYMBOL_TO_ISO
 from sheets import SheetsClient, open_client
 
 # Load family_bot/.env for local runs (on Render env vars come from the dashboard).
@@ -203,17 +204,8 @@ def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
             return 1.0
         
         # Currency mapping for API
-        currency_map = {
-            "₽": "RUB",
-            "дин": "RSD", 
-            "€": "EUR",
-            "¥": "JPY",
-            "$": "USD",
-            "£": "GBP",
-        }
-        
-        from_cur = currency_map.get(from_currency, from_currency)
-        to_cur = currency_map.get(to_currency, to_currency)
+        from_cur = SYMBOL_TO_ISO.get(from_currency, from_currency)
+        to_cur = SYMBOL_TO_ISO.get(to_currency, to_currency)
         
         # Use exchangerate-api.com (free)
         url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
@@ -254,97 +246,32 @@ def get_currencies_from_sheet() -> list[str]:
 def get_last_n_records(n: int = 3, category: str = None) -> str:
     """Returns last N records from Google Sheets, optionally filtered by category."""
     try:
-        client = get_sheets()
-        all_records = client.read_data_records()
-        if not all_records:
+        all_values = get_sheets().read_data_values()
+        if not all_values or len(all_values) < 2:
             return "📭 No records"
-        
-        # Filter by category if specified
+
+        records = normalize_rows(all_values[0], all_values[1:])
         if category and category != "All":
-            all_records = [r for r in all_records if r.get("Category") == category]
-        
-        if not all_records:
-            return f"📭 No records for category: {category}"
-        
-        # Get headers to determine correct column name
-        headers = client.read_data_headers()
-        
-        # Determine "Spender" column name - try different variants
-        spender_key = None
-        possible_keys = ["Кто внес", "Who", "Spender", "Кто", "Who внес"]
-        for key in possible_keys:
-            if key in headers:
-                spender_key = key
-                break
-        
-        # If not found by name, use index (6th column, index 5)
-        if not spender_key and len(headers) > 5:
-            all_values = client.read_data_values()
-            if len(all_values) > 0:
-                # Filter by category if needed
-                if category and category != "All":
-                    filtered_rows = []
-                    for i, row in enumerate(all_values[1:], 1):  # Skip header
-                        if len(row) > 2 and row[2] == category:
-                            filtered_rows.append(row)
-                    last_records = filtered_rows[-n:] if len(filtered_rows) > n else filtered_rows
-                else:
-                    last_records = all_values[-n:] if len(all_values) > n else all_values[1:]
-                last_records.reverse()
-                
-                lines = [f"📋 Last {n} records:\n"]
-                for i, row in enumerate(last_records, 1):
-                    date = row[0] if len(row) > 0 else "?"
-                    cat = row[2] if len(row) > 2 else "?"
-                    # Handle amount conversion with comma/dot support
-                    if len(row) > 3 and row[3]:
-                        try:
-                            amount = float(str(row[3]).replace(",", "."))
-                        except (ValueError, TypeError):
-                            amount = 0
-                    else:
-                        amount = 0
-                    currency = row[4] if len(row) > 4 else "?"
-                    spender = row[5] if len(row) > 5 else "?"
-                    comment = row[6] if len(row) > 6 else ""
-                    
-                    comment_text = f" ({comment})" if comment else ""
-                    lines.append(
-                        f"{i}. 📅 {date} | {cat} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
-                    )
-                
-                return "\n".join(lines)
-        
-        # Get last N records
-        last_records = all_records[-n:]
-        last_records.reverse()  # Show newest first
-        
+            records = [r for r in records if r.get("category") == category]
+
+        if not records:
+            return (
+                f"📭 No records for category: {category}"
+                if category and category != "All"
+                else "📭 No records"
+            )
+
+        last_records = list(reversed(records[-n:]))
         lines = [f"📋 Last {n} records:\n"]
         for i, record in enumerate(last_records, 1):
-            date = record.get("Date", record.get("Дата", "?"))
-            cat = record.get("Category", record.get("Категория", "?"))
-            # Handle amount conversion with comma/dot support
-            amount_raw = record.get("Amount", record.get("Сумма", 0))
-            try:
-                amount = float(str(amount_raw).replace(",", "."))
-            except (ValueError, TypeError):
-                amount = 0
-            currency = record.get("Currency", record.get("Валюта", "?"))
-            
-            # Use found key or try different variants
-            if spender_key:
-                spender = record.get(spender_key, "?")
-            else:
-                spender = (record.get("Кто внес") or record.get("Who") or 
-                          record.get("Spender") or record.get("Кто") or "?")
-            
-            comment = record.get("Comment", record.get("Комментарий", ""))
-            
+            amount = record["amount"]
+            comment = record.get("comment") or ""
             comment_text = f" ({comment})" if comment else ""
             lines.append(
-                f"{i}. 📅 {date} | {cat} | {amount:,.2f} {currency} | 👤 {spender}{comment_text}"
+                f"{i}. 📅 {record['date'] or '?'} | {record['category'] or '?'} | "
+                f"{amount:,.2f} {record['currency'] or '?'} | "
+                f"👤 {record['who'] or '?'}{comment_text}"
             )
-        
         return "\n".join(lines)
     except Exception as e:
         return f"❌ Error getting records: {e}"
@@ -356,95 +283,25 @@ def compute_stats(cat, month=None, date_from=None, date_to=None,
     Returns tuple: (stats_text, conversion_details_dict)"""
     conversion_details = {}
     
-    # Get raw values to properly handle comma decimal separators
-    # Use read_data_values() to get string values - we'll parse them correctly
     all_values = get_sheets().read_data_values()
     
     if not all_values or len(all_values) < 2:
         return "No data 🤷", {}
-    
-    headers = all_values[0]
-    rows = all_values[1:]
-    
-    # Find column indices
-    amount_col_idx = None
-    currency_col_idx = None
-    category_col_idx = None
-    date_col_idx = None
-    month_col_idx = None
-    
-    for i, header in enumerate(headers):
-        header_lower = str(header).strip().lower()
-        if header_lower in ["amount", "сумма"]:
-            amount_col_idx = i
-        elif header_lower in ["currency", "валюта"]:
-            currency_col_idx = i
-        elif header_lower in ["category", "категория"]:
-            category_col_idx = i
-        elif header_lower in ["date", "дата"]:
-            date_col_idx = i
-        elif header_lower in ["month", "месяц"]:
-            month_col_idx = i
-    
-    if amount_col_idx is None:
-        return "❌ Error: Amount column not found", {}
-    
-    # Parse data rows with proper comma handling
-    data_rows = []
-    for row in rows:
-        if len(row) <= amount_col_idx:
-            continue
-        
-        # Get amount value - handle both string and numeric types
-        amount_raw = row[amount_col_idx]
-        
-        # If it's already a number, use it directly
-        if isinstance(amount_raw, (int, float)):
-            amount = float(amount_raw)
-        else:
-            # It's a string - need to parse it
-            amount_str = str(amount_raw).strip()
-            if not amount_str:
-                continue
-            
-            # Critical: Handle comma as decimal separator
-            # If string contains comma and looks like decimal (e.g., "7,65", "123,45")
-            # Replace comma with dot before parsing
-            # But be careful: if it's "1,234" it might be thousand separator
-            # Simple heuristic: if comma is followed by 1-3 digits at the end, it's decimal separator
-            if ',' in amount_str:
-                # Check if comma is decimal separator (followed by 1-3 digits, possibly at end)
-                parts = amount_str.split(',')
-                if len(parts) == 2 and len(parts[1]) <= 3:
-                    # This is decimal separator: "7,65" -> "7.65"
-                    amount_str = amount_str.replace(",", ".")
-                # Otherwise assume it's thousand separator and remove it: "1,234" -> "1234"
-                else:
-                    amount_str = amount_str.replace(",", "")
-            
-            # Remove spaces and other potential separators
-            amount_str = amount_str.replace(" ", "").replace("'", "").replace(" ", "")
-            
-            try:
-                amount = float(amount_str)
-            except (ValueError, TypeError):
-                continue
-        
-        currency = row[currency_col_idx].strip() if currency_col_idx and len(row) > currency_col_idx else ""
-        category = row[category_col_idx].strip() if category_col_idx and len(row) > category_col_idx else ""
-        date = row[date_col_idx].strip() if date_col_idx and len(row) > date_col_idx else ""
-        month_val = row[month_col_idx].strip() if month_col_idx and len(row) > month_col_idx else ""
-        
-        data_rows.append({
-            "Amount": amount,
-            "Currency": currency,
-            "Category": category,
-            "Date": date,
-            "Month": month_val
-        })
-    
-    if not data_rows:
+
+    normalized = normalize_rows(all_values[0], all_values[1:])
+    if not normalized:
         return "No data 🤷", {}
+
+    data_rows = [
+        {
+            "Amount": r["amount"],
+            "Currency": r["currency"],
+            "Category": r["category"],
+            "Date": r["date"],
+            "Month": r["month"],
+        }
+        for r in normalized
+    ]
     
     df = pd.DataFrame(data_rows)
     

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sheets import SheetsClient, open_client
+from sheet_data import parse_amount
 
 # Currency column header (substring) -> symbol used in the Data sheet.
 CURRENCY_WORDS = [
@@ -28,20 +29,6 @@ CURRENCY_WORDS = [
     ("рубл", "₽"),
     ("фунт", "£"),
 ]
-
-
-def _num(raw) -> Optional[float]:
-    text = str(raw).strip().replace(" ", "").replace("\u00a0", "")
-    if not text:
-        return None
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif "," in text:
-        text = text.replace(",", ".")
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 def _find_col(header: list[str], substr: str) -> Optional[int]:
@@ -82,7 +69,7 @@ def parse_regular(values: list[list[str]]) -> dict:
         amount = currency = None
         for idx, sym in cur_cols.items():
             if idx < len(row) and str(row[idx]).strip():
-                value = _num(row[idx])
+                value = parse_amount(row[idx])
                 if value is not None:
                     amount, currency = value, sym
                     break
