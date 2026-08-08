@@ -10,10 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Union
 
+from sheet_data import DATE_FMT, MONTH_FMT
 from sheets import SheetsClient
-
-DATE_FMT = "%d.%m.%Y"
-MONTH_FMT = "%Y-%m"
 
 
 @dataclass(frozen=True)
