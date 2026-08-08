@@ -135,7 +135,7 @@ class GspreadSheetsClient:
         return self._worksheet(DATA_SHEET).row_values(1) or []
 
     def append_data_row(self, row: list) -> None:
-        """Append one raw Data-sheet row. Step 2 will wrap this behind ExpenseRecord."""
+        """Append one raw Data-sheet row (used via ExpenseRecord.to_row)."""
         self._worksheet(DATA_SHEET).append_row(row, value_input_option="USER_ENTERED")
 
     def read_regular_values(self) -> list[list[str]]:

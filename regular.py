@@ -10,7 +10,7 @@ per-currency column) and split into two sections by divider rows:
     разовые траты
     баня              | 3850   |      |         |       | Beauty ... | Both
 
-Both sections are surfaced in the bot as one-tap «default expense» buttons; the
+Both sections are surfaced in the bot as one-tap preset buttons; the
 only difference is the label section. This module just reads and parses the
 sheet — no posting logic here.
 """
@@ -87,7 +87,7 @@ def parse_regular(values: list[list[str]]) -> dict:
 
 
 def load_defaults(client: SheetsClient | None = None) -> list[dict]:
-    """Return all preset expenses (monthly first, then one-off) as a flat list.
+    """Return all presets (monthly first, then one-off) as a flat list.
 
     Each item carries a 'section' key ('monthly'|'oneoff') for optional grouping.
     """

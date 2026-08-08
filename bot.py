@@ -29,7 +29,7 @@ from conversation_states import (
     STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
 )
 from expense import ExpenseRecord, append_expense
-from sheet_data import normalize_rows
+from sheet_data import normalize_rows, DATE_FMT, MONTH_FMT
 from sheets import SheetsClient, open_client
 import analytics
 
@@ -122,18 +122,15 @@ def load_defaults() -> list[dict]:
     """Load all preset expenses (monthly + one-off) from Regular_expenses."""
     try:
         items = regular.load_defaults(get_sheets())
-        print(f"✅ Loaded {len(items)} default expenses")
+        print(f"✅ Loaded {len(items)} presets")
         return items
-    except Exception as e:  # noqa: BLE001 - degrade to no defaults
-        print(f"⚠️  Could not load default expenses: {e}")
+    except Exception as e:  # noqa: BLE001 - degrade to no presets
+        print(f"⚠️  Could not load presets: {e}")
         return []
 
 
 DEFAULTS = load_defaults()
 CURS = ["₽", "дин", "€", "¥", "£"]
-MONTH_FMT = "%Y-%m"
-DATE_FMT = "%d.%m.%Y"
-SPENDERS = ["Lisa", "Azat"]
 
 # Dictionary to map Telegram ID to user names
 # Replace with real Telegram user IDs
@@ -204,11 +201,6 @@ def load_expense_rows() -> list[dict]:
     if not all_values or len(all_values) < 2:
         return []
     return normalize_rows(all_values[0], all_values[1:])
-
-
-def get_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
-    """Gets exchange rate via exchangerate-api.com API."""
-    return analytics.http_exchange_rate(from_currency, to_currency)
 
 
 def get_currencies_from_sheet() -> list[str]:
@@ -413,7 +405,12 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CHOOSE_CAT
 
-    if text in ("🧾 Add default expense", "Add default expense"):
+    if text in (
+        "🧾 Add preset",
+        "Add preset",
+        "🧾 Add default expense",  # alias — old button label
+        "Add default expense",
+    ):
         return await flow_preset.begin_preset_picker(update, context, DEFAULTS)
 
     if text == "📊 Show statistics" or text == "Show statistics":
@@ -908,7 +905,7 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reloads categories (and default expenses) from Google Sheets."""
+    """Reloads categories (and presets) from Google Sheets."""
     global CATS, DEFAULTS
     old_cats = CATS.copy()
     CATS = load_categories()
