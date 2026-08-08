@@ -26,7 +26,8 @@ def test_main_menu_keyboard_has_four_actions():
     markup = nav.main_menu_keyboard()
     labels = {btn.text for row in markup.keyboard for btn in row}
     assert "💰 Add expense" in labels
-    assert "🧾 Add default expense" in labels
+    assert "🧾 Add preset" in labels
+    assert "Add default expense" not in labels  # old label retired from keyboard
     assert "📊 Show statistics" in labels
     assert "📈 Dashboard" in labels
     assert "🏠 To start" in labels

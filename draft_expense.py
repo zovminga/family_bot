@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from expense import ExpenseRecord, append_expense
+from sheet_data import DATE_FMT
 from sheets import SheetsClient
 
 # user_data keys (kept as vx_* so in-flight Telegram cards keep working)
@@ -21,7 +22,6 @@ KEY_NOTE = "vx_note"
 KEY_HEADER = "vx_header"
 
 CALLBACK_PREFIX = "vx:"
-DATE_FMT = "%d.%m.%Y"
 
 ButtonGrid = list[list[tuple[str, str]]]  # (label, callback_data)
 
