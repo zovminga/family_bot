@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Manual script to test Google Sheets connection via SheetsClient."""
+"""Manual smoke script: Google Sheets connection via SheetsClient.
+
+Not part of pytest — run from repo root:
+  python3 scripts/test_google_sheets.py
+"""
 
 import os
 import sys
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from sheets import open_client
 

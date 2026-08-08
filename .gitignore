@@ -4,5 +4,6 @@ creds.json
 .env
 .idea/
 .DS_Store
+.pytest_cache/
 # Offline speech-to-text model (downloaded at runtime, ~45MB)
 models/

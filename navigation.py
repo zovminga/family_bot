@@ -33,7 +33,7 @@ def home_inline_button() -> InlineKeyboardButton:
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     kb = [
-        ["💰 Add expense", "🧾 Add default expense"],
+        ["💰 Add expense", "🧾 Add preset"],
         ["📊 Show statistics", "📈 Dashboard"],
         home_row(),
     ]
