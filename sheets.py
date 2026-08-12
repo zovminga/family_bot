@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
 BOT_DIR = Path(__file__).resolve().parent
 
@@ -27,6 +27,30 @@ META_FILE_ID_CELL = "B1"
 META_FILE_ID_LABEL_CELL = "A1"
 META_UPDATED_AT_LABEL_CELL = "A2"
 META_UPDATED_AT_CELL = "B2"
+
+# Default layout for a fresh family spreadsheet (bootstrap / first install).
+DATA_HEADERS = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"]
+CONFIG_HEADER = "Categories"
+DEFAULT_CATEGORIES = [
+    "Food",
+    "Transport",
+    "Entertainment",
+    "Rent",
+    "Utilities",
+    "Health",
+    "Other",
+]
+REGULAR_HEADERS = [
+    "название",
+    "динары",
+    "евро",
+    "доллары",
+    "рубли",
+    "категория",
+    "кто",
+]
+REGULAR_SECTION_MONTHLY = "ежемесячные траты"
+REGULAR_SECTION_ONEOFF = "разовые траты"
 
 
 def resolve_creds_path(creds_path: Optional[str] = None) -> Path:
@@ -160,6 +184,88 @@ class GspreadSheetsClient:
             META_UPDATED_AT_CELL,
             datetime.now().strftime("%Y-%m-%d %H:%M"),
         )
+
+    def _ensure_worksheet(
+        self, title: str, rows: int = 100, cols: int = 10
+    ) -> tuple[Any, bool]:
+        """Return (worksheet, created). Creates the worksheet if missing."""
+        import gspread
+
+        try:
+            return self._worksheet(title), False
+        except gspread.WorksheetNotFound:
+            return (
+                self._spreadsheet.add_worksheet(title=title, rows=rows, cols=cols),
+                True,
+            )
+
+    def ensure_sheets(
+        self,
+        *,
+        categories: Optional[list[str]] = None,
+        seed_if_empty: bool = True,
+    ) -> dict[str, bool]:
+        """Create missing worksheets and seed default headers/categories if empty.
+
+        Safe to re-run: never overwrites non-empty Data / Config / Regular sheets.
+        Returns which sheets were created or seeded (for installer feedback).
+        """
+        cats = categories if categories is not None else list(DEFAULT_CATEGORIES)
+        changed = {
+            "data_created": False,
+            "data_headers": False,
+            "config_created": False,
+            "config_seeded": False,
+            "regular_created": False,
+            "regular_seeded": False,
+            "meta_created": False,
+            "meta_seeded": False,
+        }
+
+        data_ws, changed["data_created"] = self._ensure_worksheet(
+            DATA_SHEET, rows=500, cols=len(DATA_HEADERS)
+        )
+        if seed_if_empty and not any(c.strip() for c in (data_ws.row_values(1) or [])):
+            data_ws.update(range_name="A1", values=[DATA_HEADERS])
+            changed["data_headers"] = True
+
+        config_ws, changed["config_created"] = self._ensure_worksheet(
+            CONFIG_SHEET, rows=50, cols=1
+        )
+        if seed_if_empty and not any(c.strip() for c in (config_ws.col_values(1) or [])):
+            config_ws.update(
+                range_name="A1",
+                values=[[CONFIG_HEADER], *[[c] for c in cats]],
+            )
+            changed["config_seeded"] = True
+
+        regular_ws, changed["regular_created"] = self._ensure_worksheet(
+            REGULAR_SHEET, rows=50, cols=len(REGULAR_HEADERS)
+        )
+        if seed_if_empty and not any(
+            c.strip() for c in (regular_ws.row_values(1) or [])
+        ):
+            regular_ws.update(
+                range_name="A1",
+                values=[
+                    REGULAR_HEADERS,
+                    [REGULAR_SECTION_MONTHLY, "", "", "", "", "", ""],
+                    [REGULAR_SECTION_ONEOFF, "", "", "", "", "", ""],
+                ],
+            )
+            changed["regular_seeded"] = True
+
+        meta_ws, changed["meta_created"] = self._ensure_worksheet(
+            META_SHEET, rows=10, cols=2
+        )
+        if seed_if_empty and not (
+            meta_ws.acell(META_FILE_ID_LABEL_CELL).value or ""
+        ).strip():
+            meta_ws.update_acell(META_FILE_ID_LABEL_CELL, "dashboard_file_id")
+            meta_ws.update_acell(META_UPDATED_AT_LABEL_CELL, "updated_at")
+            changed["meta_seeded"] = True
+
+        return changed
 
 
 def open_client(
