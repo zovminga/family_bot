@@ -1,133 +1,121 @@
 # Family Bot 💰
 
-Telegram bot for family expense tracking with Google Sheets integration.
+Telegram bot for household expense tracking with Google Sheets.
+
+Each household **installs their own copy** (own bot token, own spreadsheet,
+own allowlist). Your finances never mix with someone else's install.
 
 ## Features
 
-- Add expenses by category
-- Voice input (offline STT + Claude parsing)
-- Receipt photos: send a photo of a receipt — Claude Vision reads the items and
-  splits them into meaningful rows by sense (beer on its own line, sweets/snacks
-  on their own line, all ordinary groceries collapsed into one line), then shows
-  an editable draft before saving
-- Multi-currency support (₽, дин, €, ¥, £)
-- Auto user detection by Telegram ID
-- Statistics: last 3 records, custom period, by months
-- Currency conversion with exchange rates
-- Group by currencies or convert to single currency
-- Dynamic category loading from Google Sheets
+- Add expenses by category (manual, voice, receipt photo)
+- Multi-currency (₽, дин, €, ¥, £)
+- Statistics and optional HTML dashboard
+- Categories and presets loaded from Google Sheets
+- Allowlist so only your family can use *your* bot
 
-## Commands
+## Install from scratch
 
-- `/start` - Start bot
-- `/dashboard` - Send the latest expenses dashboard as an HTML file (open in a browser)
-- `/categories` - Show categories
-- `/reloadcats` - Reload categories
-- `/test_connection` - Test Google Sheets connection
-- `/whoami` - Show profile
-- `/register NAME` - Register user
-- `/cancel` or `/stop` - Cancel current action
-
-## Receipt photos 🧾
-
-Send a photo of a receipt (or an image file) to the bot in any state. Claude
-Vision (`photo_input.py`) reads every line item, classifies each one into your
-existing `Config` categories, and groups them into **meaningful rows by sense**:
-alcohol on its own line, sweets/snacks on their own line, and all ordinary
-groceries collapsed into a single line (not one row per product). You get the
-same editable confirmation card as voice input (fix category/date/currency,
-then save). Items are summed **in Python** per group, so totals are reliable.
-
-Requires `ANTHROPIC_API_KEY` on the server (already used for voice input). No QR
-decoding or extra system libraries are needed — Vision reads the item names
-straight from the photo, so it works for any receipt regardless of country.
-
-> The `📈 Dashboard` button in the main menu is a shortcut for `/dashboard`.
->
-> **The bot does not build the dashboard** — it is built on a separate machine
-> (see [`dashboard/README.md`](dashboard/README.md)). Each build uploads the HTML to
-> Telegram and stores the resulting `file_id` in a `Meta` worksheet; `/dashboard`
-> just re-sends that latest `file_id`, so it is instant and needs no `ANTHROPIC_API_KEY`
-> on the server.
-
-## Quick Start
-
-### 1. Environment Variables
+### 1. Clone and Python deps
 
 ```bash
-BOT_TOKEN=your_telegram_bot_token
-GOOGLE_CREDS_PATH=/path/to/credentials.json
-SHEET_NAME=your_google_sheet_name
-RENDER_EXTERNAL_URL=https://your-app.onrender.com  # for Render deployment
+git clone <this-repo>
+cd family_bot
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-> **`/dashboard` on the server** needs nothing extra: the bot only reads the latest
-> `file_id` from the `Meta` sheet and re-sends it. Building/classification
-> (`ANTHROPIC_API_KEY`, `DASHBOARD_CHAT_ID`) happens on the build machine — see
-> [`dashboard/README.md`](dashboard/README.md).
+### 2. Telegram bot
 
-### 2. Google Sheets Setup
+1. Open [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token
+2. Put it in `.env` as `BOT_TOKEN=...`
 
-**Config sheet** (column A):
-- A1: Header (e.g., "Categories")
-- A2+: Category names
+### 3. Google Sheet + service account
 
-**Data sheet** columns:
-- Date (DD.MM.YYYY)
-- Month (YYYY-MM)
-- Category
-- Amount
-- Currency
-- Who (spender name)
-- Comment
-
-### 3. Google Cloud Setup
-
-1. Create project in Google Cloud Console
-2. Enable Google Sheets API
-3. Create service account
-4. Download JSON credentials
-5. Grant sheet access to service account email
-
-### 4. Installation
+1. [Google Cloud Console](https://console.cloud.google.com/) → create a project
+2. Enable **Google Sheets API** and **Google Drive API**
+3. Create a **service account** → download JSON key
+4. Save it as `secrets/creds.json` (folder is gitignored)
+5. Create an empty Google Spreadsheet (any name, e.g. `FamilyExpenses`)
+6. **Share** the sheet with the service account email (Editor)
+7. In `.env`:
 
 ```bash
-pip install -r requirements.txt
+GOOGLE_CREDS_PATH=secrets/creds.json
+SHEET_NAME=FamilyExpenses
+```
+
+8. Create the worksheets and headers:
+
+```bash
+python scripts/bootstrap_sheet.py
+```
+
+This adds `Data`, `Config`, `Regular_expenses`, and `Meta` with defaults.
+Safe to run again — it will not wipe existing rows.
+
+### 4. Allow your family (required)
+
+Start the bot once (even with empty allowlist):
+
+```bash
 python bot.py
 ```
 
-### 5. Deploy to Render
+In Telegram, open your bot → `/whoami` → copy your numeric ID.
+Add household members to `.env`:
 
-1. Connect repository
-2. Set environment variables
-3. Start command: `python bot.py`
-4. Port: `8443`
-
-## User Setup
-
-1. Get Telegram ID: `/whoami`
-2. Add to `bot.py`:
-```python
-TELEGRAM_USERS = {
-    123456789: "Lisa",
-    987654321: "Azat",
-}
+```bash
+ALLOWED_USERS=111111111:Azat,222222222:Lisa
 ```
 
-## Statistics Flow
+Restart the bot. Anyone not on this list is rejected (they cannot read or
+write your sheet). `/whoami` still works so new members can send you their ID.
 
-1. Choose category: All or Specific
-2. Choose type: Last 3 records / Custom period / By months
-3. Choose grouping: Group by currencies (Yes/No)
-4. If No: Select currency to convert to (from Google Sheets)
-5. View results with optional conversion details
+### 5. Optional: voice & receipt photos
+
+Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still work.
+
+### 6. Deploy (optional, e.g. Render)
+
+1. Connect the repo
+2. Set the same env vars (`BOT_TOKEN`, `GOOGLE_CREDS_PATH` contents or secret file,
+   `SHEET_NAME`, `ALLOWED_USERS`, …)
+3. Start command: `python bot.py`
+4. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
+
+## Commands
+
+| Command | Who | Purpose |
+|---------|-----|---------|
+| `/start` | allowlisted | Main menu |
+| `/whoami` | anyone | Show Telegram ID / allowlist status |
+| `/register NAME` | allowlisted | Print an `ALLOWED_USERS=` line to copy into `.env` (does not save by itself) |
+| `/dashboard` | allowlisted | Re-send latest HTML dashboard |
+| `/categories` | allowlisted | List categories |
+| `/reloadcats` | allowlisted | Reload categories + presets |
+| `/test_connection` | allowlisted | Ping Google Sheets |
+| `/cancel` `/stop` | allowlisted | Abort current flow |
+
+## Dashboard
+
+The bot does **not** build the dashboard. Build it on a laptop and publish
+`file_id` into the `Meta` sheet — see [`dashboard/README.md`](dashboard/README.md).
+
+## Sheet layout (after bootstrap)
+
+**Config** — column A: header + category names  
+**Data** — Date, Month, Category, Amount, Currency, Who, Comment  
+**Regular_expenses** — preset templates (optional)  
+**Meta** — dashboard `file_id` for `/dashboard`
 
 ## Troubleshooting
 
-- **Categories not loading**: Check "Config" sheet name, use `/test_connection`
-- **Connection error**: Verify credentials path and service account access
-- **Currency rates**: Check internet, exchangerate-api.com (free, no key needed)
-- **Bot not responding**: Check `BOT_TOKEN`, verify bot is running
+- **Access denied in Telegram** — your ID is missing from `ALLOWED_USERS`; use `/whoami`
+- **Categories not loading** — run `python scripts/bootstrap_sheet.py`, then `/test_connection`
+- **Connection error** — check `GOOGLE_CREDS_PATH`, sheet name, and that the sheet is shared with the service account
+- **Bot not responding** — check `BOT_TOKEN`; locally omit `RENDER_EXTERNAL_URL` for polling
 
 ## License
 

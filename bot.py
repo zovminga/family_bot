@@ -13,9 +13,11 @@ from telegram import (
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
-    ConversationHandler, CallbackQueryHandler, ContextTypes
+    ConversationHandler, CallbackQueryHandler, ContextTypes,
+    TypeHandler, ApplicationHandlerStop,
 )
 
+import auth
 import voice_input as vx
 import photo_input as px
 import regular
@@ -132,12 +134,9 @@ def load_defaults() -> list[dict]:
 DEFAULTS = load_defaults()
 CURS = ["₽", "дин", "€", "¥", "£"]
 
-# Dictionary to map Telegram ID to user names
-# Replace with real Telegram user IDs
-TELEGRAM_USERS = {
-    # Example: 123456789: "Lisa",
-    248826020: "Azat",
-}
+# Allowlist: Telegram ID -> spender name on the Data sheet.
+# Loaded from ALLOWED_USERS in .env (see .env.example). Empty = nobody.
+ALLOWED_USERS: dict[int, str] = auth.load_allowed_users()
 
 
 # ---------- Dashboard delivery ----------
@@ -181,18 +180,51 @@ async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # -------- Helpers ----------
+def _telegram_display_name(user) -> str:
+    """Human-readable Telegram label (not the Sheets Spender name)."""
+    return user.username or user.first_name or f"User{user.id}"
+
+
 def get_user_info(update: Update) -> tuple[str, str]:
-    """Gets user information from Telegram."""
+    """Gets spender name + Telegram display name for the current user."""
     user = update.effective_user
-    user_id = user.id
-    username = user.username or user.first_name or f"User{user_id}"
-    
-    # Check if user is in dictionary
-    if user_id in TELEGRAM_USERS:
-        return TELEGRAM_USERS[user_id], username
-    else:
-        # If user not found, return their name from Telegram
-        return username, username
+    display = _telegram_display_name(user)
+    return auth.spender_name(user.id, display, ALLOWED_USERS), display
+
+
+def _is_public_command(update: Update) -> bool:
+    """Commands available before allowlist (so installers can discover their ID)."""
+    msg = update.effective_message
+    if not msg or not msg.text:
+        return False
+    cmd = msg.text.split()[0].split("@", 1)[0].lower()
+    return cmd in {"/whoami"}
+
+
+async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Block strangers on this deploy; each family runs their own bot + sheet."""
+    user = update.effective_user
+    if user and auth.is_allowed(user.id, ALLOWED_USERS):
+        return
+    if _is_public_command(update):
+        return
+
+    uid = user.id if user else "?"
+    text = (
+        "⛔ This bot is private to the family that installed it.\n"
+        f"Your Telegram ID: `{uid}`\n\n"
+        "If this is *your* install, add that ID to `ALLOWED_USERS` in `.env` "
+        "and restart the bot."
+    )
+    if update.callback_query:
+        await update.callback_query.answer("Access denied", show_alert=True)
+        try:
+            await update.callback_query.message.reply_text(text, parse_mode="Markdown")
+        except Exception:  # noqa: BLE001 - best-effort notice
+            pass
+    elif update.effective_message:
+        await update.effective_message.reply_text(text, parse_mode="Markdown")
+    raise ApplicationHandlerStop
 
 
 def load_expense_rows() -> list[dict]:
@@ -852,36 +884,38 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows information about current user."""
+    """Shows Telegram ID and allowlist status (works even if not yet allowed)."""
     user = update.effective_user
     user_id = user.id
-    username = user.username or user.first_name or f"User{user_id}"
-    
-    # Check if user is registered
-    if user_id in TELEGRAM_USERS:
-        registered_name = TELEGRAM_USERS[user_id]
-        text = f"👤 Your profile:\nID: {user_id}\nName: {username}\nRegistered as: {registered_name}"
+    display = _telegram_display_name(user)
+
+    if auth.is_allowed(user_id, ALLOWED_USERS):
+        text = (
+            f"👤 Your profile:\nID: {user_id}\nName: {display}\n"
+            f"Allowed as: {ALLOWED_USERS[user_id]}"
+        )
     else:
-        text = f"👤 Your profile:\nID: {user_id}\nName: {username}\nStatus: Not registered\n\nUse /register to register"
-    
+        text = (
+            f"👤 Your profile:\nID: {user_id}\nName: {display}\n"
+            f"Status: not in ALLOWED_USERS\n\n"
+            f"Add to .env and restart:\nALLOWED_USERS={user_id}:{display}"
+        )
     await update.message.reply_text(text)
 
 
-async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Registers user in the system."""
+async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/register — print an ALLOWED_USERS= line to copy into .env (does not write the file)."""
     user = update.effective_user
     user_id = user.id
-    username = user.username or user.first_name or f"User{user_id}"
-    
-    # Check if command has arguments
-    if context.args:
-        name = context.args[0]
-        # In real app, save to database or file
-        # For now, just show information
-        text = f"✅ Registration:\nID: {user_id}\nName: {username}\nRegistered as: {name}\n\n⚠️  To save, add to code:\nTELEGRAM_USERS[{user_id}] = \"{name}\""
-    else:
-        text = f"📝 User registration:\n\nUse: /register NAME\n\nExample: /register Lisa\n\nYour ID: {user_id}\nYour name: {username}"
-    
+    display = _telegram_display_name(user)
+    name = context.args[0] if context.args else display
+    existing = ",".join(f"{uid}:{n}" for uid, n in ALLOWED_USERS.items())
+    merged = f"{existing},{user_id}:{name}" if existing else f"{user_id}:{name}"
+    text = (
+        f"📝 Add this household member via .env (then restart the bot):\n\n"
+        f"ALLOWED_USERS={merged}\n\n"
+        f"Your ID: {user_id}"
+    )
     await update.message.reply_text(text)
 
 
@@ -939,11 +973,24 @@ def main():
     if not bot_token:
         raise RuntimeError("Environment variable BOT_TOKEN not found.")
 
+    global ALLOWED_USERS
+    ALLOWED_USERS = auth.load_allowed_users()
+    if not ALLOWED_USERS:
+        print(
+            "⚠️  ALLOWED_USERS is empty — nobody can use the bot except /whoami. "
+            "Set ALLOWED_USERS in .env (see .env.example)."
+        )
+    else:
+        print(f"✅ Allowlist: {len(ALLOWED_USERS)} user(s)")
+
     # Initialize Google Sheets connection
     global sheets
     sheets = open_client()
 
     app = Application.builder().token(bot_token).build()
+
+    # Run before every other handler (group -1).
+    app.add_handler(TypeHandler(Update, enforce_allowlist), group=-1)
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -988,7 +1035,7 @@ def main():
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))
     app.add_handler(CommandHandler("whoami", whoami))
-    app.add_handler(CommandHandler("register", register_user))
+    app.add_handler(CommandHandler("register", allowlist_hint))
 
     # --- Webhook setup ---
     # Port for Render.com
