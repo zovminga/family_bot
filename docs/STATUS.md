@@ -4,9 +4,9 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-18  
-**Updated by:** agent session (STATUS tip after docs landed on main)  
+**Updated by:** agent session (close false unknowns from a cold read)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
-**Docs on main:** yes — PR #3 merged as `8a36741`  
+**Docs on main:** through `4fd26a3` (PR #4). This note lands in the next docs commit.  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -29,15 +29,38 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
-## Open / unknown
+## Settled (do not re-open as unknowns)
 
-- **Runtime deploy:** README documents optional Render webhook; whether a live
-  Render (or other) instance is running is **not recorded in-repo**. Confirm
-  outside git before assuming the bot is online.
-- **This checkout** has no `.env` / `secrets/` — cannot run against real Sheets
-  until configured locally.
-- Dashboard `SPEC.md` narrative is largely still valid; file-tree section was
-  refreshed 2026-11-18 to match the deepened bot modules.
+- **No `.env` / `secrets/` in git.** Public repo. A clean checkout cannot call
+  Telegram or Sheets. Secrets stay on the machine that runs the bot. Do not
+  search the tree for them and do not treat the absence as a defect.
+- **No hosting manifest.** No `Procfile`, `render.yaml`, or `Dockerfile`.
+  README's Render webhook is optional and unconfirmed. Do not infer a live host
+  from the repo.
+- **Dashboard build host (documented):** `dashboard/README.md` says the HTML is
+  built on this Mac (`run.sh` / `launchd`), then the bot only re-sends the
+  stored Telegram `file_id`. The bot process itself is not that Mac job.
+- **Claude model id `claude-sonnet-5` is real.** Checked 2026-11-18 against
+  [Claude Sonnet 5](https://platform.claude.com/docs/en/models/sonnet-5/overview):
+  Claude API id, legacy, available until no earlier than 2027-06-30.
+  Anthropic's current recommendation is `claude-sonnet-5-5`. Code default stays
+  `claude-sonnet-5` until someone asks to switch. Overrides: `VX_LLM_MODEL`
+  (voice), `PX_LLM_MODEL` (receipt), dashboard `--model`.
+- **Dashboard spec is complete in-repo.** `dashboard/SPEC.md` covers the
+  pipeline (§3), `template.html` (§4), decisions (§6), and a change map (§7).
+  Unread sections are unread source, not missing knowledge.
+
+## Only a person knows
+
+- Whether a bot process is up right now, and on which machine.
+- Where this household's real `.env` and `secrets/creds.json` live.
+
+## Recent doc work (2026-11-18, later)
+
+- Closed three false unknowns: missing secrets, missing deploy manifest, and
+  `claude-sonnet-5` (verified real). SPEC gained a section index.
+- Two facts stay outside git: whether a bot process is up, and where the real
+  `.env` lives.
 
 ## Recent doc work (2026-11-18)
 
