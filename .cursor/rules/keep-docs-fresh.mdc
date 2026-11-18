@@ -1,0 +1,20 @@
+---
+description: Keep agent handoff docs in sync with code before ending a task
+alwaysApply: true
+---
+
+# Keep docs fresh
+
+Before ending any task that changed behaviour, structure, deploy facts, or open work:
+
+1. Update `docs/STATUS.md` (date, code tip, what works / open).
+2. If seams, flows, or sheet schema changed → `docs/ARCHITECTURE.md`.
+3. If domain terms changed → `CONTEXT.md`.
+4. If dashboard pipeline/formulas/tree changed → `dashboard/SPEC.md`.
+5. If install/run/env changed → `README.md` and/or `.env.example`.
+
+Entry map and full rule: `AGENTS.md`.
+
+**Done when:** a new agent could continue from `AGENTS.md` → `docs/STATUS.md` without rediscovering this session's changes.
+
+Skip only for pure typo/format edits that alter no project facts.
