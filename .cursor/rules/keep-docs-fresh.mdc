@@ -7,7 +7,7 @@ alwaysApply: true
 
 Before ending any task that changed behaviour, structure, deploy facts, or open work:
 
-1. Update `docs/STATUS.md` (date, code tip, what works / open).
+1. Update `docs/STATUS.md` (date, product code tip, what works / open). A docs-only commit does not move the product tip.
 2. If seams, flows, or sheet schema changed → `docs/ARCHITECTURE.md`.
 3. If domain terms changed → `CONTEXT.md`.
 4. If dashboard pipeline/formulas/tree changed → `dashboard/SPEC.md`.

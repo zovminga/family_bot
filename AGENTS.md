@@ -26,7 +26,7 @@ Treat docs as part of the deliverable. A coding task is **not done** until docs 
 
 After any change that affects behaviour, structure, deploy, or open work:
 
-1. Update [`docs/STATUS.md`](docs/STATUS.md): date, what changed, open threads, blockers.
+1. Update [`docs/STATUS.md`](docs/STATUS.md): date, what changed, open threads, blockers. **Product code tip** moves only when behaviour changes; a docs-only commit leaves it.
 2. If modules, flows, sheet schema, or seams moved — update [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 3. If domain language shifted — update [`CONTEXT.md`](CONTEXT.md).
 4. If dashboard pipeline / formulas / file tree shifted — update [`dashboard/SPEC.md`](dashboard/SPEC.md).
