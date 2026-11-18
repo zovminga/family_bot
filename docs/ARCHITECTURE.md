@@ -94,6 +94,7 @@ Date format: `DD.MM.YYYY` (`sheet_data.DATE_FMT`). Month key: derived on write.
 **Draft save:** `draft_expense.save_drafts` → `append_expense` per item.
 
 Voice/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
+Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
 
 ## Runtime modes
 

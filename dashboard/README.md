@@ -61,7 +61,7 @@ python dashboard/build_dashboard.py --from 2025-07     # с конкретног
 | Режим | Флаг | Ключ | Модель по умолчанию |
 |---|---|---|---|
 | Правила (по ключевым словам) | _(без `--llm`)_ | — | — |
-| Claude (Anthropic) | `--llm` или `--llm --provider anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5` |
+| Claude (Anthropic) | `--llm` или `--llm --provider anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5` (реальный id API; legacy, см. `docs/STATUS.md`) |
 | OpenAI | `--llm --provider openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
 
 Результаты LLM кэшируются **отдельно по провайдеру** в
