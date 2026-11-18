@@ -5,6 +5,9 @@ Telegram bot for household expense tracking with Google Sheets.
 Each household **installs their own copy** (own bot token, own spreadsheet,
 own allowlist). Your finances never mix with someone else's install.
 
+**Agents / AI coding:** start at [`AGENTS.md`](AGENTS.md) → living state in
+[`docs/STATUS.md`](docs/STATUS.md). Architecture map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## Features
 
 - Add expenses by category (manual, voice, receipt photo)

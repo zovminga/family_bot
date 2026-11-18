@@ -1,6 +1,8 @@
-# Family expenses
+# Family expenses — domain language
 
 Telegram bot and offline dashboard for tracking shared household spending in a Google Sheet.
+
+Agents: start at [`AGENTS.md`](AGENTS.md). Prefer these terms in UI copy, code names, commits, and docs.
 
 ## Language
 
@@ -31,3 +33,7 @@ _Avoid_: Database, workbook (when meaning this spreadsheet)
 **Dashboard**:
 A standalone HTML report of Expenses built offline and re-sent by the bot via a stored Telegram file_id.
 _Avoid_: Stats page, report (when meaning the HTML artifact)
+
+**Allowlist**:
+Per-deploy map of Telegram user id → Spender name (`ALLOWED_USERS`). Strangers are denied.
+_Avoid_: whitelist (say Allowlist), auth (when meaning this gate only)
