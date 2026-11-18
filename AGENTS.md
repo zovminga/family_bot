@@ -9,6 +9,12 @@ Each install is isolated: own `BOT_TOKEN`, own spreadsheet, own `ALLOWED_USERS`.
 2. Use [`CONTEXT.md`](CONTEXT.md) terms in speech and code (Expense, Draft, Preset, Spender…).
 3. Open deeper docs only when the task needs them (pointers below).
 
+A missing `.env` or `secrets/` is expected (public repo). No `Procfile` /
+`render.yaml` / `Dockerfile` means bot liveness is outside git. Do not report
+those as project gaps, and do not report a file you did not finish reading as
+unknown — jump to the section the task needs (dashboard index is at the top of
+`dashboard/SPEC.md`).
+
 ## Doc map
 
 | Reach when… | File |
@@ -17,7 +23,7 @@ Each install is isolated: own `BOT_TOKEN`, own spreadsheet, own `ALLOWED_USERS`.
 | Need module seams, flows, sheet schema | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Need domain words / forbidden synonyms | [`CONTEXT.md`](CONTEXT.md) |
 | Installing or running the bot | [`README.md`](README.md) |
-| Building or changing the HTML dashboard | [`dashboard/SPEC.md`](dashboard/SPEC.md), [`dashboard/README.md`](dashboard/README.md) |
+| Building or changing the HTML dashboard | [`dashboard/SPEC.md`](dashboard/SPEC.md) (index at top; §3 pipeline, §4 `template.html`, §7 where to edit), [`dashboard/README.md`](dashboard/README.md) |
 | Env var names | [`.env.example`](.env.example) |
 
 ## Keep docs fresh (mandatory)
