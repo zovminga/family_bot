@@ -23,9 +23,14 @@ CSV-экспорт. На выходе — один самодостаточны�
 
 ## 2. Структура файлов
 
+Актуальное дерево бота и общие конвенции — в [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+и [`AGENTS.md`](../AGENTS.md). Ниже — то, что важно для дашборда.
+
 ```
 family_bot/
-├── bot.py                         # сам бот (не трогали; источник конвенций по валютам/спендерам)
+├── AGENTS.md / docs/              # handoff для агентов (STATUS, ARCHITECTURE)
+├── bot.py                         # Telegram wiring; валюты/спендеры через sheet_data + auth
+├── sheets.py / sheet_data.py      # общий Sheets-шов и парсинг строк Data
 ├── .env                           # BOT_TOKEN, GOOGLE_CREDS_PATH, SHEET_NAME  (gitignored)
 ├── secrets/creds.json             # service account Google  (gitignored)
 └── dashboard/
@@ -49,6 +54,9 @@ family_bot/
 секреты (`secrets/`, `.env`) — в `.gitignore`. В коммиты попадают только скрипт,
 шаблон и доки (без цифр). В прошлом был утёкший `BOT_TOKEN` в истории git — токен
 отозван и перевыпущен.
+
+**Синхронизация:** при смене пайплайна/формул/дерева дашборда обновляй этот SPEC
+и `docs/STATUS.md` (правило в `AGENTS.md`).
 
 ---
 
