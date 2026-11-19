@@ -2,6 +2,8 @@
 """Tests for the shared sheet_data parsing kernel."""
 from __future__ import annotations
 
+import pytest
+
 from sheet_data import (
     normalize_month,
     normalize_rows,
@@ -23,6 +25,21 @@ def test_parse_amount_both_separators_ru():
 def test_parse_amount_thousands_comma():
     # Four digits after comma → thousands, not decimal.
     assert parse_amount("1,2345") == 12345.0
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("12,5", 12.5),          # one comma, 1-2 digits after it: decimal comma
+    ("7,65", 7.65),
+    ("1,234", 1234.0),       # one comma, exactly 3 digits after it: thousands
+    ("12,500", 12500.0),
+    ("1,234,567", 1234567.0),
+    ("12.5", 12.5),          # dot alone is a decimal point
+    ("1.234,56", 1234.56),   # both: the rightmost separator is the decimal one
+    ("1,234.56", 1234.56),
+    ("1 234,5", 1234.5),
+])
+def test_parse_amount_separator_rule(raw, expected):
+    assert parse_amount(raw) == expected
 
 
 def test_parse_amount_blank():

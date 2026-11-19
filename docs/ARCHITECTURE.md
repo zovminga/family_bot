@@ -39,7 +39,7 @@ Finances never share across installs.
 | Module | Owns | Callers must not |
 |--------|------|------------------|
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes | Call gspread directly |
-| `expense.py` | `ExpenseRecord`, column order, month derivation | Hand-build Data rows |
+| `expense.py` | `ExpenseRecord`, row layout by Data headers, month derivation | Hand-build Data rows |
 | `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps | Duplicate parse rules (known gap below) |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
@@ -96,6 +96,11 @@ Created/filled by `scripts/bootstrap_sheet.py`:
 | `Meta` | Dashboard Telegram `file_id` for `/dashboard` |
 
 Date format: `DD.MM.YYYY` (`sheet_data.DATE_FMT`). Month key: derived on write.
+Writes lay a row out by the Data header names (`resolve_columns` aliases), so
+column order in the sheet is free; a sheet without a Date, Category, Amount,
+Currency, Who or Comment column rejects the write. An empty header row falls
+back to the default order above. Values are written `RAW`: text such as
+`=…` or `2026-11` stays text, amounts are numbers.
 
 ## Input pipelines
 
