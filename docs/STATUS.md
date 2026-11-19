@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #23 package `family_bot/`, merged after issue #39)  
+**Updated by:** agent session (issue #24 `flows/manual.py`, one home handler)  
 **Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -18,7 +18,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## What works
 
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
-- Manual expense ConversationHandler (category → amount → currency → comment → date)
+- Manual expense ConversationHandler (category → amount → currency → comment → date),
+  in `flows/manual.py` since issue #24. The home button is handled once, in the
+  `ConversationHandler` fallbacks (`navigation.home_fallbacks()`); states are
+  the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
 - Voice: Vosk STT + Claude → Draft confirmation card

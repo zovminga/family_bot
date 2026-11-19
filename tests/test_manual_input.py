@@ -7,9 +7,12 @@ from telegram import Chat, Message, Update, User
 from telegram.ext import ApplicationHandlerStop
 
 from family_bot import bot
-from family_bot.conversation_states import CHOOSE_CAT, CHOOSE_CUR, TYPING_AMT, TYPING_CMNT
+from family_bot.conversation_states import State
 from tests.conftest import bot_context
 from tests.known_bugs.fakes import make_update
+
+CHOOSE_CAT, CHOOSE_CUR = State.CHOOSE_CAT, State.CHOOSE_CUR
+TYPING_AMT, TYPING_CMNT = State.TYPING_AMT, State.TYPING_CMNT
 
 
 def run(coro):
@@ -33,18 +36,18 @@ def replies(update):
 # --- Category ---
 
 def test_known_category_is_accepted(ctx):
-    assert run(bot.choose_cat(make_update("Food"), ctx)) == TYPING_AMT
+    assert run(bot.MANUAL.choose_cat(make_update("Food"), ctx)) == TYPING_AMT
     assert ctx.user_data["cat"] == "Food"
 
 
 def test_category_match_ignores_case_and_spaces(ctx):
-    assert run(bot.choose_cat(make_update("  food "), ctx)) == TYPING_AMT
+    assert run(bot.MANUAL.choose_cat(make_update("  food "), ctx)) == TYPING_AMT
     assert ctx.user_data["cat"] == "Food"
 
 
 def test_category_typo_asks_to_pick_from_list(ctx):
     upd = make_update("Fod")
-    assert run(bot.choose_cat(upd, ctx)) == CHOOSE_CAT
+    assert run(bot.MANUAL.choose_cat(upd, ctx)) == CHOOSE_CAT
     assert "cat" not in ctx.user_data
     text, kw = upd.message.replies[-1]
     labels = [btn.text for row in kw["reply_markup"].keyboard for btn in row]
@@ -56,20 +59,20 @@ def test_category_typo_asks_to_pick_from_list(ctx):
 @pytest.mark.parametrize("text", ["nan", "inf", "-500", "0", "abc", "350 xyz"])
 def test_bad_amount_stays_on_amount_step(ctx, text):
     upd = make_update(text)
-    assert run(bot.type_amount(upd, ctx)) == TYPING_AMT
+    assert run(bot.MANUAL.type_amount(upd, ctx)) == TYPING_AMT
     assert "amt" not in ctx.user_data
     assert replies(upd), "user gets no hint"
 
 
 def test_amount_with_thousands_space_goes_to_currency(ctx):
-    assert run(bot.type_amount(make_update("1 200"), ctx)) == CHOOSE_CUR
+    assert run(bot.MANUAL.type_amount(make_update("1 200"), ctx)) == CHOOSE_CUR
     assert ctx.user_data["amt"] == 1200.0
     assert "cur" not in ctx.user_data
 
 
 def test_amount_with_currency_skips_currency_step(ctx):
     upd = make_update("350 дин")
-    assert run(bot.type_amount(upd, ctx)) == TYPING_CMNT
+    assert run(bot.MANUAL.type_amount(upd, ctx)) == TYPING_CMNT
     assert ctx.user_data["amt"] == 350.0
     assert ctx.user_data["cur"] == "дин"
     assert ctx.user_data["spender"] == "Azat"
@@ -77,7 +80,7 @@ def test_amount_with_currency_skips_currency_step(ctx):
 
 def test_amount_with_currency_off_the_buttons_asks_for_currency(ctx):
     # "¥" is registered but not on this install's buttons
-    assert run(bot.type_amount(make_update("500 ¥"), ctx)) == CHOOSE_CUR
+    assert run(bot.MANUAL.type_amount(make_update("500 ¥"), ctx)) == CHOOSE_CUR
     assert ctx.user_data["amt"] == 500.0
     assert "cur" not in ctx.user_data
 
@@ -86,18 +89,49 @@ def test_amount_with_currency_off_the_buttons_asks_for_currency(ctx):
 
 @pytest.mark.parametrize("text,stored", [("€", "€"), ("eur", "€"), ("динар", "дин")])
 def test_currency_by_symbol_code_or_word(ctx, text, stored):
-    assert run(bot.choose_cur(make_update(text), ctx)) == TYPING_CMNT
+    assert run(bot.MANUAL.choose_cur(make_update(text), ctx)) == TYPING_CMNT
     assert ctx.user_data["cur"] == stored
 
 
 @pytest.mark.parametrize("text", ["eru", "¥", "xyz"])
 def test_currency_typo_asks_to_pick_from_list(ctx, text):
     upd = make_update(text)
-    assert run(bot.choose_cur(upd, ctx)) == CHOOSE_CUR
+    assert run(bot.MANUAL.choose_cur(upd, ctx)) == CHOOSE_CUR
     assert "cur" not in ctx.user_data
     _, kw = upd.message.replies[-1]
     labels = [btn.text for row in kw["reply_markup"].keyboard for btn in row]
     assert "€" in labels and "дин" in labels, labels
+
+
+# --- Comment and date ---
+
+def test_skip_comment_then_today_saves_and_goes_home(ctx, monkeypatch):
+    from family_bot.flows import manual
+    from tests.conftest import FakeSheetsClient, settings_of
+    from tests.known_bugs.fakes import FakeQuery
+
+    sheets = FakeSheetsClient()
+    settings_of(ctx).sheets = sheets
+    monkeypatch.setattr(manual.clock, "now", lambda: datetime(2026, 11, 19))
+    ctx.user_data.update(cat="Food", amt=350.0, cur="дин", spender="Azat")
+    assert run(bot.MANUAL.type_comment(make_update(query=FakeQuery("skip")), ctx)) \
+        == State.CHOOSE_DT
+    query = FakeQuery("today")
+    assert run(bot.MANUAL.choose_dt(make_update(query=query), ctx)) == State.CHOOSE_ACTION
+    assert sheets.appended_rows[0][:7] == ["19.11.2026", "2026-11", "Food", 350.0, "дин",
+                                           "Azat", ""]
+    assert query.edits == ["✅ Saved: Food – 350.00 дин on 19.11.2026"]
+    assert "cat" not in ctx.user_data
+
+
+def test_typed_date_saves(ctx):
+    from tests.conftest import FakeSheetsClient, settings_of
+
+    settings_of(ctx).sheets = FakeSheetsClient()
+    ctx.user_data.update(cat="Food", amt=5.0, cur="€", spender="Azat", comment="x")
+    upd = make_update("13.07.2025")
+    assert run(bot.MANUAL.type_dt(upd, ctx)) == State.CHOOSE_ACTION
+    assert replies(upd)[0] == "✅ Saved: Food – 5.00 € on 13.07.2025"
 
 
 # --- Edited messages (R12) ---

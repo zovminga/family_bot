@@ -2,12 +2,10 @@
 import os
 import json
 import asyncio
-from datetime import timedelta
-from dateutil import parser as dparser
 from typing import Optional
 
 from telegram import (
-    Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+    Update, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
@@ -15,11 +13,9 @@ from telegram.ext import (
     TypeHandler, ApplicationHandlerStop,
 )
 
-from family_bot import amount_input
 from family_bot import auth
 from family_bot import clock
 from family_bot import config
-from family_bot import currency
 from family_bot import errors
 from family_bot import voice_input as vx
 from family_bot import photo_input as px
@@ -27,12 +23,9 @@ from family_bot import text_input
 from family_bot import draft_expense as draft
 from family_bot import flow_preset
 from family_bot import navigation as nav
+from family_bot.flows import manual as flow_manual
 from family_bot.flows import stats as flow_stats
-from family_bot.conversation_states import (
-    CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR, TYPING_CMNT, CHOOSE_DT, TYPING_DT,
-    CHOOSE_PRESET,
-)
-from family_bot.expense import ExpenseRecord, append_expense
+from family_bot.conversation_states import State
 from family_bot.sheet_data import normalize_rows, DATE_FMT
 from family_bot.sheets import SheetsClient
 from family_bot import analytics
@@ -186,6 +179,14 @@ STATS = flow_stats.StatsFlow(
     fallback_currencies=lambda context: cfg(context).currencies,
 )
 
+# Manual add-expense conversation; sources read per request like STATS.
+MANUAL = flow_manual.ManualFlow(
+    categories=lambda context: cfg(context).categories,
+    currencies=lambda context: cfg(context).currencies,
+    sheets=lambda context: cfg(context).sheets,
+    who=lambda update, context: get_user_info(update, context)[0],
+)
+
 
 # ---------- Voice / photo Draft confirmation ----------
 # Extraction lives in voice_input / photo_input; review/edit/save lives in
@@ -226,7 +227,7 @@ async def text_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     text = update.message.text
     if not text_input.looks_like_expense(text):
         await update.message.reply_text(text_input.HINT)
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
     who, _ = get_user_info(update, context)
     status = await update.message.reply_text("✍️ Разбираю…")
     today = clock.now().strftime(DATE_FMT)
@@ -239,12 +240,12 @@ async def text_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Text extract", e)
         await status.edit_text(errors.NOT_PARSED)
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
     if session is None:
         await status.edit_text(text_input.HINT)
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
     await _show_draft(status, context, session)
-    return CHOOSE_ACTION
+    return State.CHOOSE_ACTION
 
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -371,22 +372,18 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     flow_stats.reset(context.user_data)
     await nav.show_main_menu(update, context)
-    return CHOOSE_ACTION
+    return State.CHOOSE_ACTION
 
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-
     if text in ("📈 Dashboard", "Dashboard"):
         await send_dashboard(update, context)
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        await _ask_from_list(update, "📂 Choose category:", cfg(context).categories)
-        return CHOOSE_CAT
+        return await MANUAL.begin(update, context)
 
     if text in (
         "🧾 Add preset",
@@ -412,192 +409,6 @@ async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date_fmt=DATE_FMT,
         resolve_who=lambda u: get_user_info(u, context)[0],
     )
-
-
-# ----- Manual add-expense flow -----
-async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
-    """Reply with prompt and one button per option, plus the home button."""
-    kb = [[c] for c in options]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        prompt,
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
-
-
-def _known_category(text: str, categories: list[str]) -> Optional[str]:
-    """Category from the list matching text (case and outer spaces ignored)."""
-    key = text.strip().casefold()
-    return next((c for c in categories if c.casefold() == key), None)
-
-
-def _on_buttons(found: Optional[currency.Currency], currencies: list[str]) -> Optional[str]:
-    """Stored symbol of a registered Currency if this install offers it."""
-    return found.symbol if found is not None and found.symbol in currencies else None
-
-
-async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-
-    categories = cfg(context).categories
-    cat = _known_category(text, categories)
-    if cat is None:
-        await _ask_from_list(update, "❌ No such category. Choose one from the list:", categories)
-        return CHOOSE_CAT
-
-    context.user_data["cat"] = cat
-    kb = [nav.home_row()]
-    await update.message.reply_text(
-        "💵 Enter amount:",
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
-    )
-    return TYPING_AMT
-
-
-async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    
-    # Handle "To start" button
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    parsed = amount_input.parse_amount_text(text)
-    if parsed is None:
-        await update.message.reply_text(
-            "❌ Need an amount above zero with at most 2 decimals, e.g. 1 200 or 350 дин. Try again:")
-        return TYPING_AMT
-    amt, typed_currency = parsed
-    context.user_data["amt"] = amt
-    currencies = cfg(context).currencies
-    cur = _on_buttons(typed_currency, currencies)
-    if cur is not None:
-        return await _set_currency_and_ask_comment(update, context, cur)
-    await _ask_from_list(update, "💱 Currency?", currencies)
-    return CHOOSE_CUR
-
-
-async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    
-    # Handle "To start" button
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    currencies = cfg(context).currencies
-    cur = _on_buttons(currency.find(text), currencies)
-    if cur is None:
-        await _ask_from_list(update, "❌ No such currency. Choose one from the list:", currencies)
-        return CHOOSE_CUR
-    return await _set_currency_and_ask_comment(update, context, cur)
-
-
-async def _set_currency_and_ask_comment(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                        cur: str) -> int:
-    context.user_data["cur"] = cur
-
-    # Automatically detect user
-    user_name, username = get_user_info(update, context)
-    context.user_data["spender"] = user_name
-    
-    # Go to comment
-    buttons = [
-        [InlineKeyboardButton("⏭️ Skip", callback_data="skip")],
-        [nav.home_inline_button()]
-    ]
-    await update.message.reply_text(
-        f"👤 Auto-detected: {user_name}\n\n💬 Add comment or press «Skip»",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-    return TYPING_CMNT
-
-
-async def type_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # This handler is called for both text messages and "skip" button press
-    if update.callback_query:
-        await update.callback_query.answer()
-        if nav.is_home_callback(update.callback_query.data):
-            return await nav.go_home(update, context)
-        context.user_data["comment"] = ""
-    else:
-        text = update.message.text
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
-        context.user_data["comment"] = text
-
-    # Choose date
-    buttons = [
-        [InlineKeyboardButton("📅 Today", callback_data="today"),
-         InlineKeyboardButton("📆 Yesterday", callback_data="yesterday")],
-        [InlineKeyboardButton("📆 Enter date", callback_data="custom")],
-        [nav.home_inline_button()]
-    ]
-    # Use update.effective_message for reply, as it can be both Message and CallbackQuery
-    await update.effective_message.reply_text(
-        "📅 Expense date:",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-    return CHOOSE_DT
-
-
-async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if nav.is_home_callback(query.data):
-        return await nav.go_home(update, context)
-
-    if query.data == "today":
-        date_str = clock.now().strftime(DATE_FMT)
-        return await save_row(update, context, date_str)
-    elif query.data == "yesterday":
-        date_str = (clock.now() - timedelta(days=1)).strftime(DATE_FMT)
-        return await save_row(update, context, date_str)
-    else:
-        await query.edit_message_text("📅 Enter date in format DD.MM.YYYY:")
-        return TYPING_DT
-
-
-async def type_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-
-    try:
-        date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
-    except Exception:
-        await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
-        return TYPING_DT
-    return await save_row(update, context, date_str)
-
-
-async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
-    cat = context.user_data["cat"]
-    amt = context.user_data["amt"]
-    cur = context.user_data["cur"]
-    who = context.user_data["spender"]
-    cmnt = context.user_data.get("comment", "")
-    append_expense(cfg(context).sheets, ExpenseRecord(
-        date=date_str,
-        category=cat,
-        amount=amt,
-        currency=cur,
-        who=who,
-        comment=cmnt,
-    ))
-
-    text = f"✅ Saved: {cat} – {amt:.2f} {cur} on {date_str}"
-
-    # Reply to chat depending on whether it was a message or button press
-    if update.callback_query:
-        await update.callback_query.edit_message_text(text)
-    else:
-        await update.message.reply_text(text)
-
-    return await nav.go_home(update, context)
 
 
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -706,20 +517,13 @@ def build_application(bot_token: str) -> Application:
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            CHOOSE_ACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_action)],
-            CHOOSE_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cat)],
-            TYPING_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_amount)],
-            CHOOSE_CUR: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cur)],
-            TYPING_CMNT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, type_comment),
-                CallbackQueryHandler(type_comment, pattern="^(skip|to_start)$")
-            ],
-            CHOOSE_DT: [CallbackQueryHandler(choose_dt)],
-            TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
-            CHOOSE_PRESET: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_preset)],
+            State.CHOOSE_ACTION: [MessageHandler(nav.INPUT_TEXT, choose_action)],
+            **MANUAL.states(),
+            State.CHOOSE_PRESET: [MessageHandler(nav.INPUT_TEXT, choose_preset)],
             **STATS.states(),
         },
         fallbacks=[
+            *nav.home_fallbacks(),
             CommandHandler("cancel", cancel),
             CommandHandler("stop", cancel),
             CommandHandler("start", start),  # Add start as fallback
