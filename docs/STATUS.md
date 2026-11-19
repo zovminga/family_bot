@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #41 household data in settings)  
-**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
+**Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
