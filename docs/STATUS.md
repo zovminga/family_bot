@@ -143,9 +143,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
-- README «Install from scratch» (issue #40) was walked in a clean clone with
-  fake keys: `uv sync`, the pip route, `family-bot` and the setup lines work.
-  Two rough edges stay in code: a wrong `BOT_TOKEN` ends in a
+- README «Install from scratch» (issue #40): a clean-clone walk with fake keys
+  covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
+  download. Not walked: the Google Cloud console steps, a real spreadsheet, and
+  Render (need real accounts). Two rough edges stay in code: a wrong `BOT_TOKEN` ends in a
   `telegram.error.InvalidToken` traceback, and the setup lines print only after
   Telegram accepts the token (`post_init`); `scripts/bootstrap_sheet.py` prints a
   traceback instead of one line when the key or sheet is wrong.
