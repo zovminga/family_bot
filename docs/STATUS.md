@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (voice decode without numpy)  
-**Product code tip:** `09ab8ee` (2026-11-19) — `logging` instead of `print`, level from `LOG_LEVEL`, secrets masked in every line (issue #26)  
+**Product code tip:** `333d6cc` (2026-11-19) — voice notes decode without numpy (every voice note failed on Render)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
