@@ -187,7 +187,7 @@ class ManualFlow:
                 update, context, currency.stored_value(found[0]))
         if found:
             await update.message.reply_text(
-                f"💱 Нашлось несколько. {picker.TYPE_HINT}",
+                f"{picker.SEVERAL} {picker.TYPE_HINT}",
                 reply_markup=_inline(picker.choice_grid(found[:picker.PAGE_SIZE], _picker_cb)))
             return State.CHOOSE_CUR
         await self._ask_currency(update, context, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
@@ -220,9 +220,6 @@ class ManualFlow:
         # Automatically detect user
         user_name = self._who(update, context)
         context.user_data["spender"] = user_name
-        await asyncio.to_thread(
-            picker.remember, context.user_data, self._sheets(context),
-            update.effective_user.id, user_name, cur)
 
         # Go to comment
         buttons = [
@@ -305,6 +302,9 @@ class ManualFlow:
             comment=cmnt,
         )
         await asyncio.to_thread(append_expense, self._sheets(context), record)
+        await asyncio.to_thread(
+            picker.remember, context.user_data, self._sheets(context),
+            update.effective_user.id, who, cur)
 
         text = f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}"
         markup = InlineKeyboardMarkup([

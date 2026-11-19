@@ -161,7 +161,7 @@ def test_format_amount(amount: float, symbol: str | None, text: str) -> None:
 
 @pytest.mark.parametrize("code, flag", [
     ("RSD", "🇷🇸"), ("EUR", "🇪🇺"), ("RUB", "🇷🇺"), ("JPY", "🇯🇵"), ("GBP", "🇬🇧"),
-    ("USD", "🇺🇸"), ("CNY", "🇨🇳"), ("gel", "🇬🇪"), ("XAF", "🌐"), ("XDR", "🌐"),
+    ("USD", "🇺🇸"), ("CNY", "🇨🇳"), ("gel", "🇬🇪"), ("XAF", "🌐"), ("XDR", "🌐"), ("ANG", "🇨🇼"),
 ])
 def test_flag_is_the_country_of_the_code(code: str, flag: str) -> None:
     assert currency.flag(code) == flag

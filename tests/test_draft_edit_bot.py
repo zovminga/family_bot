@@ -129,9 +129,17 @@ def test_currency_button_shows_recent_currencies_of_this_user(ctx):
     settings_of(ctx).sheets.users[111] = ["CNY", "дин", "€"]
     session = _open_draft(ctx)
     query = _tap(ctx, session, "cur:0")
-    _, kw = query.edits[0]
-    rows = [[b.text for b in row] for row in kw["reply_markup"].inline_keyboard]
+    assert "введите код" in query.edits[0]
+    rows = [[b.text for b in row] for row in query.markups[0].inline_keyboard]
     assert rows == [["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"], ["🌍 Другая"], ["⬅️ Назад"]]
+
+
+def test_typed_currency_on_recent_step_sets_it(ctx):
+    session = _open_draft(ctx)
+    _tap(ctx, session, "cur:0")
+    with pytest.raises(ApplicationHandlerStop):
+        run(bot.draft_amount_text(make_update("лари"), ctx))
+    assert session.items[0]["currency"] == "GEL"
 
 
 def test_other_page_then_pick_sets_iso_code_and_recent(ctx):

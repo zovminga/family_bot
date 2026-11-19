@@ -58,6 +58,7 @@ REGULAR_HEADERS = [
 USERS_HEADERS = ["User ID", "Name", "Recent currencies"]
 USERS_ID_COL, USERS_NAME_COL, USERS_RECENT_COL = range(3)
 RECENT_SEPARATOR = ", "
+USERS_ROWS = 20  # initial size; Sheets grows it on append
 REGULAR_SECTION_MONTHLY = "ежемесячные траты"
 REGULAR_SECTION_ONEOFF = "разовые траты"
 
@@ -263,7 +264,7 @@ class GspreadSheetsClient:
         """
         from gspread.utils import rowcol_to_a1
 
-        ws, _ = self._ensure_worksheet(USERS_SHEET, rows=20, cols=len(USERS_HEADERS))
+        ws, _ = self._ensure_worksheet(USERS_SHEET, rows=USERS_ROWS, cols=len(USERS_HEADERS))
         rows = ws.get_all_values()
         if not rows or not any(c.strip() for c in rows[0]):
             ws.update(range_name="A1", values=[USERS_HEADERS], value_input_option="RAW")
@@ -359,7 +360,7 @@ class GspreadSheetsClient:
             changed["meta_seeded"] = True
 
         users_ws, changed["users_created"] = self._ensure_worksheet(
-            USERS_SHEET, rows=20, cols=len(USERS_HEADERS)
+            USERS_SHEET, rows=USERS_ROWS, cols=len(USERS_HEADERS)
         )
         if seed_if_empty and not any(c.strip() for c in (users_ws.row_values(1) or [])):
             users_ws.update(range_name="A1", values=[USERS_HEADERS])

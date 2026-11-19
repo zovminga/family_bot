@@ -161,7 +161,7 @@ def test_other_pages_then_pick_saves_iso_code_and_recent(ctx):
     assert state == TYPING_CMNT
     assert ctx.user_data["cur"] == "GEL"
     assert query.edits == ["💱 Валюта: 🇬🇪 GEL"]
-    assert sheets.users[111] == ["GEL", "дин", "€"]
+    assert sheets.users == {}, "Recent currencies change only when the Expense is saved"
 
 
 def test_picker_buttons_have_a_handler_in_currency_state():
@@ -173,13 +173,20 @@ def test_picker_buttons_have_a_handler_in_currency_state():
     assert any(p.match("cur:page:2") for p in patterns)
 
 
-def test_currency_typed_with_amount_goes_to_recent(ctx):
+def test_saved_currency_goes_to_recent(ctx, monkeypatch):
+    from family_bot.flows import manual
     from tests.conftest import FakeSheetsClient, settings_of
 
     sheets = FakeSheetsClient()
+    sheets.users[111] = ["дин", "€", "₽"]
     settings_of(ctx).sheets = sheets
-    assert run(bot.MANUAL.type_amount(make_update("350 €"), ctx)) == TYPING_CMNT
-    assert sheets.users[111] == ["€", "дин", "₽"]
+    monkeypatch.setattr(manual.clock, "now", lambda: datetime(2026, 11, 19))
+    ctx.user_data["cat"] = "Food"
+    assert run(bot.MANUAL.type_amount(make_update("350 $"), ctx)) == TYPING_CMNT
+    assert sheets.users[111] == ["дин", "€", "₽"]
+    run(bot.MANUAL.type_dt(make_update("19.11.2026"), ctx))
+    assert sheets.users[111] == ["$", "дин", "€"]
+    assert sheets.user_names[111] == "Azat"
 
 
 # --- Comment and date ---

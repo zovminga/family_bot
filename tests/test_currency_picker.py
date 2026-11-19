@@ -172,6 +172,17 @@ def test_failed_read_falls_back_to_defaults_and_retries_later() -> None:
     assert picker.KEY_RECENT not in user_data
 
 
+def test_failed_read_never_overwrites_saved_recent() -> None:
+    class Flaky(FakeSheetsClient):
+        def read_recent_currencies(self, user_id: int) -> list[str] | None:
+            raise RuntimeError("APIError 503")
+
+    sheets = Flaky()
+    sheets.users[111] = ["CNY", "GEL", "€"]
+    picker.remember({}, sheets, 111, "Анна", "дин")
+    assert sheets.users[111] == ["CNY", "GEL", "€"]
+
+
 def test_no_sheets_gives_defaults() -> None:
     assert picker.load_recent({}, None, 111) == ["дин", "€", "₽"]
 
