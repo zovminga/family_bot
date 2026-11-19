@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #12 error handler, merged after issues #21, #37)  
-**Product code tip:** `6c26d59` (2026-11-19) — bot-wide error handler, no raw exception text to users (issue #12)  
+**Updated by:** agent session (issue #15 input checks, merged after issues #12, #21, #37)  
+**Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -33,6 +33,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- Manual input checks (issue #15): the amount must be a finite number above
+  zero with at most two decimals (`amount_input.py`, built on `parse_amount`);
+  «1 200» and «350 дин» work,
+  a Currency typed with the amount skips the Currency step. A Category or
+  Currency not on the list re-asks with the buttons. Voice/receipt amounts
+  ≤ 0 are dropped. Edited Telegram messages are ignored (handler group -2).
 - Drafts have ids (issue #13): each voice/receipt card saves its own Draft,
   all its items go in one `append_rows` call (a failed save can be retried
   without duplicates), a double tap keeps «✅ Сохранено», the category button

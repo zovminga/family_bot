@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 import currency
-from sheet_data import parse_amount
+from amount_input import positive_amount
 
 BOT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BOT_DIR / "models"
@@ -225,8 +225,8 @@ def _snap_date(value: Optional[str], today: str) -> str:
 
 
 def _snap_amount(value) -> Optional[float]:
-    amount = parse_amount(value)
-    return None if amount is None else round(amount, 2)
+    """Finite amount above zero, rounded to cents; anything else drops the item."""
+    return positive_amount(value)
 
 
 def extract_expenses(transcript: str, categories: list[str], currencies: list[str],
@@ -236,7 +236,7 @@ def extract_expenses(transcript: str, categories: list[str], currencies: list[st
     """Turn a transcript into {'expenses': [...], 'note': str} via Claude.
 
     Each expense is snapped to the allowed categories/currencies and a valid
-    date. Items without a parseable amount are dropped (and flagged in 'note').
+    date. Items without an amount above zero are dropped (and flagged in 'note').
     Requires ANTHROPIC_API_KEY in the environment.
     """
     if not os.getenv("ANTHROPIC_API_KEY"):
