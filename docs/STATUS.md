@@ -111,6 +111,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Typed text (issue #30) reaches `bot.text_expense` only inside the
+  conversation: after a bot restart the user needs `/start` first (menu texts
+  in `entry_points` are plan §3.2 «Состояние»). Text without a digit
+  («кофе триста») gets the hint without a Claude call, to avoid paid calls on
+  chat text; voice still parses number words. Without `ANTHROPIC_API_KEY`,
+  text with a digit gets «❌ Не разобрал, введите вручную».
 - Lint and type checks are relaxed so CI passed without product-code edits
   (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
   per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips
