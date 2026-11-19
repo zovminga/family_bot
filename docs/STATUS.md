@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #32 today button, merged after issues #35, fallback categories)  
-**Product code tip:** `3ffb331` (2026-11-19) — manual add saves today with no comment in one tap (issue #32)  
+**Updated by:** agent session (issue #31 undo and Draft edits, merged after issues #32, #35)  
+**Product code tip:** `f6b937a` (2026-11-19) — «↩️ Отменить» after a save, «✏️ Сумма» / «👤 Кто» in the Draft card (issue #31)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Undo and Draft edits (issue #31, plan 3.3, F2): «✅ Сохранено» (manual and
+  Draft) has «↩️ Отменить». It deletes the rows of that save, found by their
+  values (Data has no row id); a row changed in the sheet is not deleted. Only
+  the User's own latest save, within 30 minutes (`undo.UNDO_WINDOW`), and not
+  after a restart. The Draft card has «✏️ Сумма» (typed, same checks as the
+  manual flow) and «👤 Кто» (Allowlist Spender names). Handler groups are now
+  -3 edits, -2 Allowlist, -1 typed Draft amount.
 - Russian UI (issue #29, plan 3.1 and 3.5): messages, buttons, errors, hints
   and setup problem lines are Russian; Category names stay as in Config.
   Amounts everywhere (bot replies, Draft card, stats, presets) go through

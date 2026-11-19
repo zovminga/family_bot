@@ -136,3 +136,32 @@ def test_missing_spreadsheet_raises_domain_error(monkeypatch, tmp_path):
         assert "Family" in str(e)
     else:
         raise AssertionError("no SpreadsheetNotFound")
+
+
+def test_gspread_delete_data_rows_is_one_request_bottom_up():
+    calls = []
+
+    class FakeWorksheet:
+        id = 42
+
+    class FakeSpreadsheet:
+        def worksheet(self, name):
+            assert name == "Data"
+            return FakeWorksheet()
+
+        def batch_update(self, body):
+            calls.append(body)
+
+    GspreadSheetsClient(FakeSpreadsheet()).delete_data_rows([3, 7])
+    ranges = [r["deleteDimension"]["range"] for r in calls[0]["requests"]]
+    assert len(calls) == 1
+    assert ranges == [
+        {"sheetId": 42, "dimension": "ROWS", "startIndex": 6, "endIndex": 7},
+        {"sheetId": 42, "dimension": "ROWS", "startIndex": 2, "endIndex": 3},
+    ]
+
+
+def test_fake_delete_data_rows():
+    client = FakeSheetsClient(data_values=[["Date"], ["a"], ["b"], ["c"]])
+    client.delete_data_rows([2, 4])
+    assert client.read_data_values() == [["Date"], ["b"]]
