@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (project review, design, staged plan)  
+**Updated by:** agent session (known-bug reproductions in tests/known_bugs)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -54,6 +54,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
+- 24 known-bug reproductions live in `tests/known_bugs/` as
+  `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
+  `pytest -rx` lists what is still open.
 
 ## Only a person knows
 
