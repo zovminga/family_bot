@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #22 Config in post_init, startup problems)  
-**Product code tip:** branch `claude/issue-22-config-post-init-7ac26b` (2026-11-19) — Config loaded in `post_init`, one-line setup problems (issue #22); set the hash after merge  
+**Product code tip:** `096ecaa` (2026-11-19) — Config loaded in `post_init`, one-line setup problems (issue #22)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -60,7 +60,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   opens no spreadsheet. `bot.post_init` calls `config.load(os.environ)` and
   keeps the `Config` (Allowlist, `SheetsClient`, categories, Presets, Currency
   buttons) in `bot_data["config"]`; handlers read it via `bot.cfg(context)`.
-  Each setup mistake prints as one line «what — what to do», no traceback.
+  Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) prints as one line «what — what to do», no traceback; `/reloadcats` shows its problems in the reply.
   Without Google Sheets the bot still starts: `/whoami` answers, any other
   message from an allowed User lists the problems. Missing `BOT_TOKEN` stops
   `main()` with one line. `ALLOWED_USERS` accepts a comma inside a name;
