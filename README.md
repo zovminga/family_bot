@@ -76,11 +76,15 @@ Safe to run again — it will not wipe existing rows.
 
 ### 4. Allow your family (required)
 
-Start the bot once (even with empty allowlist):
+Start the bot once (even with empty allowlist, even before Google Sheets works):
 
 ```bash
 python bot.py
 ```
+
+At startup the bot prints one line per setup problem: what is wrong and what to
+do (for example `⚠️ SHEET_NAME is not set — set it in .env …`). Until Google
+Sheets opens, `/whoami` works and every other message lists those problems.
 
 In Telegram, open your bot → `/whoami` → copy your numeric ID.
 Add household members to `.env`:
@@ -91,6 +95,7 @@ ALLOWED_USERS=111111111:Azat,222222222:Lisa
 
 Restart the bot. Anyone not on this list is rejected (they cannot read or
 write your sheet). `/whoami` still works so new members can send you their ID.
+A name may contain a comma: `111111111:Иван, Петров` is one entry.
 
 ### 5. Optional: voice, typed text & receipt photos
 
@@ -136,7 +141,7 @@ The bot does **not** build the dashboard. Build it on a laptop and publish
 
 - **Access denied in Telegram** — your ID is missing from `ALLOWED_USERS`; use `/whoami`
 - **Categories not loading** — run `python scripts/bootstrap_sheet.py`, then `/test_connection`
-- **Connection error** — check `GOOGLE_CREDS_PATH`, sheet name, and that the sheet is shared with the service account
+- **Connection error** — read the `⚠️` lines the bot prints at startup; check `GOOGLE_CREDS_PATH`, sheet name, and that the sheet is shared with the service account. `python scripts/test_google_sheets.py` reads `.env` and checks the connection
 - **Bot not responding** — check `BOT_TOKEN`; locally omit `RENDER_EXTERNAL_URL` for polling
 
 ## License

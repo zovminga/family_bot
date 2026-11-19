@@ -13,6 +13,7 @@ from telegram.ext import Application, ExtBot, MessageHandler, filters
 
 import bot
 import errors
+from tests.conftest import bot_context
 from tests.known_bugs.fakes import FakeMessage, FakeQuery, make_update
 
 BOT_TOKEN = "123456789:AAH-secretTokenValue_abcdefghijklmnop"
@@ -167,8 +168,10 @@ def _media_update() -> tuple[SimpleNamespace, _VoiceMsg]:
     return upd, msg
 
 
-def _ctx() -> SimpleNamespace:
-    return SimpleNamespace(user_data={}, bot=_FakeBot())
+def _ctx(bot: Any = None) -> SimpleNamespace:
+    ctx = bot_context()
+    ctx.bot = bot or _FakeBot()
+    return ctx
 
 
 def _raise(*a: Any, **kw: Any) -> Any:
@@ -209,7 +212,7 @@ def test_voice_download_error_hides_raw_text() -> None:
             raise RuntimeError(RAW)
 
     upd, msg = _media_update()
-    run(bot.voice_handler(upd, SimpleNamespace(user_data={}, bot=BrokenBot())))
+    run(bot.voice_handler(upd, _ctx(BrokenBot())))
     final = msg.status.edits[-1][0]
     assert "529" not in final and final.startswith("❌")
 
@@ -219,16 +222,15 @@ def test_dashboard_send_error_hides_raw_text(monkeypatch: pytest.MonkeyPatch) ->
         async def reply_document(self, **kw: Any) -> None:
             raise RuntimeError(RAW)
 
-    monkeypatch.setattr(bot, "get_dashboard_file_id", lambda: "file1")
+    monkeypatch.setattr(bot, "get_dashboard_file_id", lambda sheets: "file1")
     msg = Msg()
-    run(bot.send_dashboard(SimpleNamespace(effective_message=msg), SimpleNamespace()))
+    run(bot.send_dashboard(SimpleNamespace(effective_message=msg), _ctx()))
     text = msg.replies[-1][0]
     assert "529" not in text and text.startswith("❌")
 
 
-def test_test_connection_error_hides_raw_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bot, "test_google_sheets_connection", _raise)
+def test_test_connection_error_hides_raw_text() -> None:
     upd = make_update("/test_connection")
-    run(bot.test_connection(upd, SimpleNamespace()))
+    run(bot.test_connection(upd, bot_context(sheets=SimpleNamespace(test_connection=_raise))))
     text = upd.message.replies[-1][0]
     assert "529" not in text and text.startswith("❌")
