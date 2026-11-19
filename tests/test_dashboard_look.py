@@ -10,12 +10,12 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from test_dashboard_safety import DASHBOARD_DIR, DOM_STUB, _page_script, _write_csv
-from test_dashboard_safety import bd
+from test_dashboard_safety import DASHBOARD_DIR, DOM_STUB, _page_script, _write_csv, bd
 
 node_only = pytest.mark.skipif(
     shutil.which("node") is None, reason="needs Node to run the page script"
@@ -44,12 +44,15 @@ console.log(JSON.stringify({
 """
 
 
+RenderPage = Callable[..., dict[str, Any]]
+
+
 def _row(day: str, category: str, amount: int, cur: str = "дин", comment: str = "") -> list[str]:
     return [day, day[6:] + "-" + day[3:5], category, str(amount), cur, "Azat", comment]
 
 
 @pytest.fixture
-def render_page(tmp_path, monkeypatch):
+def render_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> RenderPage:
     """Build a page from made-up rows and run its script; return the dump."""
     monkeypatch.setattr(bd, "OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr(bd, "DASHBOARD_DIR", tmp_path)
@@ -72,13 +75,13 @@ def render_page(tmp_path, monkeypatch):
 
 
 @node_only
-def test_palette_never_repeats_a_colour(render_page):
+def test_palette_never_repeats_a_colour(render_page: RenderPage) -> None:
     result = render_page([_row("01.11.2026", "Food", 100)])
     assert len(set(result["palette"])) == 40
 
 
 @node_only
-def test_each_category_has_its_own_colour_in_every_chart(render_page):
+def test_each_category_has_its_own_colour_in_every_chart(render_page: RenderPage) -> None:
     rows = [_row("01.11.2026", f"Cat{i:02d}", 100 + i) for i in range(15)]
     rows.append(_row("01.10.2026", "Cat03", 500))
     result = render_page(rows)
@@ -104,7 +107,7 @@ def _row_alphas(monitor: str) -> dict[str, list[float]]:
 
 
 @node_only
-def test_monitor_colour_is_scaled_per_row(render_page):
+def test_monitor_colour_is_scaled_per_row(render_page: RenderPage) -> None:
     rows = [
         _row("01.10.2026", "Rent", 100000), _row("01.11.2026", "Rent", 90000),
         _row("05.10.2026", "Coffee", 100), _row("05.11.2026", "Coffee", 200),
@@ -116,13 +119,13 @@ def test_monitor_colour_is_scaled_per_row(render_page):
     assert alphas["Coffee"][0] == pytest.approx(0.1 + 0.8 * 100 / 200)
 
 
-def test_template_has_no_hard_coded_base_currency():
+def test_template_has_no_hard_coded_base_currency() -> None:
     template = (DASHBOARD_DIR / "template.html").read_text(encoding="utf-8")
     assert "RSD" not in template
 
 
 @node_only
-def test_hints_name_the_base_currency_from_build(render_page):
+def test_hints_name_the_base_currency_from_build(render_page: RenderPage) -> None:
     result = render_page([_row("01.11.2026", "Food", 100, cur="€")], base_iso="EUR")
     assert result["errors"] == []
     assert "EUR" in result["kpis"]
@@ -131,7 +134,7 @@ def test_hints_name_the_base_currency_from_build(render_page):
 
 # ---- Category names stay as in the Config sheet (V10) ----
 
-def test_category_order_puts_config_first():
+def test_category_order_puts_config_first() -> None:
     order = bd.category_order(["Еда", " Аренда ", "", "Еда"], ["Кафе", "Аренда", "Еда"])
     assert order == ["Еда", "Аренда", "Кафе"]
 
@@ -149,11 +152,13 @@ def test_category_order_puts_config_first():
         (["Еда"], "Еда", "хлеб", "Еда"),
     ],
 )
-def test_repair_category_uses_names_from_the_sheet(known, category, comment, expected):
+def test_repair_category_uses_names_from_the_sheet(
+    known: list[str], category: str, comment: str, expected: str
+) -> None:
     assert bd.repair_category(category, comment, known) == expected
 
 
-def test_build_lists_categories(tmp_path: Path, monkeypatch):
+def test_build_lists_categories(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bd, "OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr(bd, "DASHBOARD_DIR", tmp_path)
     monkeypatch.setattr(bd, "fetch_rates", lambda base: {"RSD": 1.0})
