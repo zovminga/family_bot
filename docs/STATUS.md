@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #29 Russian UI)  
-**Product code tip:** issue #29 branch (2026-11-19) — Russian UI, amounts «1 234 дин», Telegram command menu  
+**Updated by:** agent session (issue #25 shared Row/fx/llm, merged after issue #29)  
+**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -119,9 +119,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   starts and reopened if the save fails, so a double tap still sees
   «✅ Сохранено». Claude clients for voice, text
   and receipt photo use a 30 s timeout and 1 retry
-  (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
+  (`llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
   client keeps the SDK defaults.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Shared code for bot and dashboard (issue #25): a Data row is the typed
+  `sheet_data.Row` (`date` as `datetime.date`, `amount` as `float`), read by
+  `sheet_data.parse_rows` in bot stats and in the dashboard build. Rates come
+  from `fx.py` (`fetch_rates` for the dashboard, `rate` for stats; `analytics`
+  has no I/O). JSON from Claude replies is parsed by `llm.extract_json_object`
+  (voice, photo, typed text, dashboard grouping). In the dashboard JSON a date
+  is always `ДД.ММ.ГГГГ` (an ISO-format cell is converted, an unknown format
+  becomes empty) and a Currency word such as «евро» maps to its ISO code.
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
   comment with HTML or `</script>` stays text. A Telegram publish error masks
@@ -198,21 +206,20 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
   per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips
   `bot.py`, does not use `--strict`, and disables named error codes in
-  `analytics`, `flow_preset`, `navigation`, `photo_input`, `voice_input`. Both
+  `flow_preset`, `flows.manual`, `navigation`, `photo_input`, `voice_input`. Both
   lists are in `pyproject.toml`; shrink them as modules are cleaned up.
 - `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
   before the move still import it. Drop the re-export once no branch imports
   the fake from `tests.test_sheets`.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
-  recorded as open: the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`).
+- Doc/code mismatches from spec section 2.8 are fixed in the docs; the last
+  one (the dashboard's own row parsing, C3) closed with issue #25.
 - Since issue #18 two people's Sheets calls can run in two threads on the
   one shared gspread client (`Config.sheets`). gspread does not document
   thread safety; no problem has been seen or tested.
 - Logging is not configured: `errors` logs through the `family_bot.errors`
   logger, which prints to stderr via Python's fallback handler (WARNING and
   above). Other modules still `print` exception text to stdout without
-  masking (`bot.py`, `sheets.py`, `analytics.py`, `flows/stats.py`); none of
+  masking (`bot.py`, `sheets.py`, `fx.py`, `flows/stats.py`); none of
   it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).

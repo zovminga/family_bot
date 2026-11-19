@@ -119,3 +119,15 @@ def test_sheet_text_renders_as_text(build_from_rows, tmp_path):
     leaked = [w for w in rendered if "<img" in w]
     assert leaked == [], leaked[0][:300]
     assert any("&lt;img src=x onerror=alert(1)&gt;" in w for w in result["writes"])
+
+
+def test_rows_parsed_by_shared_row(build_from_rows):
+    # The build reads rows through sheet_data.parse_rows: dates come out as
+    # DD.MM.YYYY, Currency words map through the registry, bad amounts are skipped.
+    html = build_from_rows([
+        ["2026-11-05", "", "Food", "1 200", "евро", "Azat", "обед"],
+        ["06.11.2026", "", "Food", "не число", "дин", "Azat", "x"],
+    ])
+    data = json.loads(re.search(r"const DATA = (.*);\n", _page_script(html)).group(1))
+    assert [(r["date"], r["month"], r["amount"], r["currency"]) for r in data["rows"]] == [
+        ("05.11.2026", "2026-11", 1200.0, "EUR")]

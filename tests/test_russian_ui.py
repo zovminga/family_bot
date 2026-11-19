@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -25,15 +25,16 @@ from family_bot import flow_preset
 from family_bot import navigation as nav
 from family_bot import text_input
 from family_bot.flows import stats as flow_stats
+from family_bot.sheet_data import Row
 from tests.conftest import FakeSheetsClient, bot_context
 from tests.known_bugs.fakes import FakeQuery, make_update
 
 CATEGORIES = ["Еда", "Транспорт"]
 ROWS = [
-    {"date": "05.10.2026", "month": "2026-10", "category": "Еда", "amount": 1234.5,
-     "currency": "дин", "who": "Азат", "comment": "кофе"},
-    {"date": "06.10.2026", "month": "2026-10", "category": "Транспорт", "amount": 10.0,
-     "currency": "€", "who": "Азат", "comment": ""},
+    Row(date=date(2026, 10, 5), month="2026-10", category="Еда", amount=1234.5,
+        currency="дин", who="Азат", comment="кофе"),
+    Row(date=date(2026, 10, 6), month="2026-10", category="Транспорт", amount=10.0,
+        currency="€", who="Азат", comment=""),
 ]
 PRESETS = [{"name": "Аренда", "amount": 500.0, "currency": "€", "category": "Еда",
             "who": "Азат"}]

@@ -1,66 +1,45 @@
 #!/usr/bin/env python3
-"""Expense analytics over normalized rows (no Sheets I/O).
+"""Expense analytics over parsed rows (no I/O).
 
-Callers load rows via SheetsClient + sheet_data.normalize_rows, then pass them
-here. Exchange rates come through an injectable get_rate adapter.
+Callers load rows via SheetsClient + sheet_data.parse_rows and pass an
+exchange-rate function (fx.rate in the bot) when converting.
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Callable, Optional
+from datetime import date, datetime
+from typing import Any, Callable, Optional
 
-import requests
-
-from family_bot.currency import format_amount, to_iso
-from family_bot.sheet_data import DATE_FMT
+from family_bot.currency import format_amount
+from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
 NO_DATA = "Нет данных 🤷"
 
 
-def http_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
-    """Fetch a rate via exchangerate-api.com (production Fx adapter)."""
-    try:
-        if from_currency == to_currency:
-            return 1.0
-        from_cur = to_iso(from_currency)
-        to_cur = to_iso(to_currency)
-        url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            rate = response.json().get("rates", {}).get(to_cur)
-            if rate:
-                return float(rate)
-        return None
-    except Exception as e:  # noqa: BLE001 - degrade to None for callers
-        print(f"Error getting exchange rate: {e}")
-        return None
-
-
-def unique_currencies(rows: list[dict], fallback: Optional[list[str]] = None) -> list[str]:
-    """Sorted distinct currency symbols from normalized rows."""
-    currencies = sorted({r.get("currency") for r in rows if r.get("currency")})
+def unique_currencies(rows: list[Row], fallback: Optional[list[str]] = None) -> list[str]:
+    """Sorted distinct currency symbols from parsed rows."""
+    currencies = sorted({r.currency for r in rows if r.currency})
     if currencies:
         return currencies
     return list(fallback or [])
 
 
 def last_n(
-    rows: list[dict],
+    rows: list[Row],
     n: int = 3,
     category: Optional[str] = None,
-) -> list[dict]:
+) -> list[Row]:
     """Return the last N expenses (newest first), optionally filtered by category."""
     filtered = rows
     if category and category != "All":
-        filtered = [r for r in rows if r.get("category") == category]
+        filtered = [r for r in rows if r.category == category]
     if not filtered:
         return []
     return list(reversed(filtered[-n:]))
 
 
 def format_last_n(
-    rows: list[dict],
+    rows: list[Row],
     n: int = 3,
     category: Optional[str] = None,
 ) -> str:
@@ -73,54 +52,47 @@ def format_last_n(
 
     lines = [f"📋 Последние записи ({len(records)}):\n"]
     for i, record in enumerate(records, 1):
-        amount = record["amount"]
-        comment = record.get("comment") or ""
-        comment_text = f" ({comment})" if comment else ""
+        comment_text = f" ({record.comment})" if record.comment else ""
         lines.append(
-            f"{i}. 📅 {record.get('date') or '?'} | {record.get('category') or '?'} | "
-            f"{format_amount(amount, record.get('currency') or '?')} | "
-            f"👤 {record.get('who') or '?'}{comment_text}"
+            f"{i}. 📅 {record.date_text or '?'} | {record.category or '?'} | "
+            f"{format_amount(record.amount, record.currency or '?')} | "
+            f"👤 {record.who or '?'}{comment_text}"
         )
     return "\n".join(lines)
 
 
-def _parse_date(value: str) -> Optional[datetime]:
+def _parse_date(value: str) -> Optional[date]:
     try:
-        return datetime.strptime(value, DATE_FMT)
+        return datetime.strptime(value, DATE_FMT).date()
     except (TypeError, ValueError):
         return None
 
 
 def filter_rows(
-    rows: list[dict],
+    rows: list[Row],
     *,
     category: str = "All",
     month: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-) -> list[dict]:
-    """Filter normalized expenses by category and period."""
+) -> list[Row]:
+    """Filter parsed expenses by category and period."""
     out = list(rows)
     if month:
-        out = [r for r in out if r.get("month") == month]
+        out = [r for r in out if r.month == month]
     elif date_from and date_to:
         start = _parse_date(date_from)
         end = _parse_date(date_to)
         if start is None or end is None:
             return []
-        filtered = []
-        for r in out:
-            d = _parse_date(r.get("date") or "")
-            if d is not None and start <= d <= end:
-                filtered.append(r)
-        out = filtered
+        out = [r for r in out if r.date is not None and start <= r.date <= end]
     if category != "All":
-        out = [r for r in out if r.get("category") == category]
+        out = [r for r in out if r.category == category]
     return out
 
 
 def aggregate(
-    rows: list[dict],
+    rows: list[Row],
     *,
     category: str = "All",
     month: Optional[str] = None,
@@ -132,9 +104,9 @@ def aggregate(
 ) -> tuple[str, dict]:
     """Aggregate filtered expenses into Telegram text + conversion details.
 
-    get_rate(from_currency, to_currency) -> rate | None. Defaults to http_exchange_rate.
+    get_rate(from_currency, to_currency) -> rate | None; required when
+    convert_to_currency is set.
     """
-    get_rate = get_rate or http_exchange_rate
     conversion_details: dict = {}
 
     filtered = filter_rows(
@@ -148,12 +120,14 @@ def aggregate(
         return NO_DATA, {}
 
     # Working copy of amounts/currencies for optional conversion.
-    working = [
-        {"amount": float(r["amount"]), "currency": r.get("currency") or ""}
+    working: list[dict[str, Any]] = [
+        {"amount": r.amount, "currency": r.currency}
         for r in filtered
     ]
 
     if convert_to_currency:
+        if get_rate is None:
+            raise ValueError("get_rate is required to convert currencies")
         originals = {w["currency"] for w in working}
         for currency in originals:
             if currency == convert_to_currency:
