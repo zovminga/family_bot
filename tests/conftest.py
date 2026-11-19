@@ -20,6 +20,8 @@ from typing import Any, Iterator, Optional
 import dotenv
 import pytest
 
+from family_bot import logs
+
 dotenv.load_dotenv = lambda *args, **kwargs: False
 for _var in ("GOOGLE_CREDS_PATH", "SHEET_NAME", "BOT_TOKEN", "ANTHROPIC_API_KEY",
              "DASHBOARD_CHAT_ID"):
@@ -39,12 +41,13 @@ TEST_CURRENCY_CODES = ["AED", "CAD", "CNY", "EUR", "GBP", "GEL", "IQD", "JPY", "
 def _restore_logging() -> Iterator[None]:
     """Undo logs.setup() from entry points called in a test (root handlers, levels)."""
     root = logging.getLogger()
-    httpx_logger = logging.getLogger("httpx")
-    saved = (list(root.handlers), root.level, httpx_logger.level)
+    quiet = {name: logging.getLogger(name).level for name in logs.QUIET_LOGGERS}
+    saved = (list(root.handlers), root.level)
     yield
     root.handlers[:] = saved[0]
     root.setLevel(saved[1])
-    httpx_logger.setLevel(saved[2])
+    for name, level in quiet.items():
+        logging.getLogger(name).setLevel(level)
 
 
 @pytest.fixture(autouse=True)

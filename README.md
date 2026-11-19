@@ -137,9 +137,8 @@ family-bot                 # or: python -m family_bot.bot
 At startup the bot logs one line per setup problem: what is wrong and what to
 do (for example `… WARNING family_bot.bot: ⚠️ SHEET_NAME is not set — set it in .env …`).
 Log lines go to stderr (the Render **Logs** tab); `LOG_LEVEL` in `.env` sets the
-level (`DEBUG`, `INFO` default, `WARNING`, `ERROR`). Tokens and API keys are
-masked in every line. Until Google
-Sheets opens, `/whoami` works and every other message lists those problems.
+level (`DEBUG`, `INFO` default, `WARNING`, `ERROR`, `CRITICAL`). Tokens and
+API keys are masked in every line. Until Google Sheets opens, `/whoami` works and every other message lists those problems.
 A wrong `BOT_TOKEN` stops the bot before these lines, with
 `telegram.error.InvalidToken` at the end of the output — copy the token from
 @BotFather again.

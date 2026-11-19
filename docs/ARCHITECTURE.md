@@ -131,7 +131,7 @@ works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
 Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
 reads `.env` and stops with one line if `BOT_TOKEN` is missing;
-`main()` also calls `logs.setup()`.
+`logs.setup()` runs right after `.env` is read, before that check.
 `post_init` loads `Config`, logs each setup problem as one WARNING line, schedules
 the monthly summary when `DASHBOARD_CHAT_ID` is set and Sheets is open (`monthly_summary.schedule`)
 and fills the Telegram command menu from `bot.COMMANDS` (`set_my_commands`; a Telegram error

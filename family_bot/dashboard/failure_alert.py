@@ -5,9 +5,9 @@ Sends one short message to the Dashboard chat (DASHBOARD_CHAT_ID via BOT_TOKEN,
 the same pair `--publish` uses). The reason is a stage name plus an exception
 type, never the exception text: build errors can quote sheet rows.
 
-Standard library only (family_bot.logs and family_bot.errors too), and Python
-3.9 syntax: run.sh also calls this file with the system python3 when the venv
-could not be built.
+Standard library only, and Python 3.9 syntax: run.sh also calls this file with
+the system python3 when the venv could not be built. It imports family_bot.logs,
+which imports family_bot.errors; both use only the standard library.
 
 CLI (used by run.sh):  python3 -m family_bot.dashboard.failure_alert "<reason>"
 """

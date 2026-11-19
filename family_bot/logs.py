@@ -49,7 +49,7 @@ def setup(env: Optional[Mapping[str, str]] = None, stream: Optional[IO[str]] = N
         Where lines go; defaults to stderr.
     """
     env = os.environ if env is None else env
-    raw = (env.get(LOG_LEVEL_ENV) or DEFAULT_LEVEL).strip()
+    raw = (env.get(LOG_LEVEL_ENV) or "").strip() or DEFAULT_LEVEL
     name = raw.upper() if raw.upper() in LEVELS else DEFAULT_LEVEL
 
     handler = logging.StreamHandler(stream if stream is not None else sys.stderr)
