@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #35 «📅 Этот месяц»)  
-**Product code tip:** `46fc1a0` (2026-11-19) — «📅 Этот месяц» one-tap month summary (issue #35)  
+**Updated by:** agent session (issue #32 today button, merged after issues #35, fallback categories)  
+**Product code tip:** `3ffb331` (2026-11-19) — manual add saves today with no comment in one tap (issue #32)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -34,6 +34,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in `flows/manual.py` since issue #24. The home button is handled once, in the
   `ConversationHandler` fallbacks (`navigation.home_fallbacks()`); states are
   the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
+  Issue #32 (plan 3.4): the comment step has «✅ Сегодня, без комментария» —
+  one tap saves with today's date (`clock.now()`) and an empty comment.
+  «кофе 350 дин сегодня» by hand is now 3 taps (menu, Category, this button);
+  before it was 4, and 5 when U2 was written (Currency tap, removed in #15).
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
 - «📅 Этот месяц» (issue #35, plan 4.1): one main-menu tap shows the current
