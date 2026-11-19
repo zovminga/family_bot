@@ -177,7 +177,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 | Mode | When | How |
 |------|------|-----|
 | Polling | `RENDER_EXTERNAL_URL` unset | `app.run_polling()` — local default |
-| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path = bot token |
+| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path `/telegram` (`config.WEBHOOK_PATH`), `secret_token` from `WEBHOOK_SECRET` (random per start when unset; invalid value → one-line exit). python-telegram-bot answers 403 to requests without the `X-Telegram-Bot-Api-Secret-Token` header |
 
 ## Dashboard boundary
 
