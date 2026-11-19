@@ -52,6 +52,7 @@
   .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
   .kpi .t { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
   .kpi .v { font-size: 26px; font-weight: 700; margin-top: 8px; letter-spacing: -0.5px; }
+  .kpi .v.split { font-size: 19px; line-height: 1.35; }
   .kpi .d { font-size: 12px; margin-top: 6px; color: var(--muted); }
   .up { color: var(--bad); } .down { color: var(--good); }
 
@@ -61,8 +62,10 @@
   .insights ul { margin: 0; padding-left: 18px; }
   .insights li { margin: 7px 0; font-size: 14px; line-height: 1.45; }
 
-  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  /* minmax(0, 1fr) + min-width: 0 let wide tables scroll inside their card
+     instead of stretching the page past the phone screen. */
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; min-width: 0; }
   .card.full { grid-column: 1 / -1; }
   .card h3 { font-size: 14px; margin: 0 0 14px; font-weight: 600; }
   .chart-box { position: relative; height: 300px; }
@@ -89,7 +92,7 @@
   .trend-up { color: var(--bad); font-weight: 600; }
   .trend-down { color: var(--good); font-weight: 600; }
 
-  .opt-tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+  .opt-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
   .opt-tier { border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px; padding: 14px 16px; background: var(--panel-2); }
   .opt-tier .lab { font-size: 13px; font-weight: 600; }
   .opt-tier .amt { font-size: 23px; font-weight: 700; margin: 7px 0 2px; letter-spacing: -0.5px; }
@@ -97,7 +100,7 @@
   .opt-take { background: linear-gradient(135deg, #20301f, #171b22); border: 1px solid #2c5e2c;
     border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
   .opt-take b { color: var(--good); }
-  @media (max-width: 820px) { .opt-tiers { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) { .opt-tiers { grid-template-columns: minmax(0, 1fr); } }
 
   .excl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -8px 0 24px; }
   .chip-x { cursor: pointer; user-select: none; transition: .12s; padding: 4px 10px; font-size: 12px; }
@@ -142,7 +145,13 @@
   #tip .bd-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
   #tip .bd-row span:first-child { font-weight: 600; }
   #tip .bd-sub { color: var(--muted); }
-  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 600px) {
+    .wrap { padding: 16px 12px 60px; }
+    .card { padding: 14px 12px; }
+    .kpi .v { font-size: 22px; }
+    .chart-box { height: 260px; }
+  }
 </style>
 </head>
 <body>
@@ -188,6 +197,7 @@
     <span id="excludeChips" style="display:flex;flex-wrap:wrap;gap:6px;"></span>
   </div>
 
+  <p class="grp-note" id="modeNote" style="display:none"></p>
   <div class="kpis" id="kpis"></div>
 
   <div class="insights">
@@ -218,7 +228,7 @@
     <div class="card"><h3>По категориям <span class="info" data-tip="Сумма всех трат по каждой категории под текущими фильтрами. В режиме «в одной валюте» — в RSD по курсу, иначе — в исходных суммах. Наведи на сектор — увидишь разбивку по валютам. Кликни по сектору — раскроется, на что именно потрачено.">i</span> <span class="drill-hint">— кликни, чтобы раскрыть</span></h3><div class="chart-box"><canvas id="catChart"></canvas></div></div>
     <div class="card"><h3>Динамика по месяцам <span class="info" data-tip="Сумма трат за каждый календарный месяц (по полю Month / дате операции).">i</span></h3><div class="chart-box"><canvas id="monthChart"></canvas></div></div>
     <div class="card"><h3>Кто сколько тратит <span class="info" data-tip="Сумма трат по человеку (поле Who). Имена нормализованы: Azat=Азат, snezhi=Лиза.">i</span></h3><div class="chart-box"><canvas id="whoChart"></canvas></div></div>
-    <div class="card"><h3>По валютам (исходные суммы) <span class="info" data-tip="Сумма ИСХОДНЫХ сумм по каждой валюте, БЕЗ пересчёта в базовую. Показывает реальную структуру трат по валютам (₽, дин, €, ¥).">i</span></h3><div class="chart-box"><canvas id="curChart"></canvas></div></div>
+    <div class="card"><h3>По валютам <span class="info" data-tip="Доля каждой валюты в тратах. Размер сектора — по курсу в базовой валюте, иначе динары и евро не сравнить. В подписи — исходная сумма в этой валюте.">i</span></h3><div class="chart-box"><canvas id="curChart"></canvas></div></div>
     <div class="card full"><h3>Темы трат (по комментариям) <span class="info" data-tip="Сумма по теме, выведенной из текста комментария (правила по ключевым словам). Операции без комментария исключены. «Прочее» — то, что не подошло ни под одно правило.">i</span></h3><div class="chart-box tall"><canvas id="themeChart"></canvas></div></div>
     <div class="card"><h3>Средний чек по категориям <span class="info" data-tip="Для каждой категории: сумма трат ÷ число операций в ней = средняя величина ОДНОЙ траты (не за месяц). Показаны топ-12 по среднему.">i</span></h3><div class="chart-box"><canvas id="avgChart"></canvas></div></div>
     <div class="card"><h3>Траты по дням недели <span class="info" data-tip="Сумма трат, сгруппированная по дню недели даты операции. Выходные (Сб, Вс) — оранжевым.">i</span></h3><div class="chart-box"><canvas id="dowChart"></canvas></div></div>
@@ -261,6 +271,9 @@
 const DATA = __DASHBOARD_DATA__;
 const BASE = DATA.base_currency, BASE_SYM = DATA.base_symbol || BASE;
 let mode = "base"; // base | native
+// True in native mode with no single currency chosen: sums are then shown per
+// currency and never added across currencies. Set at the start of render().
+let splitCur = false;
 let monitorDim = "category"; // category | theme | who — grouping of the monthly monitor
 const excluded = new Set(); // categories excluded from the entire analysis
 const charts = {};
@@ -342,17 +355,28 @@ function filteredRows() {
 // insights, which intentionally ignore the period/who/currency filters but must
 // still drop excluded categories (e.g. "без аренды").
 function scopedRows() { return DATA.rows.filter(r => !excluded.has(r.category)); }
-// Value of a row under the current currency mode. In native mode we only sum a
-// single currency, so aggregates are meaningful only when one currency is chosen.
+// Value of a row for adding up and ranking. Native amounts are added only when
+// one currency is chosen. With mixed currencies (splitCur) charts and rankings
+// use the base amount, and text sums go through sumText() per currency.
 function val(r) {
-  if (mode === "base") return r.amount_base != null ? r.amount_base : 0;
-  return r.amount;
+  if (mode === "native" && !splitCur) return r.amount;
+  return r.amount_base != null ? r.amount_base : 0;
 }
 function moneyLabel() {
-  const f = currentFilters();
-  if (mode === "base") return BASE_SYM;
-  return f.cur || "(смешанные валюты)";
+  if (mode === "native" && !splitCur) return currentFilters().cur;
+  return BASE_SYM;
 }
+// Sum of rows as HTML. splitCur: one "amount symbol" per currency joined by
+// `sep`, never added together. Otherwise: one number (+ unit label).
+function sumText(rows, { div = 1, sep = " · ", unit = true } = {}) {
+  if (splitCur) {
+    return nativeBreakdown(rows).map(([sym, e]) => `${fmt(e.sum / div)} ${esc(sym)}`).join(sep) || "0";
+  }
+  const s = fmt(rows.reduce((a, r) => a + val(r), 0) / div);
+  return unit ? `${s} ${esc(moneyLabel())}` : s;
+}
+// Column / card label for a sum: the unit, or "по валютам" when split.
+function sumLabel() { return splitCur ? "по валютам" : moneyLabel(); }
 
 // ---- aggregation ----
 function groupSum(rows, key) {
@@ -384,19 +408,25 @@ function renderKpis(rows) {
   const lastRows = last ? scopedRows().filter(r => r.month === last) : [];
   const topCatRows = topCat ? rows.filter(r => r.category === topCat[0]) : [];
 
+  const avgSplit = splitCur
+    ? nativeBreakdown(rows).map(([sym, e]) => `${fmt(e.sum / e.n)} ${esc(sym)}`).join("<br>") : "";
   const cards = [
-    { t: `Всего (${esc(moneyLabel())})`, v: fmt(total), d: `${n} операций`, rows: rows,
-      tip: "Сумма всех операций под текущими фильтрами. В режиме «в одной валюте» каждая операция переведена в RSD по сегодняшнему курсу и просуммирована." },
-    { t: "Средний чек", v: fmt(avg), d: esc(moneyLabel()), rows: rows,
-      tip: "Всего ÷ число операций = средняя величина ОДНОЙ траты (не за месяц, не за день). Здесь: " + fmt(total) + " ÷ " + n + " = " + fmt(avg) + " " + moneyLabel() + "." },
+    { t: `Всего (${esc(sumLabel())})`, v: splitCur ? sumText(rows, { sep: "<br>" }) : fmt(total), split: splitCur,
+      d: `${n} операций`, rows: rows,
+      tip: "Сумма всех операций под текущими фильтрами. В режиме «в одной валюте» каждая операция переведена в RSD по сегодняшнему курсу и просуммирована. В режиме «по каждой» без выбранной валюты — отдельная сумма для каждой валюты." },
+    { t: "Средний чек", v: splitCur ? avgSplit || "0" : fmt(avg), split: splitCur,
+      d: splitCur ? "одна операция, по валютам" : esc(moneyLabel()), rows: rows,
+      tip: splitCur
+        ? "Сумма в валюте ÷ число операций в этой валюте = средняя величина ОДНОЙ траты, для каждой валюты отдельно."
+        : "Всего ÷ число операций = средняя величина ОДНОЙ траты (не за месяц, не за день). Здесь: " + fmt(total) + " ÷ " + n + " = " + fmt(avg) + " " + moneyLabel() + "." },
     { t: `Текущий месяц${last ? " · " + esc(last) : ""}`, v: fmt(last ? sumMonth(last) : 0) + " " + esc(BASE_SYM), d: momHtml || "&nbsp;", rows: lastRows,
       tip: "Сумма операций за последний месяц в данных (в RSD по курсу). ▲/▼ — изменение к предыдущему месяцу по формуле (тек − пред) ÷ пред. Не зависит от фильтра по месяцу." },
-    { t: "Топ-категория", v: topCat ? esc(topCat[0]) : "—", d: topCat ? fmt(topCat[1]) + " " + esc(moneyLabel()) : "", rows: topCatRows,
+    { t: "Топ-категория", v: topCat ? esc(topCat[0]) : "—", d: topCat ? sumText(topCatRows) : "", rows: topCatRows,
       tip: "Категория с наибольшей суммой трат под текущими фильтрами." },
   ];
   document.getElementById("kpis").innerHTML = cards.map(c => {
     const attr = bdAttr(c.rows || []);
-    const vClass = attr ? "v bd" : "v";
+    const vClass = "v" + (c.split ? " split" : "") + (attr ? " bd" : "");
     const info = c.tip ? ` <span class="info" data-tip="${esc(c.tip)}">i</span>` : "";
     return `<div class="kpi"><div class="t">${c.t}${info}</div><div class="${vClass}"${attr}>${c.v}</div><div class="d">${c.d}</div></div>`;
   }).join("");
@@ -455,14 +485,14 @@ let lastCatTiers = {}; // populated by renderOptimization, reused for drill-down
 function renderInsights(rows) {
   const out = [];
   if (!rows.length) { document.getElementById("insights").innerHTML = "<li>Нет данных под выбранные фильтры.</li>"; return; }
-  const sym = esc(moneyLabel()), bsym = esc(BASE_SYM);
+  const bsym = esc(BASE_SYM);
 
   // top category by share
   const cats = groupSum(rows, "category");
   const total = rows.reduce((s, r) => s + val(r), 0);
   if (cats.length) {
     const [name, sum] = cats[0];
-    out.push(`Главная статья — <b>${esc(name)}</b>: ${fmt(sum)} ${sym} (${(sum / total * 100).toFixed(0)}% всех трат).`);
+    out.push(`Главная статья — <b>${esc(name)}</b>: ${sumText(rows.filter(r => r.category === name))} (${(sum / total * 100).toFixed(0)}% всех трат).`);
   }
 
   // month-over-month per category (independent of the period filter, base currency)
@@ -527,6 +557,8 @@ function makeChart(id, cfg) {
   charts[id] = new Chart(el, cfg);
 }
 const axisColor = "#8b95a7", gridColor = "rgba(255,255,255,0.06)";
+// On a phone a side legend squeezes the doughnut, so put it below.
+const legendPos = () => (globalThis.innerWidth < 600 ? "bottom" : "right");
 const baseScales = {
   x: { ticks: { color: axisColor }, grid: { color: gridColor } },
   y: { ticks: { color: axisColor }, grid: { color: gridColor } },
@@ -538,7 +570,7 @@ function renderCharts(rows) {
   makeChart("catChart", {
     type: "doughnut",
     data: { labels: cat.map(c => c[0]), datasets: [{ data: cat.map(c => c[1]), backgroundColor: PALETTE, borderColor: "#171b22", borderWidth: 2 }] },
-    options: { plugins: { legend: { position: "right", labels: { color: axisColor, boxWidth: 12 } },
+    options: { plugins: { legend: { position: legendPos(), labels: { color: axisColor, boxWidth: 12 } },
       tooltip: bdTooltip(rows, (rs, it) => rs.filter(r => r.category === it.label)) }, maintainAspectRatio: false,
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       onClick: (e, els, chart) => { if (els.length) openDrill("category", chart.data.labels[els[0].index]); } },
@@ -563,14 +595,12 @@ function renderCharts(rows) {
       tooltip: bdTooltip(rows, (rs, it) => rs.filter(r => r.who === it.label)) }, scales: baseScales, maintainAspectRatio: false },
   });
 
-  // currency breakdown (always native amounts)
-  const curMap = new Map();
-  rows.forEach(r => curMap.set(r.currency_symbol || r.currency, (curMap.get(r.currency_symbol || r.currency) || 0) + r.amount));
-  const cur = [...curMap.entries()].sort((a, b) => b[1] - a[1]);
+  // currency breakdown: slice size in base currency (comparable), label = native sum
+  const cur = nativeBreakdown(rows);
   makeChart("curChart", {
     type: "doughnut",
-    data: { labels: cur.map(c => c[0]), datasets: [{ data: cur.map(c => c[1]), backgroundColor: PALETTE, borderColor: "#171b22", borderWidth: 2 }] },
-    options: { plugins: { legend: { position: "right", labels: { color: axisColor, boxWidth: 12 } } }, maintainAspectRatio: false },
+    data: { labels: cur.map(([sym, e]) => `${fmt(e.sum)} ${sym}`), datasets: [{ label: BASE_SYM, data: cur.map(([, e]) => e.base), backgroundColor: PALETTE, borderColor: "#171b22", borderWidth: 2 }] },
+    options: { plugins: { legend: { position: legendPos(), labels: { color: axisColor, boxWidth: 12 } } }, maintainAspectRatio: false },
   });
 
   // themes
@@ -744,8 +774,9 @@ function renderMonthlyMonitor(rows) {
     const cells = months.map(mo => {
       const v = mm.get(mo) || 0;
       const rs = v ? valid.filter(r => r[monitorDim] === g && r.month === mo) : [];
-      const attr = v ? bdAttr(rs) : "";
-      return `<td class="num heatcell${attr ? " bd" : ""}"${heat(v)}${attr}>${v ? fmt(v) : "·"}</td>`;
+      const attr = v && !splitCur ? bdAttr(rs) : "";
+      const txt = !v ? "·" : splitCur ? sumText(rs, { sep: "<br>" }) : fmt(v);
+      return `<td class="num heatcell${attr ? " bd" : ""}"${heat(v)}${attr}>${txt}</td>`;
     }).join("");
     // trend: last month vs previous month
     let tr = "—";
@@ -755,15 +786,17 @@ function renderMonthlyMonitor(rows) {
       if (d > 0) tr = `<span class="trend-up">▲ ${pct}%</span>`;
       else if (d < 0) tr = `<span class="trend-down">▼ ${Math.abs(pct)}%</span>`;
     }
-    return `<tr><td class="name" data-drill="${encodeURIComponent(g)}" style="cursor:pointer">${esc(g)}</td>${cells}<td class="num"><b>${fmt(gtot.get(g))}</b></td><td class="num">${fmt(gtot.get(g) / months.length)}</td><td class="num">${tr}</td></tr>`;
+    const gRows = valid.filter(r => r[monitorDim] === g);
+    const tot = sumText(gRows, { sep: "<br>", unit: false });
+    const per = sumText(gRows, { div: months.length, sep: "<br>", unit: false });
+    return `<tr><td class="name" data-drill="${encodeURIComponent(g)}" style="cursor:pointer">${esc(g)}</td>${cells}<td class="num"><b>${tot}</b></td><td class="num">${per}</td><td class="num">${tr}</td></tr>`;
   }).join("");
 
   // footer: monthly totals across shown groups
-  const colTot = months.map(mo => valid.reduce((s, r) => s + (r.month === mo ? val(r) : 0), 0));
-  const grand = colTot.reduce((s, x) => s + x, 0);
-  const foot = `<tfoot><tr><td class="name">Итого (${esc(moneyLabel())})</td>`
-    + colTot.map(v => `<td class="num"><b>${fmt(v)}</b></td>`).join("")
-    + `<td class="num"><b>${fmt(grand)}</b></td><td class="num"><b>${fmt(grand / months.length)}</b></td><td></td></tr></tfoot>`;
+  const cell = (rs, div = 1) => sumText(rs, { div, sep: "<br>", unit: false });
+  const foot = `<tfoot><tr><td class="name">Итого (${esc(sumLabel())})</td>`
+    + months.map(mo => `<td class="num"><b>${cell(valid.filter(r => r.month === mo))}</b></td>`).join("")
+    + `<td class="num"><b>${cell(valid)}</b></td><td class="num"><b>${cell(valid, months.length)}</b></td><td></td></tr></tfoot>`;
 
   el.innerHTML = head + `<tbody>${body}</tbody>` + foot;
 }
@@ -796,7 +829,7 @@ function renderGrouping(rows) {
     const comments = [...e.comments.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)
       .map(([c, n]) => `${esc(c)}${n > 1 ? " ×" + n : ""}`).join(" · ");
     const attr = bdAttr(byTheme[t] || []);
-    return `<details><summary>${esc(t)} — <span class="amt${attr ? " bd" : ""}"${attr}>${fmt(e.sum)} ${esc(moneyLabel())}</span> · ${e.count} оп.</summary>
+    return `<details><summary>${esc(t)} — <span class="amt${attr ? " bd" : ""}"${attr}>${sumText(byTheme[t] || [])}</span> · ${e.count} оп.</summary>
       <div class="grp-body">
         ${kws ? `<div class="kw">Ключевые слова правила: ${kws}</div>` : ""}
         <div class="cmts">${comments || "<i>без текстовых комментариев</i>"}</div>
@@ -819,7 +852,7 @@ function renderTable(rows) {
     const attr = (mode === "base" && r.currency !== BASE) ? ` data-bd="${encodeURIComponent(orig)}"` : "";
     return `<tr>
     <td>${esc(r.date)}</td><td>${esc(r.category)}</td>
-    <td class="num${attr ? " bd" : ""}"${attr}>${fmt(val(r))}</td>
+    <td class="num${attr ? " bd" : ""}"${attr}>${fmt(mode === "base" ? val(r) : r.amount)}</td>
     <td>${esc(mode === "base" ? BASE_SYM : (r.currency_symbol || r.currency))}</td>
     <td>${esc(r.who)}</td><td><span class="tag">${esc(r.theme)}</span></td><td>${esc(r.comment)}</td>
   </tr>`; }).join("");
@@ -849,15 +882,15 @@ function openDrillRows(title, rows) {
   const cm = new Map();
   rows.forEach(r => {
     const c = (r.comment || "").trim() || "(без комментария)";
-    const e = cm.get(c) || { sum: 0, n: 0, themes: new Set() };
-    e.sum += val(r); e.n += 1; if (r.theme) e.themes.add(r.theme);
+    const e = cm.get(c) || { sum: 0, n: 0, themes: new Set(), rows: [] };
+    e.sum += val(r); e.n += 1; e.rows.push(r); if (r.theme) e.themes.add(r.theme);
     cm.set(c, e);
   });
   const arr = [...cm.entries()].sort((a, b) => b[1].sum - a[1].sum);
 
   document.getElementById("drillTitle").textContent = title;
   document.getElementById("drillSummary").innerHTML =
-    `Всего <b>${fmt(total)} ${esc(moneyLabel())}</b> · ${rows.length} операций · ${arr.length} разных назначений. На что именно ушли деньги:`;
+    `Всего <b>${sumText(rows)}</b> · ${rows.length} операций · ${arr.length} разных назначений. На что именно ушли деньги:`;
 
   const top = arr.slice(0, 15);
   makeChart("drillChart", {
@@ -873,10 +906,10 @@ function openDrillRows(title, rows) {
 
   const body = arr.map(([c, e]) => {
     const tags = [...e.themes].map(t => `<span class="tag">${esc(t)}</span>`).join(" ");
-    return `<tr><td class="name">${esc(c)}</td><td>${tags}</td><td class="num">${fmt(e.sum)}</td><td class="num">${e.n}</td><td class="num">${Math.round(e.sum / total * 100)}%</td></tr>`;
+    return `<tr><td class="name">${esc(c)}</td><td>${tags}</td><td class="num">${sumText(e.rows, { sep: "<br>", unit: false })}</td><td class="num">${e.n}</td><td class="num">${Math.round(e.sum / total * 100)}%</td></tr>`;
   }).join("");
   document.getElementById("drillTable").innerHTML =
-    `<thead><tr><th>На что (комментарий)</th><th>Тема</th><th class="num">${esc(moneyLabel())}</th><th class="num">Оп.</th><th class="num">Доля</th></tr></thead><tbody>${body}</tbody>`;
+    `<thead><tr><th>На что (комментарий)</th><th>Тема</th><th class="num">${esc(sumLabel())}</th><th class="num">Оп.</th><th class="num">Доля</th></tr></thead><tbody>${body}</tbody>`;
 
   document.getElementById("drillModal").style.display = "flex";
 }
@@ -884,6 +917,12 @@ function closeDrill() { document.getElementById("drillModal").style.display = "n
 
 // ---- orchestration ----
 function render() {
+  splitCur = mode === "native" && !currentFilters().cur;
+  const note = document.getElementById("modeNote");
+  note.style.display = splitCur ? "block" : "none";
+  note.textContent = splitCur
+    ? `Валюта не выбрана: суммы показаны по каждой валюте отдельно. Графики и доли — в ${BASE_SYM} по курсу, чтобы их можно было сравнить.`
+    : "";
   const rows = filteredRows();
   // Each section is isolated: a failure in one (e.g. charts) must not blank
   // the others. Errors are logged, not thrown.
@@ -971,6 +1010,9 @@ function init() {
   document.addEventListener("mouseout", (e) => {
     if (e.target.closest("[data-bd]") || e.target.closest("[data-tip]")) tip.style.display = "none";
   });
+
+  // Doughnut legends move below the chart on a phone: redraw on rotation.
+  globalThis.matchMedia?.("(max-width: 599px)").addEventListener("change", () => renderCharts(filteredRows()));
 
   document.querySelectorAll("#txTable th").forEach(th => th.addEventListener("click", () => {
     const k = th.dataset.k;
