@@ -173,9 +173,11 @@ def test_coffee_350_din_today_tap_count(ctx, monkeypatch):
     old: list[str] = []
     labels = _inline_labels(_tap_path_to_comment_step(ctx, old))
     old.append("⏭️ Пропустить")
-    run(bot.MANUAL.type_comment(make_update(query=FakeQuery(labels[old[-1]])), ctx))
+    query = FakeQuery(labels[old[-1]])
+    run(bot.MANUAL.type_comment(make_update(query=query), ctx))
+    labels = _inline_labels(query.message.replies[-1][1]["reply_markup"])
     old.append("📅 Сегодня")
-    assert run(bot.MANUAL.choose_dt(make_update(query=FakeQuery("today")), ctx)) \
+    assert run(bot.MANUAL.choose_dt(make_update(query=FakeQuery(labels[old[-1]])), ctx)) \
         == State.CHOOSE_ACTION
 
     new: list[str] = []

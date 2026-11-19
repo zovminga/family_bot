@@ -3,10 +3,10 @@
 
 Category → amount → Currency → comment → date → save. On the comment step
 «✅ Сегодня, без комментария» saves at once with today's date and no comment.
-Step values live in
-``user_data`` (``cat``, ``amt``, ``cur``, ``spender``, ``comment``) until the
-save; every exit goes through ``navigation.go_home``. The home button is not
-checked here: ``navigation.home_fallbacks()`` handles it for every state.
+Step values live in ``user_data`` (``cat``, ``amt``, ``cur``, ``spender``,
+``comment``) until the save; every exit goes through ``navigation.go_home``.
+The home button is not checked here: ``navigation.home_fallbacks()`` handles
+it for every state.
 """
 from __future__ import annotations
 
