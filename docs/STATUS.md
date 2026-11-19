@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #32 «✅ Сегодня, без комментария»)  
+**Updated by:** agent session (issue #32 today button, merged after issues #35, fallback categories)  
 **Product code tip:** `3ffb331` (2026-11-19) — manual add saves today with no comment in one tap (issue #32)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -24,9 +24,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the decimal mark. Main-menu and home buttons still accept the old English
   labels, because reply keyboards sent before the deploy stay on phones until
   the next menu. `post_init` fills the Telegram command menu (`bot.COMMANDS`).
-  Open: the fallback categories used when the Config sheet is empty
-  (`config.FALLBACK_CATEGORIES`) stay English, because they are written to
-  Data; translating them is the owner's call.
+  The fallback categories used when the Config sheet is empty or unreadable
+  (`config.FALLBACK_CATEGORIES`) are Russian (owner's decision): Еда,
+  Транспорт, Развлечения, Другое. The bootstrap list for a new sheet
+  (`sheets.DEFAULT_CATEGORIES`) stays English: dashboard tiers map those names.
   `tests/test_russian_ui.py` walks the flows and fails on an English word.
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
 - Manual expense ConversationHandler (category → amount → currency → comment → date),
@@ -39,6 +40,14 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   before it was 4, and 5 when U2 was written (Currency tap, removed in #15).
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
+- «📅 Этот месяц» (issue #35, plan 4.1): one main-menu tap shows the current
+  month (`clock.now()`): total, top 3 Categories and the sum per Spender.
+  Each Currency gets its own block; Currencies are never added together.
+  `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
+  `analytics.format_month_summary` writes the text, so the monthly summary on
+  the 1st (issue #36) can call them for the previous month. Phones get the
+  new button with the next menu (`/start` or 🏠 after the deploy). Like every
+  menu button, it gets no answer after a bot restart until `/start` (see Open).
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
