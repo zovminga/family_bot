@@ -27,6 +27,7 @@ from family_bot.flows import manual as flow_manual
 from family_bot.flows import stats as flow_stats
 from family_bot.conversation_states import State
 from family_bot.sheet_data import normalize_rows, DATE_FMT
+from family_bot.per_user import PerUserUpdateProcessor
 from family_bot.sheets import SheetsClient
 from family_bot import analytics
 
@@ -39,7 +40,7 @@ def cfg(context: ContextTypes.DEFAULT_TYPE) -> config.Config:
 
 async def post_init(app: Application) -> None:
     """Load Config once the bot starts; print each setup problem as one line."""
-    settings = config.load(os.environ)
+    settings = await asyncio.to_thread(config.load, os.environ)
     app.bot_data[config.KEY] = settings
     for line in settings.problems:
         print(line)
@@ -68,7 +69,7 @@ def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
 async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the latest built dashboard to the chat by its stored file_id."""
     msg = update.effective_message
-    file_id = get_dashboard_file_id(cfg(context).sheets)
+    file_id = await asyncio.to_thread(get_dashboard_file_id, cfg(context).sheets)
     if not file_id:
         await msg.reply_text(
             "📊 Дашборд ещё не собран. Собери его на компьютере "
@@ -363,8 +364,9 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Черновик уже не активен.")
         return
     settings = cfg(context)
-    outcome = draft.apply_callback(
-        data, session, settings.categories, settings.currencies, settings.sheets)
+    # A save writes to Sheets, so the whole callback runs in a worker thread.
+    outcome = await asyncio.to_thread(
+        draft.apply_callback, data, session, settings.categories, settings.currencies, settings.sheets)
     await _apply_draft_outcome(query, outcome)
 
 
@@ -463,8 +465,8 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Tests connection to Google Sheets."""
     sheets = cfg(context).sheets
     try:
-        if sheets is not None and sheets.test_connection():
-            test_cats = sheets.read_categories()
+        if sheets is not None and await asyncio.to_thread(sheets.test_connection):
+            test_cats = await asyncio.to_thread(sheets.read_categories)
             if test_cats:
                 text = f"✅ Connection successful!\n📋 Available categories: {len(test_cats)}\n{', '.join(test_cats)}"
             else:
@@ -482,7 +484,7 @@ async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reloads categories (and presets) from Google Sheets."""
     settings = cfg(context)
     old_cats = settings.categories.copy()
-    problems = config.reload(settings)
+    problems = await asyncio.to_thread(config.reload, settings)
     cats = settings.categories
 
     if old_cats == cats:
@@ -508,7 +510,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Main ----------
 def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
-    app = Application.builder().token(bot_token).post_init(post_init).build()
+    app = (Application.builder().token(bot_token).post_init(post_init)
+           .concurrent_updates(PerUserUpdateProcessor()).build())
 
     # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
     app.add_handler(EDITED_MESSAGES, group=-2)
@@ -568,13 +571,19 @@ def main():
         print("RENDER_EXTERNAL_URL variable not found, running in polling mode for local development.")
         app.run_polling()
     else:
-        print(f"Running in webhook mode, URL: {render_url}")
-        # Start webhook. Token is used as secret path in URL.
+        raw_secret = os.getenv(config.WEBHOOK_SECRET_ENV)
+        secret = config.webhook_secret(raw_secret)
+        if not raw_secret:
+            print(f"{config.WEBHOOK_SECRET_ENV} is not set, using a random secret for this run.")
+        webhook_url = f"{render_url}/{config.WEBHOOK_PATH}"
+        print(f"Running in webhook mode, URL: {webhook_url}")
+        # The path is public; Telegram proves itself with the secret_token header instead.
         app.run_webhook(
             listen="0.0.0.0",
             port=port,
-            url_path=bot_token,
-            webhook_url=f"{render_url}/{bot_token}"
+            url_path=config.WEBHOOK_PATH,
+            webhook_url=webhook_url,
+            secret_token=secret,
         )
 
 

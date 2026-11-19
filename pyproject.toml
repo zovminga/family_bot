@@ -88,6 +88,7 @@ files = [
     "family_bot/flow_preset.py",
     "family_bot/flows",
     "family_bot/navigation.py",
+    "family_bot/per_user.py",
     "family_bot/photo_input.py",
     "family_bot/regular.py",
     "family_bot/sheet_data.py",

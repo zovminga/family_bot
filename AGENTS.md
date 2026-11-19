@@ -82,6 +82,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   flows/manual.py     Manual add conversation (ManualFlow)
   flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
   navigation.py       go_home / home button (one handler in fallbacks)
+  per_user.py         Update order: users in parallel, one user's updates in order
   conversation_states.py  ConversationHandler states (IntEnum State)
   dashboard/          build_dashboard.py, failure_alert.py, __main__.py
 dashboard/            run.sh, schedule.sh (launchd), template.html, SPEC, output/ (gitignored)
