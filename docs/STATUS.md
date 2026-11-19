@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #37 dashboard on a phone, per-currency sums)  
-**Product code tip:** `db02933` (2026-11-19) — dashboard fits 375 px, per-currency sums (issue #37)  
+**Product code tip:** `1d33021` (2026-11-19) — dashboard fits 375 px, per-currency sums (issue #37)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
