@@ -153,7 +153,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 
 ## Dashboard boundary
 
-Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or `run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. Full pipeline/formulas: `dashboard/SPEC.md`.
+Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or `run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. A failed publishing build sends a short alert to the same chat (`dashboard/failure_alert.py`). Full pipeline/formulas: `dashboard/SPEC.md`.
 
 ## Tests
 
