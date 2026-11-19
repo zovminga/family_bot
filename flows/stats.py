@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Any, Callable, Coroutine, Optional
 
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
@@ -41,10 +41,10 @@ class StatQuery:
     date_to: Optional[str] = None
     group_by_currency: bool = True
     convert_to: Optional[str] = None
-    conversion_details: dict = field(default_factory=dict)
+    conversion_details: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
-def load_query(user_data: dict) -> StatQuery:
+def load_query(user_data: dict[str, Any]) -> StatQuery:
     """Return the current query, creating an empty one if there is none."""
     query = user_data.get(QUERY_KEY)
     if not isinstance(query, StatQuery):
@@ -53,7 +53,7 @@ def load_query(user_data: dict) -> StatQuery:
     return query
 
 
-def reset(user_data: dict) -> None:
+def reset(user_data: dict[str, Any]) -> None:
     """Drop the current statistics query (called on /start and on flow exit)."""
     user_data.pop(QUERY_KEY, None)
 
@@ -64,7 +64,7 @@ def _message(update: Update) -> Message:
     return update.message
 
 
-def _user_data(context: ContextTypes.DEFAULT_TYPE) -> dict:
+def _user_data(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
     assert context.user_data is not None
     return context.user_data
 
@@ -108,7 +108,7 @@ class StatsFlow:
 
     def states(self) -> dict[object, list[BaseHandler]]:
         """ConversationHandler states for this flow."""
-        def text(callback: Callable) -> list[BaseHandler]:
+        def text(callback: Callable[[Update, Any], Coroutine[Any, Any, int]]) -> list[BaseHandler]:
             return [MessageHandler(filters.TEXT & ~filters.COMMAND, callback)]
 
         return {
@@ -132,6 +132,7 @@ class StatsFlow:
         return STAT_CAT
 
     async def on_category(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_CAT: all categories, the category list, or a chosen category (starts a new query)."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -152,6 +153,7 @@ class StatsFlow:
         return STAT_TYPE
 
     async def on_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_TYPE: last records, custom period, or month list."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -180,6 +182,7 @@ class StatsFlow:
         return STAT_TYPE
 
     async def on_date_from(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_DATE_FROM: parse the period start."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -195,6 +198,7 @@ class StatsFlow:
         return STAT_DATE_TO
 
     async def on_date_to(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_DATE_TO: parse the period end, then ask about grouping."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -207,6 +211,7 @@ class StatsFlow:
         return await self._ask_grouping(update)
 
     async def on_month(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_MONTH: store the month, then ask about grouping."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -215,6 +220,7 @@ class StatsFlow:
         return await self._ask_grouping(update)
 
     async def on_group_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_GROUP_CURRENCY: show grouped result, or ask for a conversion currency."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -233,6 +239,7 @@ class StatsFlow:
         return STAT_CONVERT_CURRENCY
 
     async def on_convert_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_CONVERT_CURRENCY: show converted result; offer details only if there are any."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -250,6 +257,7 @@ class StatsFlow:
         return STAT_SHOW_DETAILS
 
     async def on_show_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_SHOW_DETAILS: optionally show conversion details, then go home."""
         text = _message(update).text or ""
         if nav.is_home_text(text):
             return await nav.go_home(update, context)
@@ -276,7 +284,7 @@ class StatsFlow:
         try:
             return analytics.unique_currencies(
                 self._load_rows(), fallback=self._fallback_currencies())
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - offer fallback currencies
             print(f"Error getting currencies: {e}")
             return self._fallback_currencies()
 
@@ -285,7 +293,7 @@ class StatsFlow:
             return analytics.format_last_n(
                 self._load_rows(), n=LAST_RECORDS_SHOWN,
                 category=None if category == ALL_CATEGORIES else category)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - report failures to the user
             return f"❌ Error getting records: {e}"
 
     async def _reply_result(self, update: Update, query: StatQuery) -> None:
@@ -295,7 +303,8 @@ class StatsFlow:
         elif query.date_from and query.date_to:
             period_text = f"from {query.date_from} to {query.date_to}"
         else:
-            await _message(update).reply_text("❌ Error: period not specified")
+            await _message(update).reply_text(
+                f"📊 Statistics , category '{query.category}':\n❌ Error: period not specified")
             return
 
         stats, query.conversion_details = analytics.aggregate(
