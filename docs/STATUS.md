@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #28 webhook secret)  
-**Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
+**Product code tip:** `b62286f` (2026-11-19) — webhook `secret_token` from `WEBHOOK_SECRET`, path `/telegram` (issue #28)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
