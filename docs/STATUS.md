@@ -29,6 +29,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
   for pip-only hosts (Render Build Command, `dashboard/run.sh`).
+- `dashboard/run.sh` builds in `dashboard/venv/` on Python 3.12 via `uv`; the
+  venv is recreated when `dashboard/requirements.txt` changes (stamp file
+  `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
+  and Telegram.
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
