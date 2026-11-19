@@ -25,6 +25,7 @@ from family_bot import text_input
 from family_bot import draft_expense as draft
 from family_bot import flow_preset
 from family_bot import navigation as nav
+from family_bot import undo
 from family_bot.flows import manual as flow_manual
 from family_bot.flows import stats as flow_stats
 from family_bot.conversation_states import State
@@ -378,16 +379,68 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the confirmation-card buttons (callback_data starts with 'vx:')."""
     query = update.callback_query
     await query.answer()
+    # Any card button ends a pending «✏️ Сумма» wait.
+    context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
     draft_id, data = draft.parse_callback(query.data)
     session = draft.get_draft(context.user_data, draft_id)
     if session is None:
         await query.edit_message_text("Черновик уже не активен.")
         return
     settings = cfg(context)
+    spenders = list(dict.fromkeys(settings.allowed_users.values()))
     # A save writes to Sheets, so the whole callback runs in a worker thread.
     outcome = await asyncio.to_thread(
-        draft.apply_callback, data, session, settings.categories, settings.currencies, settings.sheets)
+        draft.apply_callback, data, session, settings.categories, settings.currencies,
+        settings.sheets, spenders=spenders)
+    if outcome.await_amount is not None:
+        context.user_data[draft.KEY_AMOUNT_EDIT] = draft.AmountEdit(
+            draft_id=session.id, index=outcome.await_amount, card=query.message)
+    if outcome.saved:
+        buttons = undo.remember(context.user_data, list(outcome.saved), clock.now())
+        outcome = draft.CallbackOutcome(text=outcome.text, buttons=buttons)
     await _apply_draft_outcome(query, outcome)
+
+
+async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Typed amount after «✏️ Сумма»: redraw the Draft card, keep it from the flows.
+
+    Runs before the conversation (its own handler group). Without a pending
+    edit, or for the home button, or when the Draft is gone, the text passes
+    on to the conversation as usual.
+    """
+    edit = context.user_data.get(draft.KEY_AMOUNT_EDIT)
+    if not isinstance(edit, draft.AmountEdit):
+        return
+    text = update.message.text or ""
+    session = draft.get_draft(context.user_data, edit.draft_id)
+    if session is None or session.closed or text.strip() in nav.HOME_LABELS:
+        context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
+        return
+    if not draft.set_amount(session, edit.index, text, cfg(context).currencies):
+        await update.message.reply_text(
+            "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
+            "Например: 1 200 или 350 дин. Попробуйте ещё раз или нажмите «⬅️ Назад» в карточке.")
+        raise ApplicationHandlerStop
+    context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
+    await edit.card.edit_text(
+        draft.card_text(session), reply_markup=_inline_markup(draft.main_buttons(session)))
+    raise ApplicationHandlerStop
+
+
+DRAFT_AMOUNT_TEXT = MessageHandler(filters.TEXT & ~filters.COMMAND, draft_amount_text)
+
+
+async def undo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«↩️ Отменить» under «✅ Сохранено»: delete that save's rows from Data."""
+    query = update.callback_query
+    result = await asyncio.to_thread(
+        undo.undo, context.user_data, query.data, cfg(context).sheets, clock.now())
+    if not result.done:
+        # Someone else's or an old save: say why, keep the button for its owner.
+        await query.answer(result.text, show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_text(result.text)
 
 
 # ---------- Conversation steps ----------
@@ -535,9 +588,11 @@ def build_application(bot_token: str) -> Application:
     app = (Application.builder().token(bot_token).post_init(post_init)
            .concurrent_updates(PerUserUpdateProcessor()).build())
 
-    # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
-    app.add_handler(EDITED_MESSAGES, group=-2)
-    app.add_handler(TypeHandler(Update, enforce_allowlist), group=-1)
+    # Run before every other handler: drop edits (group -3), then the allowlist
+    # (group -2), then a typed amount for a Draft card (group -1).
+    app.add_handler(EDITED_MESSAGES, group=-3)
+    app.add_handler(TypeHandler(Update, enforce_allowlist), group=-2)
+    app.add_handler(DRAFT_AMOUNT_TEXT, group=-1)
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -561,6 +616,7 @@ def build_application(bot_token: str) -> Application:
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, voice_handler))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_handler))
     app.add_handler(CallbackQueryHandler(vx_callback, pattern="^vx:"))
+    app.add_handler(CallbackQueryHandler(undo_callback, pattern=f"^{undo.CALLBACK_PREFIX}"))
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))

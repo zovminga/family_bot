@@ -117,6 +117,8 @@ class SheetsClient(Protocol):
 
     def append_data_rows(self, rows: list[list]) -> None: ...
 
+    def delete_data_rows(self, row_numbers: list[int]) -> None: ...
+
     def read_regular_values(self) -> list[list[str]]: ...
 
     def get_dashboard_file_id(self) -> Optional[str]: ...
@@ -179,6 +181,20 @@ class GspreadSheetsClient:
     def append_data_rows(self, rows: list[list]) -> None:
         """Append several Data rows in one API request (all land or none do)."""
         self._worksheet(DATA_SHEET).append_rows(rows, value_input_option="RAW")
+
+    def delete_data_rows(self, row_numbers: list[int]) -> None:
+        """Delete Data rows by 1-based sheet row number in one API request.
+
+        Rows go bottom-up, so deleting one does not shift the next.
+        """
+        ws = self._worksheet(DATA_SHEET)
+        requests = [
+            {"deleteDimension": {"range": {
+                "sheetId": ws.id, "dimension": "ROWS", "startIndex": n - 1, "endIndex": n,
+            }}}
+            for n in sorted(set(row_numbers), reverse=True)
+        ]
+        self._spreadsheet.batch_update({"requests": requests})
 
     def read_regular_values(self) -> list[list[str]]:
         return self._worksheet(REGULAR_SHEET).get_all_values()

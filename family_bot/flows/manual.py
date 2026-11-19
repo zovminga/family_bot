@@ -21,6 +21,7 @@ from family_bot import clock
 from family_bot import currency
 from family_bot.currency import format_amount
 from family_bot import navigation as nav
+from family_bot import undo
 from family_bot.conversation_states import State
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot.sheet_data import DATE_FMT
@@ -220,21 +221,26 @@ class ManualFlow:
         cur = context.user_data["cur"]
         who = context.user_data["spender"]
         cmnt = context.user_data.get("comment", "")
-        await asyncio.to_thread(append_expense, self._sheets(context), ExpenseRecord(
+        record = ExpenseRecord(
             date=date_str,
             category=cat,
             amount=amt,
             currency=cur,
             who=who,
             comment=cmnt,
-        ))
+        )
+        await asyncio.to_thread(append_expense, self._sheets(context), record)
 
         text = f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}"
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton(label, callback_data=data) for label, data in row]
+            for row in undo.remember(context.user_data, [record], clock.now())
+        ])
 
         # Reply to chat depending on whether it was a message or button press
         if update.callback_query:
-            await update.callback_query.edit_message_text(text)
+            await update.callback_query.edit_message_text(text, reply_markup=markup)
         else:
-            await update.message.reply_text(text)
+            await update.message.reply_text(text, reply_markup=markup)
 
         return await nav.go_home(update, context)
