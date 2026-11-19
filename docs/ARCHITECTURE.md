@@ -15,6 +15,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── auth.py                 allowlist id → Spender name
     ├── navigation.py           go_home
     ├── flow_preset.py          ⚡ preset steps
+    ├── flows/stats.py          statistics steps, StatQuery
     ├── draft_expense.py        Draft review UI state machine
     ├── voice_input.py          OGG → Vosk → Claude → draft items
     ├── photo_input.py          image → Claude Vision → draft items
@@ -46,6 +47,7 @@ Finances never share across installs.
 | `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
 | `auth.py` | `ALLOWED_USERS` parse and checks | Scatter allowlist string parsing |
 | `navigation.py` | «return home» labels/callbacks | Fork home behaviour per flow |
+| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
 | `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
@@ -67,14 +69,15 @@ One `ConversationHandler` (`bot.py` `main()`), states in `conversation_states.py
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
-                             → STAT_SHOW_DETAILS → result → home (not reliable, see below)
+                             → [STAT_SHOW_DETAILS] → result → CHOOSE_ACTION
 ```
 
-Until issue #16 (plan 1.5, findings R7, R8) closes, the stats branch does not
-return home cleanly. `stat_*` keys survive into the next query and past `/start`.
-When `show_statistics_result` is called with `ask_details=True` but has no
-conversion details, it shows the main menu while the handler still returns
-`STAT_SHOW_DETAILS`, so the first menu tap is lost.
+Stats (`flows/stats.py`): the menu tap and the category step each start a new
+`StatQuery`, so a previous request's month, dates or conversion currency never
+carry over. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
+drops it too. `STAT_SHOW_DETAILS` is entered only when there are conversion
+details to show. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
+`STATS.states()` into the `ConversationHandler`.
 
 **Outside** the conversation (registered earlier, same group):
 

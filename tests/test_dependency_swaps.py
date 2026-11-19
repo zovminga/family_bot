@@ -12,6 +12,7 @@ import pytest
 
 import bot
 import sheets
+from flows import stats as flow_stats
 from tests.known_bugs.fakes import make_update
 
 
@@ -24,7 +25,7 @@ class _FrozenDatetime(datetime):
 def test_by_months_lists_last_twelve_months_newest_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(bot, "datetime", _FrozenDatetime)
+    monkeypatch.setattr(flow_stats, "datetime", _FrozenDatetime)
     update = make_update("📆 By months")
 
     # A private loop: asyncio.run() would unset the main-thread loop that
@@ -32,7 +33,7 @@ def test_by_months_lists_last_twelve_months_newest_first(
     loop = asyncio.new_event_loop()
     try:
         loop.run_until_complete(
-            bot.stat_type(update, SimpleNamespace(user_data={}, args=[]))  # type: ignore[arg-type]
+            bot.STATS.on_type(update, SimpleNamespace(user_data={}, args=[]))  # type: ignore[arg-type]
         )
     finally:
         loop.close()
