@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #30 typed text → Draft)  
-**Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
+**Product code tip:** `7495d06` (2026-11-19) — typed text «кофе 350» in the main menu → Draft card (issue #30)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
