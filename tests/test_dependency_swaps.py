@@ -20,7 +20,7 @@ def test_by_months_lists_last_twelve_months_newest_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(flow_stats.clock, "now", lambda: datetime(2026, 3, 31, 12, 0))
-    update = make_update("📆 By months")
+    update = make_update(flow_stats.MONTHS_BUTTON)
 
     # A private loop: asyncio.run() would unset the main-thread loop that
     # tests/test_navigation.py still reaches via asyncio.get_event_loop().

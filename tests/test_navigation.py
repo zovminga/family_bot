@@ -7,18 +7,14 @@ from family_bot import navigation as nav
 
 
 def test_home_row():
-    assert nav.home_row() == ["🏠 To start"]
+    assert nav.home_row() == ["🏠 В начало"]
 
 
 def test_main_menu_keyboard_has_four_actions():
     markup = nav.main_menu_keyboard()
     labels = {btn.text for row in markup.keyboard for btn in row}
-    assert "💰 Add expense" in labels
-    assert "🧾 Add preset" in labels
-    assert "Add default expense" not in labels  # old label retired from keyboard
-    assert "📊 Show statistics" in labels
-    assert "📈 Dashboard" in labels
-    assert "🏠 To start" in labels
+    assert labels == {"💰 Добавить трату", "🧾 Заготовка", "📊 Статистика", "📈 Дашборд",
+                      "🏠 В начало"}
 
 
 def test_begin_preset_empty_stays_on_menu():

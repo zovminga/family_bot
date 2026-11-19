@@ -13,8 +13,10 @@ from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, Messag
 from family_bot.conversation_states import State
 from family_bot.draft_expense import KEY_DRAFTS
 
-HOME_BUTTON = "🏠 To start"
-HOME_LABELS = {HOME_BUTTON, "To start"}
+HOME_BUTTON = "🏠 В начало"
+# Reply keyboards stay on the phone until replaced, so labels from before the
+# Russian UI still work.
+HOME_LABELS = {HOME_BUTTON, "В начало", "🏠 To start", "To start"}
 HOME_CALLBACK = "to_start"
 
 # Home button text, outer spaces ignored.
@@ -24,6 +26,13 @@ HOME_TEXT = filters.Regex(
 INPUT_TEXT = filters.TEXT & ~filters.COMMAND & ~HOME_TEXT
 # Callback data a state reads: anything except the home button.
 NOT_HOME_CALLBACK = f"^(?!{HOME_CALLBACK}$)"
+
+
+# Main-menu buttons; bot.choose_action matches on these.
+ADD_EXPENSE = "💰 Добавить трату"
+ADD_PRESET = "🧾 Заготовка"
+SHOW_STATS = "📊 Статистика"
+DASHBOARD = "📈 Дашборд"
 
 
 def home_row() -> list[str]:
@@ -36,8 +45,8 @@ def home_inline_button() -> InlineKeyboardButton:
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     kb = [
-        ["💰 Add expense", "🧾 Add preset"],
-        ["📊 Show statistics", "📈 Dashboard"],
+        [ADD_EXPENSE, ADD_PRESET],
+        [SHOW_STATS, DASHBOARD],
         home_row(),
     ]
     return ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -52,7 +61,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         return
     await target.reply_text(
-        "👋 Hi! What would you like to do?",
+        "👋 Привет! Что делаем?",
         reply_markup=main_menu_keyboard(),
     )
 

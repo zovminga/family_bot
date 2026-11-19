@@ -5,8 +5,9 @@ import asyncio
 from typing import Optional
 
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup
+    BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
 )
+from telegram.error import TelegramError
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
     ConversationHandler, CallbackQueryHandler, ContextTypes,
@@ -39,8 +40,21 @@ def cfg(context: ContextTypes.DEFAULT_TYPE) -> config.Config:
     return context.bot_data[config.KEY]
 
 
+# Telegram command menu (the «/» button), filled in post_init.
+COMMANDS = [
+    BotCommand("start", "Главное меню"),
+    BotCommand("dashboard", "Дашборд трат"),
+    BotCommand("categories", "Список категорий"),
+    BotCommand("reloadcats", "Перечитать категории и заготовки из таблицы"),
+    BotCommand("cancel", "Отменить и вернуться в меню"),
+    BotCommand("whoami", "Мой Telegram ID"),
+    BotCommand("register", "Строка для ALLOWED_USERS"),
+    BotCommand("test_connection", "Проверить связь с Google Sheets"),
+]
+
+
 async def post_init(app: Application) -> None:
-    """Load Config once the bot starts; print each setup problem as one line."""
+    """Load Config and fill the command menu; print each setup problem as one line."""
     settings = await asyncio.to_thread(config.load, os.environ)
     app.bot_data[config.KEY] = settings
     for line in settings.problems:
@@ -49,6 +63,10 @@ async def post_init(app: Application) -> None:
         print(f"✅ Google Sheets: {len(settings.categories)} categories, "
               f"{len(settings.presets)} presets")
     print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
+    try:
+        await app.bot.set_my_commands(COMMANDS)
+    except TelegramError as e:  # the menu is a convenience, the bot still works
+        errors.log_exception("Command menu", e)
 
 
 # ---------- Dashboard delivery ----------
@@ -136,13 +154,13 @@ async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     uid = user.id if user else "?"
     text = (
-        "⛔ This bot is private to the family that installed it.\n"
-        f"Your Telegram ID: `{uid}`\n\n"
-        "If this is *your* install, add that ID to `ALLOWED_USERS` in `.env` "
-        "and restart the bot."
+        "⛔ Этот бот работает только для семьи, которая его установила.\n"
+        f"Ваш Telegram ID: `{uid}`\n\n"
+        "Если это *ваша* установка, добавьте этот ID в `ALLOWED_USERS` в `.env` "
+        "и перезапустите бота."
     )
     if update.callback_query:
-        await update.callback_query.answer("Access denied", show_alert=True)
+        await update.callback_query.answer("Нет доступа", show_alert=True)
         try:
             await update.callback_query.message.reply_text(text, parse_mode="Markdown")
         except Exception:  # noqa: BLE001 - best-effort notice
@@ -382,14 +400,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
-    if text in ("📈 Dashboard", "Dashboard"):
+    # English labels: reply keyboards sent before the Russian UI stay on phones.
+    if text in (nav.DASHBOARD, "📈 Dashboard", "Dashboard"):
         await send_dashboard(update, context)
         return State.CHOOSE_ACTION
 
-    if text == "💰 Add expense" or text == "Add expense":
+    if text in (nav.ADD_EXPENSE, "💰 Add expense", "Add expense"):
         return await MANUAL.begin(update, context)
 
     if text in (
+        nav.ADD_PRESET,
         "🧾 Add preset",
         "Add preset",
         "🧾 Add default expense",  # alias — old button label
@@ -397,7 +417,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ):
         return await flow_preset.begin_preset_picker(update, context, cfg(context).presets)
 
-    if text == "📊 Show statistics" or text == "Show statistics":
+    if text in (nav.SHOW_STATS, "📊 Show statistics", "Show statistics"):
         return await STATS.begin(update, context)
 
     return await text_expense(update, context)
@@ -419,10 +439,10 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows current categories."""
     categories = cfg(context).categories
     if categories:
-        text = f"📋 Current categories ({len(categories)}):\n{', '.join(categories)}"
+        text = f"📋 Категории ({len(categories)}):\n{', '.join(categories)}"
     else:
-        text = "❌ Categories not loaded"
-    
+        text = "❌ Категории не загружены"
+
     await update.message.reply_text(text)
 
 
@@ -435,14 +455,14 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     allowed = cfg(context).allowed_users
     if auth.is_allowed(user_id, allowed):
         text = (
-            f"👤 Your profile:\nID: {user_id}\nName: {display}\n"
-            f"Allowed as: {allowed[user_id]}"
+            f"👤 Ваш профиль:\nID: {user_id}\nИмя: {display}\n"
+            f"В списке как: {allowed[user_id]}"
         )
     else:
         text = (
-            f"👤 Your profile:\nID: {user_id}\nName: {display}\n"
-            f"Status: not in ALLOWED_USERS\n\n"
-            f"Add to .env and restart:\nALLOWED_USERS={user_id}:{display}"
+            f"👤 Ваш профиль:\nID: {user_id}\nИмя: {display}\n"
+            f"Статус: нет в ALLOWED_USERS\n\n"
+            f"Добавьте в .env и перезапустите бота:\nALLOWED_USERS={user_id}:{display}"
         )
     await update.message.reply_text(text)
 
@@ -456,9 +476,9 @@ async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = ",".join(f"{uid}:{n}" for uid, n in cfg(context).allowed_users.items())
     merged = f"{existing},{user_id}:{name}" if existing else f"{user_id}:{name}"
     text = (
-        f"📝 Add this household member via .env (then restart the bot):\n\n"
+        f"📝 Чтобы добавить члена семьи, впишите строку в .env и перезапустите бота:\n\n"
         f"ALLOWED_USERS={merged}\n\n"
-        f"Your ID: {user_id}"
+        f"Ваш ID: {user_id}"
     )
     await update.message.reply_text(text)
 
@@ -470,14 +490,14 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sheets is not None and await asyncio.to_thread(sheets.test_connection):
             test_cats = await asyncio.to_thread(sheets.read_categories)
             if test_cats:
-                text = f"✅ Connection successful!\n📋 Available categories: {len(test_cats)}\n{', '.join(test_cats)}"
+                text = f"✅ Подключение работает!\n📋 Категорий: {len(test_cats)}\n{', '.join(test_cats)}"
             else:
-                text = "⚠️  Connection works, but categories not found in Config sheet"
+                text = "⚠️ Подключение работает, но в листе Config нет категорий"
         else:
-            text = "❌ Google Sheets connection error"
+            text = "❌ Нет подключения к Google Sheets"
     except Exception as e:  # noqa: BLE001 - details go to the log
         errors.log_exception("Connection test", e)
-        text = "❌ Google Sheets connection error"
+        text = "❌ Нет подключения к Google Sheets"
 
     await update.message.reply_text(text)
 
@@ -490,9 +510,9 @@ async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cats = settings.categories
 
     if old_cats == cats:
-        text = f"✅ Categories already up to date ({len(cats)}):\n{', '.join(cats)}"
+        text = f"✅ Категории не изменились ({len(cats)}):\n{', '.join(cats)}"
     else:
-        text = f"🔄 Categories updated ({len(cats)}):\n{', '.join(cats)}"
+        text = f"🔄 Категории обновлены ({len(cats)}):\n{', '.join(cats)}"
     if problems:
         text = "\n".join([text, "", *problems])
 
@@ -504,7 +524,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Clears temporary data and returns user to action selection.
     """
     await update.message.reply_text(
-        "❌ Action cancelled. Starting over 🙂"
+        "❌ Действие отменено. Начинаем заново 🙂"
     )
     return await nav.go_home(update, context)
 
@@ -559,7 +579,7 @@ def main():
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise SystemExit(config.problem(
-            "BOT_TOKEN is not set", "get a token from @BotFather and put it in .env"))
+            "BOT_TOKEN не задан", "получите токен у @BotFather и впишите его в .env"))
 
     app = build_application(bot_token)
 

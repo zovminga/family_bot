@@ -67,7 +67,7 @@ def test_stats_result_does_not_block_on_rows_and_fx() -> None:
     upd = make_update("дин")
     ticks = run(ticks_during(lambda: flow.on_convert_currency(upd, ctx)))
     assert ticks >= 5, "event loop frozen while loading rows / FX rate"
-    assert "(in дин)" in upd.message.replies[0][0]
+    assert "(в дин)" in upd.message.replies[0][0]
 
 
 def test_updates_of_different_users_run_together_same_user_in_order() -> None:

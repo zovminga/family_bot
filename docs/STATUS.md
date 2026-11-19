@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #25 shared Row, fx, llm)  
+**Updated by:** agent session (issue #25 shared Row/fx/llm, merged after issue #29)  
 **Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -17,6 +17,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Russian UI (issue #29, plan 3.1 and 3.5): messages, buttons, errors, hints
+  and setup problem lines are Russian; Category names stay as in Config.
+  Amounts everywhere (bot replies, Draft card, stats, presets) go through
+  `currency.format_amount`: «1 234 дин», decimals only when not zero, comma as
+  the decimal mark. Main-menu and home buttons still accept the old English
+  labels, because reply keyboards sent before the deploy stay on phones until
+  the next menu. `post_init` fills the Telegram command menu (`bot.COMMANDS`).
+  Open: the fallback categories used when the Config sheet is empty
+  (`config.FALLBACK_CATEGORIES`) stay English, because they are written to
+  Data; translating them is the owner's call.
+  `tests/test_russian_ui.py` walks the flows and fails on an English word.
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
 - Manual expense ConversationHandler (category → amount → currency → comment → date),
   in `flows/manual.py` since issue #24. The home button is handled once, in the

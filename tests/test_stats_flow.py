@@ -48,21 +48,21 @@ def test_states_cover_every_stat_state() -> None:
 def test_specific_category_starts_fresh_query() -> None:
     flow, ctx = make_flow(), SimpleNamespace(user_data={})
     ctx.user_data[stats.QUERY_KEY] = stats.StatQuery(month="2026-09", convert_to="€")
-    assert run(flow.on_category(make_update("Specific category"), ctx)) == states.State.STAT_CAT
+    assert run(flow.on_category(make_update(stats.ONE_BUTTON), ctx)) == states.State.STAT_CAT
     assert run(flow.on_category(make_update("Food"), ctx)) == states.State.STAT_TYPE
     assert ctx.user_data[stats.QUERY_KEY] == stats.StatQuery(category="Food")
 
 
 def test_conversion_details_then_home() -> None:
     flow, ctx = make_flow(), SimpleNamespace(user_data={})
-    run(flow.begin(make_update("📊 Show statistics"), ctx))
-    run(flow.on_category(make_update("All categories"), ctx))
+    run(flow.begin(make_update("📊 Статистика"), ctx))
+    run(flow.on_category(make_update(stats.ALL_BUTTON), ctx))
     run(flow.on_month(make_update("2026-10"), ctx))
-    assert run(flow.on_group_currency(make_update("No"), ctx)) == states.State.STAT_CONVERT_CURRENCY
+    assert run(flow.on_group_currency(make_update(stats.NO_BUTTON), ctx)) == states.State.STAT_CONVERT_CURRENCY
     upd = make_update("дин")
     assert run(flow.on_convert_currency(upd, ctx)) == states.State.STAT_SHOW_DETAILS
-    assert "for 2026-10" in replies(upd)[0] and "(in дин)" in replies(upd)[0]
-    upd = make_update("Show details")
+    assert "за 2026-10" in replies(upd)[0] and "(в дин)" in replies(upd)[0]
+    upd = make_update(stats.DETAILS_BUTTON)
     assert run(flow.on_show_details(upd, ctx)) == states.State.CHOOSE_ACTION
     assert "€ → дин" in replies(upd)[0], replies(upd)
     assert stats.QUERY_KEY not in ctx.user_data
@@ -79,7 +79,7 @@ def test_last_records_error_hides_raw_text() -> None:
         get_rate=lambda src, dst: 1.0,
     )
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(category="Food")})
-    upd = make_update("📜 Last 3 records")
+    upd = make_update(stats.LAST_BUTTON)
     run(flow.on_type(upd, ctx))
     text = replies(upd)[0]
     assert text.startswith("❌") and "503" not in text, text
