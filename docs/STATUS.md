@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #27 menu and old cards after a deploy)  
-**Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
+**Product code tip:** `4e8fcc4` (2026-11-19) — main-menu and home buttons are conversation entry points, old Draft cards say the Draft is stale after a restart (issue #27)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
