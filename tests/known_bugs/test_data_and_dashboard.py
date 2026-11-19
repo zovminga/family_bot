@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from tests.known_bugs.fakes import FakeSheets, known_bug
+from tests.known_bugs.fakes import FakeSheets
 
 DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dashboard"
 if str(DASHBOARD_DIR) not in sys.path:
@@ -37,8 +37,7 @@ def test_append_respects_header_order():
     assert rec["category"] == "Food" and rec["month"] == "2026-11", rec
 
 
-# 15. Voice path keeps negative / zero amounts (photo path drops them).
-@known_bug("R6")
+# 15. Voice path kept negative / zero amounts (R6).
 @pytest.mark.parametrize("raw", [-500, 0])
 def test_voice_amount_must_be_positive(raw):
     assert vx._snap_amount(raw) is None

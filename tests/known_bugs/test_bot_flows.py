@@ -10,7 +10,6 @@ import time
 
 import pytest
 from telegram import Chat, Message, Update, User
-from telegram.ext import MessageHandler, filters
 from datetime import datetime, timezone
 
 import bot
@@ -90,8 +89,7 @@ def test_menu_tap_after_no_details_is_not_swallowed(ctx):
     assert "Choose category" in last_reply_texts(upd)[0], last_reply_texts(upd)
 
 
-# 4. Manual amount accepts nan / inf / negative / zero.
-@known_bug("R6")
+# 4. Manual amount accepted nan / inf / negative / zero (R6).
 @pytest.mark.parametrize("text", ["nan", "inf", "-500", "0"])
 def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
     run(bot.type_amount(make_update(text), ctx))
@@ -200,16 +198,15 @@ def test_save_does_not_block_event_loop(ctx, monkeypatch):
     assert run(scenario()) >= 4, "event loop frozen during Sheets write"
 
 
-# 11. Edited messages are routed into the conversation like new input.
-@known_bug("R12")
+# 11. Edited messages were routed into the conversation like new input (R12).
 def test_edited_message_not_treated_as_new_input():
     user = User(id=111, first_name="A", is_bot=False)
     chat = Chat(id=111, type="private")
     msg = Message(message_id=5, date=datetime.now(timezone.utc), chat=chat,
                   from_user=user, text="5000")
     upd = Update(update_id=1, edited_message=msg)
-    h = MessageHandler(filters.TEXT & ~filters.COMMAND, bot.type_amount)
-    assert not h.check_update(upd), "edited '5000' would be accepted as a new amount"
+    # bot.EDITED_MESSAGES runs in group -2, before every other handler, and stops the update
+    assert bot.EDITED_MESSAGES.check_update(upd), "edited '5000' would be accepted as a new amount"
 
 
 # 12. Category index in callback_data went stale after /reloadcats reordered Config.
