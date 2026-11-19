@@ -43,7 +43,13 @@ def resolve_columns(headers: list[str]) -> dict[str, int]:
 
 
 def parse_amount(raw: Any) -> Optional[float]:
-    """Parse an amount cell, tolerating comma decimals and thousands separators."""
+    """Parse an amount cell, tolerating comma decimals and thousands separators.
+
+    Separator rule: a dot alone is a decimal point ("12.5"). A single comma
+    followed by 1-2 digits is a decimal comma ("12,5", "7,65"); any other comma
+    is a thousands separator ("1,234", "12,500", "1,234,567"). With both a dot
+    and a comma, the rightmost one is the decimal point ("1.234,56", "1,234.56").
+    """
     if isinstance(raw, (int, float)):
         return float(raw)
     text = str(raw).strip()
@@ -54,13 +60,14 @@ def parse_amount(raw: Any) -> Optional[float]:
         .replace("\u00a0", "")
         .replace("'", "")
     )
-    # Both separators: treat '.' as thousands and ',' as decimal (RU style).
     if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".")
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
     elif "," in text:
         parts = text.split(",")
-        # "7,65" / "1,234" — if the fractional part is 1–3 digits, it's decimal.
-        if len(parts) == 2 and 1 <= len(parts[1]) <= 3 and parts[1].isdigit():
+        if len(parts) == 2 and 1 <= len(parts[1]) <= 2 and parts[1].isdigit():
             text = text.replace(",", ".")
         else:
             text = text.replace(",", "")

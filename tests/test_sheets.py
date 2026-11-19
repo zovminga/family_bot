@@ -2,78 +2,12 @@
 """Tests for the SheetsClient seam (fake adapter, no network)."""
 from __future__ import annotations
 
-from typing import Optional
-
 import pytest
 
 from regular import parse_regular
-from sheets import resolve_creds_path
-
-
-class FakeSheetsClient:
-    """In-memory adapter satisfying SheetsClient for unit tests."""
-
-    def __init__(
-        self,
-        *,
-        categories: list[str] | None = None,
-        data_values: list[list[str]] | None = None,
-        regular_values: list[list[str]] | None = None,
-        dashboard_file_id: str | None = None,
-        url: str | None = "https://example.test/sheet",
-        connection_ok: bool = True,
-    ):
-        self._categories = list(categories or [])
-        self._data_values = [list(r) for r in (data_values or [])]
-        self._regular_values = [list(r) for r in (regular_values or [])]
-        self._dashboard_file_id = dashboard_file_id
-        self._url = url
-        self._connection_ok = connection_ok
-        self.appended_rows: list[list] = []
-
-    @property
-    def url(self) -> Optional[str]:
-        return self._url
-
-    def test_connection(self) -> bool:
-        return self._connection_ok
-
-    def read_categories(self) -> list[str]:
-        return list(self._categories)
-
-    def read_data_values(self) -> list[list[str]]:
-        return [list(r) for r in self._data_values]
-
-    def read_data_records(self) -> list[dict]:
-        if not self._data_values:
-            return []
-        headers = self._data_values[0]
-        records = []
-        for row in self._data_values[1:]:
-            records.append({
-                headers[i]: (row[i] if i < len(row) else "")
-                for i in range(len(headers))
-            })
-        return records
-
-    def read_data_headers(self) -> list[str]:
-        return list(self._data_values[0]) if self._data_values else []
-
-    def append_data_row(self, row: list) -> None:
-        self.appended_rows.append(list(row))
-        if not self._data_values:
-            self._data_values = [["Date", "Month", "Category", "Amount",
-                                  "Currency", "Who", "Comment"]]
-        self._data_values.append([str(c) for c in row])
-
-    def read_regular_values(self) -> list[list[str]]:
-        return [list(r) for r in self._regular_values]
-
-    def get_dashboard_file_id(self) -> Optional[str]:
-        return self._dashboard_file_id
-
-    def set_dashboard_file_id(self, file_id: str) -> None:
-        self._dashboard_file_id = file_id
+from sheets import GspreadSheetsClient, resolve_creds_path
+# Kept importable from here for branches written before the fake moved to conftest.
+from tests.conftest import FakeSheetsClient
 
 
 def test_fake_append_and_read_roundtrip():
@@ -144,3 +78,20 @@ def test_resolve_creds_path_missing_env(monkeypatch):
     monkeypatch.delenv("GOOGLE_CREDS_PATH", raising=False)
     with pytest.raises(RuntimeError, match="GOOGLE_CREDS_PATH"):
         resolve_creds_path()
+
+
+def test_gspread_append_writes_values_raw():
+    calls = []
+
+    class FakeWorksheet:
+        def append_row(self, row, **kw):
+            calls.append((row, kw))
+
+    class FakeSpreadsheet:
+        def worksheet(self, name):
+            assert name == "Data"
+            return FakeWorksheet()
+
+    row = ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "=1+1"]
+    GspreadSheetsClient(FakeSpreadsheet()).append_data_row(row)
+    assert calls == [(row, {"value_input_option": "RAW"})]

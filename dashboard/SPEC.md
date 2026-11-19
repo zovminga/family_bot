@@ -51,13 +51,13 @@ family_bot/
     ├── build_dashboard.py         # пайплайн: данные → JSON → HTML
     ├── template.html              # вёрстка + вся клиентская логика (JS, Chart.js)
     ├── vendor/chart.umd.min.js    # Chart.js, скачивается при первой сборке и вшивается в HTML (gitignored)
-    ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), bootstrap venv
+    ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), venv на Python 3.12
     ├── schedule.sh                # установка/удаление launchd-агента (раз в месяц)
     ├── manual_adjustments.csv     # ручные доначисления (gitignored)
     ├── requirements.txt           # generated from uv.lock (group dashboard), for run.sh
     ├── README.md                  # как запускать
     ├── SPEC.md                    # этот файл
-    ├── venv/                      # изолированное окружение, создаёт run.sh (gitignored)
+    ├── venv/                      # Python 3.12, пересоздаёт run.sh при смене requirements.txt (gitignored)
     └── output/                    # результат сборки  (gitignored)
         ├── expenses_dashboard.html
         ├── build.log             # лог ручной сборки (run.sh)
@@ -94,9 +94,13 @@ family_bot/
 Обязательные: `amount`, `currency`, `category` (иначе ошибка).
 
 ### 3.3 Парсинг сумм (`sheet_data.parse_amount`)
-Терпит пробелы, неразрывные пробелы, запятую как десятичный разделитель.
-Если есть и `.` и `,` → трактуем `.` как разделитель тысяч, `,` как десятичный
-(RU-стиль). Нечисло → строка пропускается (`skipped`).
+Терпит пробелы, неразрывные пробелы и апострофы. Правило разделителей:
+- только точка — десятичная (`12.5`);
+- одна запятая и 1–2 цифры после неё — десятичная (`12,5`, `7,65`);
+- любая другая запятая — разделитель тысяч (`1,234` → 1234, `12,500` → 12500);
+- есть и `.`, и `,` — десятичный тот, что правее (`1.234,56`, `1,234.56`).
+
+Нечисло → строка пропускается (`skipped`).
 
 #### Исключение снятия наличных (`EXCLUDE_COMMENT_RE`)
 Снятие наличных / обнал — это **перевод между счетами, а не трата**. Такие
@@ -373,10 +377,14 @@ python3 dashboard/build_dashboard.py
 `_store_file_id_in_sheet()` в `build_dashboard.py`; чтение на стороне бота —
 `get_dashboard_file_id()` в `bot.py`.
 
-**По требованию:** `./run.sh [доп. аргументы build_dashboard.py]`. Скрипт при
-первом запуске создаёт изолированный `venv/` и ставит `requirements.txt`, затем
+**По требованию:** `./run.sh [доп. аргументы build_dashboard.py]`. Скрипт
+через `uv` держит изолированный `venv/` на Python 3.12 с `requirements.txt`.
+В `venv/.deps-stamp` лежат версия Python и SHA-256 `requirements.txt`; при
+несовпадении `venv/` удаляется и создаётся заново. Затем скрипт
 собирает дашборд из **Google Sheets** с классификацией через **Claude**
-(`--llm --provider anthropic --publish`). Лог — `output/build.log`. Собрать без
+(`--llm --provider anthropic --publish`). Лог — `output/build.log`.
+`./run.sh --trial --csv <файл>` — пробная сборка в том же venv без этих флагов
+(темы по правилам, без Telegram). Собрать без
 отправки: `python build_dashboard.py --llm` (без `--publish`).
 
 **Раз в месяц:** `./schedule.sh install` кладёт в `~/Library/LaunchAgents/`

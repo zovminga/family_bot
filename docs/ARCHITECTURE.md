@@ -39,7 +39,7 @@ Finances never share across installs.
 | Module | Owns | Callers must not |
 |--------|------|------------------|
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes | Call gspread directly |
-| `expense.py` | `ExpenseRecord`, column order, month derivation | Hand-build Data rows |
+| `expense.py` | `ExpenseRecord`, row layout by Data headers, month derivation | Hand-build Data rows |
 | `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `bot.CURS`, voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps | List currencies anywhere else; adding one is one line in `CURRENCIES` |
 | `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py` | Duplicate parse rules (known gap below) |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
@@ -97,6 +97,14 @@ Created/filled by `scripts/bootstrap_sheet.py`:
 | `Meta` | Dashboard Telegram `file_id` for `/dashboard` |
 
 Date format: `DD.MM.YYYY` (`sheet_data.DATE_FMT`). Month key: derived on write.
+Writes lay a row out by the Data header names (`resolve_columns` aliases), so
+column order in the sheet is free; a sheet without a Date, Category, Amount,
+Currency, Who or Comment column rejects the write. An empty header row falls
+back to the default order above. Each append first reads the header row
+(one extra Sheets call per row). Values are written `RAW`: text such as `=…`
+or `2026-11` stays text, amounts are numbers. Date `DD.MM.YYYY` is stored as
+text too, not as a Sheets date value; Python readers use `get_all_values` and
+are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
@@ -123,6 +131,15 @@ Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or 
 ## Tests
 
 `pytest` from repo root. `tests/` covers pure modules with fakes — no live Telegram or Sheets. Prefer extending those over manual-only verification for seam changes.
+
+`tests/conftest.py` keeps tests away from `.env` and live Sheets, and holds
+`FakeSheetsClient` (in-memory `SheetsClient`). Known-bug reproductions and
+their own fakes live in `tests/known_bugs/`.
+
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs on every pull request and
+push to `main`: `uv sync --locked` on Python 3.12, then `pytest`, `ruff check`,
+`mypy` over the library modules, and `pip-audit`. Rule sets and per-module
+relaxations live in `pyproject.toml` under `[tool.ruff]` and `[tool.mypy]`.
 
 ## Conventions
 
