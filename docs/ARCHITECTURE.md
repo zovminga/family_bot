@@ -43,7 +43,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     └── sheets.py  SheetsClient ──────────────────────────┐
                                                           ▼
                                               Google Spreadsheet
-                                              Data | Config | Regular_expenses | Meta
+                                              Data | Config | Regular_expenses | Meta | Users
                                                           ▲
 dashboard/build_dashboard.py  (laptop, python -m family_bot.dashboard) ──┘
          → standalone HTML (gitignored dashboard/output/)
@@ -59,6 +59,7 @@ Finances never share across installs.
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes; turns gspread's missing-spreadsheet error into `sheets.SpreadsheetNotFound` | Call gspread directly |
 | `expense.py` | `ExpenseRecord`, row layout by Data headers, month derivation | Hand-build Data rows |
 | `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `Config.currencies` (the buttons), voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps. `format_amount` is the one way the bot shows an amount: «1 234 дин», «12,50 €» (decimals only when not zero) | List currencies anywhere else; adding one is one line in `CURRENCIES`; format an amount with `:,.2f` in a user text |
+| `currency_picker.py` | Choosing a Currency (issue #33, plan 3.6): Recent currencies first («🇷🇸 дин», `currency.label`), «🌍 Другая» pages of every rate-service code (`Catalog`, `fx.currency_codes`, cached 1 h, registry codes when the service fails), `search` by code, symbol or Russian name (Babel CLDR names, all plural forms, no network). Telegram-free: the caller passes `cb` (picker payload `pick:<ISO>` / `page:<n>` → its own callback_data). Recent currencies per User: `load_recent` (cache in `user_data["recent_currencies"]` → Users sheet → three most frequent in Data → `дин`, `€`, `₽`), `remember` (writes Users only when the list changed; a failed write is logged, the Expense still saves). A pick is stored as `currency.stored_value`: legacy symbol, else ISO code (Q8). Blocking: callers use `asyncio.to_thread` | Build Currency buttons another way; read Users directly |
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
@@ -152,6 +153,7 @@ Created/filled by `scripts/bootstrap_sheet.py`:
 | `Config` | Category list (column A, header + names) |
 | `Regular_expenses` | Human preset table (monthly / one-off sections) → `regular.parse_regular` |
 | `Meta` | Dashboard Telegram `file_id` for `/dashboard` |
+| `Users` | One row per Telegram account: User ID, Name (Spender), Recent currencies (stored values, newest first, «CNY, дин, €»). The bot creates it on the first Currency choice if bootstrap did not; read/written by `SheetsClient.read_recent_currencies` / `write_recent_currencies` (`RAW`) |
 
 Date format: `DD.MM.YYYY` (`sheet_data.DATE_FMT`). Month key: derived on write.
 Writes lay a row out by the Data header names (`resolve_columns` aliases), so
@@ -165,7 +167,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; the Currency step is `currency_picker` as inline buttons (callback `cur:pick:<ISO>`, `cur:page:<n>`): Recent currencies of the User, «🌍 Другая» pages, or typed text — one match is chosen, several come back as buttons, none re-asks with Recent currencies. The chosen (or typed-with-amount) Currency goes to Recent currencies. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
@@ -196,7 +198,12 @@ restart.
 `draft_expense.set_amount` (`amount_input.parse_amount_text`, same checks as the
 manual flow; a Currency typed with it replaces the item's). «👤 Кто» (`who:<i>`) lists the Allowlist Spender names;
 `setwho:<i>:<index>` carries the index (names may not fit 64 bytes; Drafts and
-the Allowlist both live until restart).
+the Allowlist both live until restart). «💱 Валюта» (`cur:<i>`) shows the
+User's Recent currencies; `cur:<i>:page:<n>` a page of all Currencies and sets
+`draft_amount_edit` with `currency=True`, so typed text («GEL», «юань») goes
+through `draft_expense.search_currency`; text with a digit, a command or a menu
+button ends that wait. `cur:<i>:pick:<ISO>` sets the item's Currency; the
+choice goes to Recent currencies (`CallbackOutcome.picked`).
 
 **Drafts in memory:** `user_data["drafts"]` maps a 4-hex-char Draft id to a
 `DraftSession`; several cards stay usable at once. Callback data is

@@ -9,6 +9,7 @@ symbol ↔ ISO maps in `sheet_data` are all derived from `CURRENCIES`. Adding a
 Currency is one line there.
 
 ``format_amount`` is the one way the bot shows an amount: «1 234 дин».
+``label`` is the one way a Currency button looks: «🇷🇸 дин», «🇨🇳 CNY».
 """
 from __future__ import annotations
 
@@ -68,6 +69,46 @@ def find(value: str | None) -> Currency | None:
         if any(low.startswith(stem) for stem in c.stems):
             return c
     return None
+
+
+def stored_value(code: str) -> str:
+    """Value written to Data for an ISO code: the legacy symbol, else the code (Q8)."""
+    upper = code.strip().upper()
+    found = next((c for c in CURRENCIES if c.code == upper), None)
+    return found.symbol if found is not None else upper
+
+
+# Regional indicator symbol for "A"; two of them in a row show as a flag.
+REGIONAL_A = 0x1F1E6
+# Codes that start with X belong to no country (XAF, XDR, XAU …).
+NO_COUNTRY_FLAG = "🌐"
+
+
+def flag(code: str) -> str:
+    """
+    Flag emoji of an ISO 4217 code: its first two letters are the country (EU for EUR).
+
+    Parameters
+    ----------
+    code : str
+        ISO 4217 code, any case.
+
+    Returns
+    -------
+    str
+        Flag emoji, or 🌐 for a code with no country.
+    """
+    upper = code.strip().upper()
+    if len(upper) != 3 or not (upper.isascii() and upper.isalpha()) or upper[0] == "X":
+        return NO_COUNTRY_FLAG
+    return "".join(chr(REGIONAL_A + ord(ch) - ord("A")) for ch in upper[:2])
+
+
+def label(value: str) -> str:
+    """Button text for a stored value or ISO code: flag and stored value, «🇷🇸 дин»."""
+    found = find(value)
+    shown = found.symbol if found is not None else stored_value(value)
+    return f"{flag(to_iso(shown))} {shown}"
 
 
 def to_iso(value: str) -> str:

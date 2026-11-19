@@ -120,7 +120,7 @@ identity for programs. It has its own email and a JSON key file.
     python scripts/bootstrap_sheet.py
     ```
 
-    This adds `Data`, `Config`, `Regular_expenses`, and `Meta` with defaults
+    This adds `Data`, `Config`, `Regular_expenses`, `Meta` and `Users` with defaults
     (these worksheet names are fixed in the code; do not rename them).
     Safe to run again — it will not wipe existing rows.
     To check the connection only: `python scripts/test_google_sheets.py`.
@@ -273,7 +273,8 @@ The bot does **not** build the dashboard. Build it on a laptop and publish
 **Config** — column A: header + category names  
 **Data** — Date, Month, Category, Amount, Currency, Who, Comment  
 **Regular_expenses** — preset templates (optional)  
-**Meta** — dashboard `file_id` for `/dashboard`
+**Meta** — dashboard `file_id` for `/dashboard`  
+**Users** — Recent currencies of each Telegram account (the bot fills it)
 
 ## Troubleshooting
 

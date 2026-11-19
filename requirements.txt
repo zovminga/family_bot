@@ -9,6 +9,7 @@ anyio==4.16.0
     #   anthropic
     #   httpx
 av==16.1.0
+babel==2.18.0
 certifi==2026.10.23
     # via
     #   httpcore

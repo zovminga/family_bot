@@ -71,7 +71,8 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   sheet_data.py       Headers, dates, currency maps; Data rows → Row
   fx.py               Exchange rates (bot stats + dashboard)
   llm.py              Claude client limits, JSON from model replies
-  currency.py         Currency registry (symbol, ISO, Russian words)
+  currency.py         Currency registry (symbol, ISO, Russian words, flag labels)
+  currency_picker.py  Currency choice: Recent currencies, «🌍 Другая», search
   amount_input.py     Amount checks for typed/spoken input
   clock.py            clock.now() in the family time zone (TZ_NAME)
   errors.py           Error handler: short user text, masked log
