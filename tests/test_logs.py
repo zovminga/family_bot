@@ -41,6 +41,12 @@ def test_unknown_level_falls_back_to_info_with_one_line() -> None:
     assert len(lines) == 1 and "loud" in lines[0]
 
 
+def test_blank_level_is_default_without_warning() -> None:
+    out = setup_to_buffer(LOG_LEVEL="  ")
+    assert logging.getLogger().level == logging.INFO
+    assert out.getvalue() == ""
+
+
 def test_one_record_is_one_line_with_level_and_module() -> None:
     out = setup_to_buffer()
     logging.getLogger("family_bot.bot").warning("⚠️ SHEET_NAME не задан — впишите его в .env")
