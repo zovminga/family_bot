@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import traceback
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -425,7 +425,8 @@ def read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
 
 
 def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
-          csv_path: Optional[str] = None, from_month: Optional[str] = None) -> Path:
+          csv_path: Optional[str] = None, from_month: Optional[str] = None,
+          as_of: Optional[date] = None) -> Path:
     load_dotenv(BOT_DIR / ".env")
 
     spreadsheet_url = None
@@ -555,6 +556,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        # build date: the first screen's "this month" and how many of its days passed
+        "as_of": (as_of or datetime.now().date()).isoformat(),
         "base_currency": base_iso,
         "base_symbol": ISO_TO_SYMBOL.get(base_iso, base_iso),
         "spreadsheet_url": spreadsheet_url,
