@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import bot
 import draft_expense as draft
 import navigation as nav
+from flows import stats as flow_stats
 from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
 from conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
 
@@ -46,47 +47,44 @@ def last_reply_texts(update):
     return [t for t, _ in update.message.replies]
 
 
-# 1. Stats "Yes" path leaves stat_month → later custom period shows old month.
-@known_bug("R7")
+# 1. Stats "Yes" path left the month behind → a later custom period showed the old month.
 def test_custom_period_after_month_flow_uses_requested_period(ctx):
-    run(bot.stat_cat(make_update("All categories"), ctx))
-    run(bot.stat_type(make_update("📆 By months"), ctx))
-    run(bot.stat_month(make_update("2026-10"), ctx))
-    assert run(bot.stat_group_currency(make_update("Yes"), ctx)) == CHOOSE_ACTION
+    run(bot.choose_action(make_update("📊 Show statistics"), ctx))
+    run(bot.STATS.on_category(make_update("All categories"), ctx))
+    run(bot.STATS.on_type(make_update("📆 By months"), ctx))
+    run(bot.STATS.on_month(make_update("2026-10"), ctx))
+    assert run(bot.STATS.on_group_currency(make_update("Yes"), ctx)) == CHOOSE_ACTION
     # second query from the main menu: custom period in November
-    run(bot.stat_cat(make_update("All categories"), ctx))
-    run(bot.stat_type(make_update("📅 Custom period"), ctx))
-    run(bot.stat_date_from(make_update("01.11.2026"), ctx))
-    run(bot.stat_date_to(make_update("30.11.2026"), ctx))
+    run(bot.choose_action(make_update("📊 Show statistics"), ctx))
+    run(bot.STATS.on_category(make_update("All categories"), ctx))
+    run(bot.STATS.on_type(make_update("📅 Custom period"), ctx))
+    run(bot.STATS.on_date_from(make_update("01.11.2026"), ctx))
+    run(bot.STATS.on_date_to(make_update("30.11.2026"), ctx))
     upd = make_update("Yes")
-    run(bot.stat_group_currency(upd, ctx))
+    run(bot.STATS.on_group_currency(upd, ctx))
     result = last_reply_texts(upd)[0]
-    assert "from 01.11.2026 to 30.11.2026" in result, result  # actually: "for 2026-10 … 100.00"
+    assert "from 01.11.2026 to 30.11.2026" in result, result
 
 
-# 2. /start mid-flow keeps stale stat_convert_to → next "Yes" query is silently converted.
-@known_bug("R7")
+# 2. /start mid-flow kept a stale conversion currency → next "Yes" query was converted.
 def test_start_clears_previous_flow_state(ctx):
-    ctx.user_data.update(stat_convert_to="€", stat_month="2026-10")
+    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", convert_to="€")
     run(bot.start(make_update("/start"), ctx))
-    stale = [k for k in ctx.user_data if k.startswith("stat_")]
-    assert not stale, stale
+    assert flow_stats.QUERY_KEY not in ctx.user_data, ctx.user_data
 
 
 # 3. "No" grouping + convert to the only currency (or FX failure) → no details →
-#    main menu is shown but state stays STAT_SHOW_DETAILS → next menu tap is eaten.
-@known_bug("R8")
+#    main menu was shown but state stayed STAT_SHOW_DETAILS → next menu tap was eaten.
 def test_no_details_returns_to_menu_state(ctx):
-    ctx.user_data.update(stat_cat="All", stat_month="2026-10", stat_group_currency=False)
-    state = run(bot.stat_convert_currency(make_update("дин"), ctx))
+    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", group_by_currency=False)
+    state = run(bot.STATS.on_convert_currency(make_update("дин"), ctx))
     assert state == CHOOSE_ACTION, f"state={state} (STAT_SHOW_DETAILS={STAT_SHOW_DETAILS})"
 
 
-@known_bug("R8")
 def test_menu_tap_after_no_details_is_not_swallowed(ctx):
-    ctx.user_data.update(stat_cat="All", stat_month="2026-10", stat_group_currency=False)
-    state = run(bot.stat_convert_currency(make_update("дин"), ctx))
-    handler = {STAT_SHOW_DETAILS: bot.stat_show_details, CHOOSE_ACTION: bot.choose_action}[state]
+    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", group_by_currency=False)
+    state = run(bot.STATS.on_convert_currency(make_update("дин"), ctx))
+    handler = {STAT_SHOW_DETAILS: bot.STATS.on_show_details, CHOOSE_ACTION: bot.choose_action}[state]
     upd = make_update("💰 Add expense")
     run(handler(upd, ctx))
     assert "Choose category" in last_reply_texts(upd)[0], last_reply_texts(upd)

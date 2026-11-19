@@ -1,0 +1,66 @@
+"""StatsFlow seam: query state, conversion details, ConversationHandler states."""
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+from typing import Any
+
+import conversation_states as states
+from flows import stats
+from tests.known_bugs.fakes import make_update
+
+ROWS = [
+    {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
+     "currency": "дин", "who": "Azat", "comment": ""},
+    {"date": "06.10.2026", "month": "2026-10", "category": "Transport", "amount": 10.0,
+     "currency": "€", "who": "Azat", "comment": ""},
+]
+
+
+def run(coro: Any) -> Any:
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def make_flow() -> stats.StatsFlow:
+    return stats.StatsFlow(
+        categories=lambda: ["Food", "Transport"],
+        load_rows=lambda: list(ROWS),
+        fallback_currencies=lambda: ["дин"],
+        get_rate=lambda src, dst: 1.0 if src == dst else 117.0,
+    )
+
+
+def replies(update: Any) -> list[str]:
+    return [t for t, _ in update.message.replies]
+
+
+def test_states_cover_every_stat_state() -> None:
+    expected = {v for k, v in vars(states).items() if k.startswith("STAT_")}
+    assert set(make_flow().states()) == expected
+
+
+def test_specific_category_starts_fresh_query() -> None:
+    flow, ctx = make_flow(), SimpleNamespace(user_data={})
+    ctx.user_data[stats.QUERY_KEY] = stats.StatQuery(month="2026-09", convert_to="€")
+    assert run(flow.on_category(make_update("Specific category"), ctx)) == states.STAT_CAT
+    assert run(flow.on_category(make_update("Food"), ctx)) == states.STAT_TYPE
+    assert ctx.user_data[stats.QUERY_KEY] == stats.StatQuery(category="Food")
+
+
+def test_conversion_details_then_home() -> None:
+    flow, ctx = make_flow(), SimpleNamespace(user_data={})
+    run(flow.begin(make_update("📊 Show statistics"), ctx))
+    run(flow.on_category(make_update("All categories"), ctx))
+    run(flow.on_month(make_update("2026-10"), ctx))
+    assert run(flow.on_group_currency(make_update("No"), ctx)) == states.STAT_CONVERT_CURRENCY
+    upd = make_update("дин")
+    assert run(flow.on_convert_currency(upd, ctx)) == states.STAT_SHOW_DETAILS
+    assert "for 2026-10" in replies(upd)[0] and "(in дин)" in replies(upd)[0]
+    upd = make_update("Show details")
+    assert run(flow.on_show_details(upd, ctx)) == states.CHOOSE_ACTION
+    assert "€ → дин" in replies(upd)[0], replies(upd)
+    assert stats.QUERY_KEY not in ctx.user_data

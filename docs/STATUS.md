@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #13 Draft ids)  
+**Updated by:** agent session (issue #13 Draft ids, merged after issues #16, #19, #20)  
 **Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -38,6 +38,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   without duplicates), a double tap keeps «✅ Сохранено», the category button
   carries the name, and `go_home` keeps open Drafts. Details:
   `docs/ARCHITECTURE.md` → Input pipelines.
+- "Today" follows the family time zone (issue #19): `clock.now()` reads
+  `TZ_NAME` (default `Europe/Belgrade`). The date buttons, presets, the Draft
+  card, voice/receipt prompts, the month list in stats and the Meta
+  `updated_at` stamp all use it. The dashboard `generated_at` stays on the
+  build Mac's local clock.
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
@@ -50,7 +55,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
   `mypy` (library modules) and `pip-audit` on every pull request and push to
   `main`, installing with `uv sync --locked` on Python 3.12.
+- Statistics flow lives in `flows/stats.py` (issue #16): request state is one
+  `StatQuery`, a new request never reuses the previous month or currency,
+  `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
+  `template.html`) and data JSON is embedded with `json_for_script()`, so a
+  comment with HTML or `</script>` stays text. A Telegram publish error masks
+  `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
+  A failed Claude batch is not cached, the next run retries it.
 
 ## Settled (do not re-open as unknowns)
 
@@ -84,10 +97,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
   before the move still import it. Drop the re-export once no branch imports
   the fake from `tests.test_sheets`.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
-  recorded as open: stats not returning home (R7, R8, see
-  `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`), and Preset code names (`DEFAULTS`, `load_defaults`,
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
+  recorded as open: the dashboard's own row parsing (C3, see
+  `docs/ARCHITECTURE.md`) and Preset code names (`DEFAULTS`, `load_defaults`,
   see `CONTEXT.md`).
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the

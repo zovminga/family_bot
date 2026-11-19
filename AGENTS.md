@@ -67,11 +67,13 @@ expense.py          ExpenseRecord + append
 draft_expense.py    Voice/photo confirmation card
 sheets.py           SheetsClient seam
 sheet_data.py       Headers, dates, currency maps
+clock.py            clock.now() in the family time zone (TZ_NAME)
 analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
 voice_input.py      Vosk STT + Claude extract
 photo_input.py      Claude Vision receipt → drafts
 regular.py          Regular_expenses → presets
 flow_preset.py      ⚡ preset conversation steps
+flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
 navigation.py       go_home / home button
 conversation_states.py  ConversationHandler state ints
 dashboard/          Offline HTML build + SPEC
