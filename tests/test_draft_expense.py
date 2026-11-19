@@ -5,10 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from draft_expense import (
+    CALLBACK_DATA_MAX_BYTES,
+    MAX_CLOSED_DRAFTS,
     DraftSession,
+    add_draft,
     apply_callback,
+    category_buttons,
     card_text,
+    get_draft,
     main_buttons,
+    parse_callback,
     session_from_receipt,
     session_from_voice,
 )
@@ -48,28 +54,71 @@ def test_card_text_receipt_header():
 
 
 def test_main_buttons_multi_item_edit_rows():
-    session = DraftSession(items=[_item(), _item(comment="tea")])
+    session = DraftSession(id="ab12", items=[_item(), _item(comment="tea")])
     rows = main_buttons(session)
-    assert rows[0][0][1] == "vx:save"
-    assert any(cb.startswith("vx:ed:") for _, cb in rows[1])
+    assert rows[0][0][1] == "vx:ab12:save"
+    assert any(cb.startswith("vx:ab12:ed:") for _, cb in rows[1])
 
 
-def test_set_category_and_save(monkeypatch):
+def test_parse_callback():
+    assert parse_callback("vx:ab12:setcat:0:Food: out") == ("ab12", "setcat:0:Food: out")
+    assert parse_callback("vx:save") == ("", "")  # card from before draft ids
+    assert parse_callback("other:ab12:save") == ("", "")
+
+
+def test_set_category_and_save():
     cats = ["Food", "Transport"]
     curs = ["дин", "€"]
     client = FakeSheetsClient()
-    session = DraftSession(items=[_item(category="Food")])
+    session = DraftSession(id="ab12", items=[_item(category="Food")])
 
-    outcome = apply_callback("setcat:0:1", session, cats, curs, client)
+    outcome = apply_callback("setcat:0:Transport", session, cats, curs, client)
     assert session.items[0]["category"] == "Transport"
     assert outcome.buttons is not None
     assert "Transport" in outcome.text
 
     outcome = apply_callback("save", session, cats, curs, client)
-    assert outcome.clear_session
+    assert session.closed
     assert "Сохранено" in outcome.text
     assert len(client.appended_rows) == 1
     assert client.appended_rows[0][2] == "Transport"
+
+
+def test_save_writes_all_items_in_one_append_call():
+    calls: list[list[list]] = []
+
+    class OneCallClient(FakeSheetsClient):
+        def append_data_rows(self, rows):
+            calls.append(rows)
+
+    session = DraftSession(id="ab12", items=[_item(), _item(comment="tea")])
+    apply_callback("save", session, ["Food"], ["дин"], OneCallClient())
+    assert [[r[6] for r in rows] for rows in calls] == [["lunch", "tea"]]
+
+
+def test_failed_save_keeps_draft_open():
+    class BrokenClient(FakeSheetsClient):
+        def append_data_rows(self, rows):
+            raise RuntimeError("APIError")
+
+    session = DraftSession(id="ab12", items=[_item()])
+    try:
+        apply_callback("save", session, ["Food"], ["дин"], BrokenClient())
+    except RuntimeError:
+        pass
+    assert not session.closed
+
+
+def test_long_category_name_falls_back_to_index():
+    long_name = "Развлечения, подписки и прочие радости жизни"
+    session = DraftSession(id="ab12", items=[_item()])
+    rows = category_buttons(session, 0, ["Food", long_name])
+    label, cb = rows[0][1]
+    assert label == long_name
+    assert len(cb.encode()) <= CALLBACK_DATA_MAX_BYTES
+    _, payload = parse_callback(cb)
+    apply_callback(payload, session, ["Food", long_name], ["дин"], FakeSheetsClient())
+    assert session.items[0]["category"] == long_name
 
 
 def test_setdate_yesterday():
@@ -84,22 +133,32 @@ def test_setdate_yesterday():
     assert outcome.text is not None
 
 
-def test_cancel_clears():
+def test_cancel_closes_and_later_taps_do_nothing():
     client = FakeSheetsClient()
     session = DraftSession(items=[_item()], header="x")
     outcome = apply_callback("cancel", session, ["Food"], ["дин"], client)
-    assert outcome.clear_session
+    assert session.closed
     assert outcome.text == "❌ Отменено."
+    assert apply_callback("save", session, ["Food"], ["дин"], client).text is None
+    assert client.appended_rows == []
 
 
-def test_session_store_and_clear():
+def test_add_draft_gives_distinct_ids_and_keeps_both():
     user_data: dict = {}
-    session = session_from_voice([_item()], who="Azat", transcript="hi", note="n")
-    session.store(user_data)
-    assert user_data["vx_items"][0]["who"] == "Azat"
-    assert "vx_header" not in user_data
+    a = add_draft(user_data, session_from_voice([_item()], who="Azat", transcript="a"))
+    b = add_draft(user_data, session_from_voice([_item()], who="Azat", transcript="b"))
+    assert a.id and b.id and a.id != b.id
+    assert get_draft(user_data, a.id) is a
+    assert get_draft(user_data, b.id) is b
+    assert get_draft(user_data, "nope") is None
 
-    loaded = DraftSession.load(user_data)
-    assert loaded.transcript == "hi"
-    DraftSession.clear(user_data)
-    assert "vx_items" not in user_data
+
+def test_add_draft_prunes_old_closed_drafts_only():
+    user_data: dict = {}
+    first_open = add_draft(user_data, DraftSession(items=[_item()]))
+    for _ in range(30):
+        add_draft(user_data, DraftSession(items=[_item()], closed=True))
+    add_draft(user_data, DraftSession(items=[_item()]))
+    drafts = user_data["drafts"]
+    assert first_open.id in drafts
+    assert sum(d.closed for d in drafts.values()) == MAX_CLOSED_DRAFTS

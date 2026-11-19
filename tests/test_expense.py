@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from expense import ExpenseRecord, append_expense
+from expense import ExpenseRecord, append_expense, append_expenses
 from tests.conftest import FakeSheetsClient
 
 
@@ -102,3 +102,25 @@ def test_month_rejects_bad_date():
     )
     with pytest.raises(ValueError):
         record.month()
+
+
+def test_append_expenses_reads_headers_once_and_appends_one_batch():
+    calls: list[list[list]] = []
+
+    class BatchClient(FakeSheetsClient):
+        def append_data_rows(self, rows):
+            calls.append(rows)
+
+    client = BatchClient(data_values=[
+        ["Who", "Date", "Amount", "Category", "Currency", "Comment"],
+    ])
+    append_expenses(client, [
+        ExpenseRecord(date="07.08.2026", category="Food", amount=1,
+                      currency="€", who="Lisa", comment="a"),
+        ExpenseRecord(date="07.08.2026", category="Food", amount=2,
+                      currency="€", who="Azat", comment="b"),
+    ])
+    assert calls == [[
+        ["Lisa", "07.08.2026", 1, "Food", "€", "a"],
+        ["Azat", "07.08.2026", 2, "Food", "€", "b"],
+    ]]

@@ -84,6 +84,10 @@ class FakeSheetsClient:
                                   "Currency", "Who", "Comment"]]
         self._data_values.append([str(c) for c in row])
 
+    def append_data_rows(self, rows: list[list]) -> None:
+        for row in rows:
+            self.append_data_row(row)
+
     def read_regular_values(self) -> list[list[str]]:
         return [list(r) for r in self._regular_values]
 

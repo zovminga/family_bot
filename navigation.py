@@ -9,6 +9,7 @@ from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from conversation_states import CHOOSE_ACTION
+from draft_expense import KEY_DRAFTS
 
 HOME_BUTTON = "🏠 To start"
 HOME_LABELS = {HOME_BUTTON, "To start"}
@@ -55,7 +56,10 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Clear draft/flow state and return to the main menu."""
+    """Clear flow state and return to the main menu; open Drafts stay."""
+    drafts = context.user_data.get(KEY_DRAFTS)
     context.user_data.clear()
+    if drafts:
+        context.user_data.update({KEY_DRAFTS: drafts})
     await show_main_menu(update, context)
     return CHOOSE_ACTION
