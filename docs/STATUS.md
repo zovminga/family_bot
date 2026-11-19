@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #26 logging, merged after issue #34)  
+**Updated by:** agent session (plan closed: last tree entries, STATUS cleanup)  
 **Product code tip:** `09ab8ee` (2026-11-19) — `logging` instead of `print`, level from `LOG_LEVEL`, secrets masked in every line (issue #26)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -270,10 +270,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `flows/manual.py` and `flows/stats.py`; a shared adapter is a follow-up. Voice/receipt/typed Drafts still snap to
   the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
 
-- Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is
-  only in the owner's Mac `.env` (dashboard publish). The Render service is on
-  the paid Starter plan (seen on the owner's Render dashboard), which does not
-  sleep, so the job fires if no deploy runs at that hour.
+- Monthly summary (issue #36): `DASHBOARD_CHAT_ID` is set on Render (owner,
+  2026-11-19). The service is on the paid Starter plan, which does not sleep,
+  so the job fires if no deploy runs at that hour. First run: 1 December 09:00
+  `TZ_NAME`; a real send to Telegram is not verified yet.
 - README «Install from scratch» (issue #40): a clean-clone walk with fake keys
   covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
   download. Not walked: the Google Cloud console steps, a real spreadsheet, and
@@ -281,14 +281,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `telegram.error.InvalidToken` traceback, and the setup lines print only after
   Telegram accepts the token (`post_init`); `scripts/bootstrap_sheet.py` prints a
   traceback instead of one line when the key or sheet is wrong.
-- Render still has the old commands until the owner changes them (issue #23
-  PR, README «Deploy»): Build Command
+- Render runs the package build (owner changed the commands 2026-11-19):
+  Build Command
   `pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"`,
-  Start Command `family-bot`. Render ignored `.python-version` on the owner's
-  service (built with 3.11.5); env var `PYTHON_VERSION=3.12.12` fixed the build.
-  Open check (Q16): after the first deploy, the
-  runtime log has no «Downloading Vosk model» line on the first voice message
-  (the build log should have it).
+  Start Command `family-bot`, env `PYTHON_VERSION=3.12.12` (Render ignored
+  `.python-version` and built with 3.11.5 without it), `BASE_CURRENCY`,
+  `DASHBOARD_CHAT_ID`. Open check (Q16): the runtime log has no «Downloading
+  Vosk model» line on the first voice message (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
   conversation: after a bot restart the user needs `/start` or a menu button
   first (menu buttons are `entry_points` since issue #27). Text without a digit
@@ -318,9 +317,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open. R11 (issue #18) was the last marked
   reproduction; no `known_bug` marker is left in the suite.
-- The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
-  with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
-  blocked can start once it merges.
+- The revision plan is done: all 34 GitHub issues (#9–#42) are closed and
+  every plan item in the spec is ticked (2026-11-19). The Open items above are
+  what is left.
 
 ## Only a person knows
 
