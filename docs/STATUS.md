@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #26 logging)  
+**Updated by:** agent session (issue #26 logging, merged after issue #34)  
 **Product code tip:** `09ab8ee` (2026-11-19) — `logging` instead of `print`, level from `LOG_LEVEL`, secrets masked in every line (issue #26)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -26,6 +26,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   tracebacks too, passes `errors.mask_secrets`; `httpx` request lines (URL with
   the token) are held at WARNING. Setup problems stay one WARNING line each.
   Tests: `tests/test_logs.py`.
+- Conversion in statistics (issue #34, plan 3.6, Q7): after «Нет» to «Разбить
+  по валютам?» the target Currency is chosen with the same picker as manual
+  input (Recent currencies with flags, «🌍 Другая», typed «юань» / «GEL»), so
+  any Currency of the rate service works, not only those in Data. The pick
+  goes to the User's Recent currencies (spec 3.3: the picker bullet covers
+  both places). `fx.rate` reads one table per target Currency (`fx.RATES`),
+  kept 1 h (one lock per target, so a slow read blocks only that target); a
+  failed read is not repeated for 60 s. «EUR» and «€» count as one Currency
+  (compared by ISO code). A missing rate gives «❌ Нет курса для пересчёта в
+  дин: €, GEL.» — no sum. Details show the rate with 6 significant digits.
+  `analytics.unique_currencies` and `StatsFlow(fallback_currencies=…)` are gone.
 - Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
   Currency step and «💱 Валюта» in the Draft card show the User's Recent
   currencies with flags («🇷🇸 дин», «🇨🇳 CNY»), then «🌍 Другая»: every
@@ -35,7 +46,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   its ISO code. Recent currencies are per Telegram account in the new `Users`
   sheet (bot creates it; `scripts/bootstrap_sheet.py` too); a new User gets
   the three most frequent in Data, empty Data → `дин`, `€`, `₽`. Manual input updates them on save, the Draft card on pick. Code:
-  `currency_picker.py` (Telegram-free, for #34 Conversion in statistics).
+  `currency_picker.py` (Telegram-free; statistics Conversion uses it too, #34).
   Render needs the new `requirements.txt` (Babel) — the usual Build Command
   installs it. If the rate service is down, «🌍 Другая» lists only the seven
   registry Currencies.
@@ -253,8 +264,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 - Currency picker (issue #33): Recent currencies are read from `Users` once
   per User per bot process (cache in `user_data`), so a hand edit of `Users`
-  shows after a restart. Buttons of an old manual-input picker message (after
-  the User moved on) get no answer. Voice/receipt/typed Drafts still snap to
+  shows after a restart. Buttons of an old picker message (manual input or
+  statistics Conversion, after the User moved on) get no answer. The Telegram
+  side of the picker (`_inline`, typed search, page/pick buttons) is copied in
+  `flows/manual.py` and `flows/stats.py`; a shared adapter is a follow-up. Voice/receipt/typed Drafts still snap to
   the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
 
 - Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is
