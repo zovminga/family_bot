@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from types import SimpleNamespace
 from typing import Any
@@ -72,17 +73,17 @@ def test_allowed_user_with_sheets_passes() -> None:
 
 
 def test_post_init_puts_config_in_bot_data(monkeypatch: pytest.MonkeyPatch,
-                                           capsys: pytest.CaptureFixture[str]) -> None:
+                                           caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
     monkeypatch.setenv("ALLOWED_USERS", "111:Иван, Петров")
     app = SimpleNamespace(bot_data={}, bot=FakeBot())
     run(bot.post_init(app))  # type: ignore[arg-type]
     settings = settings_of(app)
     assert settings.sheets is None
     assert settings.allowed_users == {111: "Иван, Петров"}
-    out = capsys.readouterr().out
-    assert "Traceback" not in out
-    assert any(line.startswith("⚠️ GOOGLE_CREDS_PATH") and " — " in line
-               for line in out.splitlines()), out
+    assert "Traceback" not in caplog.text
+    assert any(line.startswith("⚠️ GOOGLE_CREDS_PATH") and " — " in line and "\n" not in line
+               for line in caplog.messages), caplog.messages
 
 
 class FakeBot:
@@ -113,7 +114,7 @@ def test_post_init_fills_command_menu_in_russian() -> None:
         assert re.search("[а-яё]", c.description, re.IGNORECASE), c
 
 
-def test_post_init_survives_command_menu_failure(capsys: pytest.CaptureFixture[str]) -> None:
+def test_post_init_survives_command_menu_failure() -> None:
     app = SimpleNamespace(bot_data={}, bot=FakeBot(error=NetworkError("down")))
     run(bot.post_init(app))  # type: ignore[arg-type]
     assert config.KEY in app.bot_data
@@ -171,6 +172,12 @@ def run_main_in_webhook_mode(monkeypatch: pytest.MonkeyPatch,
     return calls[0]
 
 
+def test_main_sets_log_level_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    run_main_in_webhook_mode(monkeypatch, "s3cret_value-1")
+    assert logging.getLogger().level == logging.WARNING
+
+
 def test_webhook_url_has_no_bot_token(monkeypatch: pytest.MonkeyPatch) -> None:
     kw = run_main_in_webhook_mode(monkeypatch, "s3cret_value-1")
     assert "123:abc" not in kw["url_path"]
@@ -184,11 +191,11 @@ def test_webhook_passes_secret_from_env(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_webhook_without_secret_env_generates_one(monkeypatch: pytest.MonkeyPatch,
-                                                  capsys: pytest.CaptureFixture[str]) -> None:
+                                                  caplog: pytest.LogCaptureFixture) -> None:
     kw = run_main_in_webhook_mode(monkeypatch, None)
     assert config.is_valid_webhook_secret(kw["secret_token"])
     assert len(kw["secret_token"]) >= config.WEBHOOK_SECRET_BYTES
-    assert config.WEBHOOK_SECRET_ENV in capsys.readouterr().out
+    assert config.WEBHOOK_SECRET_ENV in caplog.text
 
 
 def test_webhook_with_bad_secret_is_one_line(monkeypatch: pytest.MonkeyPatch) -> None:

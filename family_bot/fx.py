@@ -18,6 +18,7 @@ import requests
 from family_bot import errors
 from family_bot.currency import to_iso
 
+
 RATES_URL = "https://api.exchangerate-api.com/v4/latest/{base}"
 # Dashboard build reads the whole table once.
 TIMEOUT_SEC = 10.0

@@ -33,6 +33,7 @@ from family_bot.conversation_states import State
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
 from family_bot.sheets import SheetsClient
 
+
 QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
 MONTHS_SHOWN = 12

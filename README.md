@@ -134,9 +134,11 @@ Start the bot once (even with empty allowlist, even before Google Sheets works):
 family-bot                 # or: python -m family_bot.bot
 ```
 
-At startup the bot prints one line per setup problem: what is wrong and what to
-do (for example `⚠️ SHEET_NAME is not set — set it in .env …`). Until Google
-Sheets opens, `/whoami` works and every other message lists those problems.
+At startup the bot logs one line per setup problem: what is wrong and what to
+do (for example `… WARNING family_bot.bot: ⚠️ SHEET_NAME is not set — set it in .env …`).
+Log lines go to stderr (the Render **Logs** tab); `LOG_LEVEL` in `.env` sets the
+level (`DEBUG`, `INFO` default, `WARNING`, `ERROR`, `CRITICAL`). Tokens and
+API keys are masked in every line. Until Google Sheets opens, `/whoami` works and every other message lists those problems.
 A wrong `BOT_TOKEN` stops the bot before these lines, with
 `telegram.error.InvalidToken` at the end of the output — copy the token from
 @BotFather again.
@@ -287,7 +289,7 @@ The bot does **not** build the dashboard. Build it on a laptop and publish
 
 - **Access denied in Telegram** — your ID is missing from `ALLOWED_USERS`; use `/whoami`
 - **Categories not loading** — run `python scripts/bootstrap_sheet.py`, then `/test_connection`
-- **Connection error** — read the `⚠️` lines the bot prints at startup; check `GOOGLE_CREDS_PATH`, sheet name, and that the sheet is shared with the service account. `python scripts/test_google_sheets.py` reads `.env` and checks the connection
+- **Connection error** — read the `⚠️` lines the bot logs at startup; check `GOOGLE_CREDS_PATH`, sheet name, and that the sheet is shared with the service account. `python scripts/test_google_sheets.py` reads `.env` and checks the connection
 - **Bot not responding** — check `BOT_TOKEN`; locally omit `RENDER_EXTERNAL_URL` for polling
 
 ## License
