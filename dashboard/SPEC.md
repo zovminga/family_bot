@@ -41,15 +41,18 @@ CSV-экспорт. На выходе — один самодостаточны�
 и [`AGENTS.md`](../AGENTS.md). Ниже — то, что важно для дашборда.
 
 ```
-family_bot/
+<корень репозитория>/
 ├── AGENTS.md / docs/              # handoff для агентов (STATUS, ARCHITECTURE)
-├── bot.py                         # Telegram wiring; валюты/спендеры через sheet_data + auth
-├── sheets.py / sheet_data.py      # общий Sheets-шов и парсинг строк Data
 ├── .env                           # BOT_TOKEN, GOOGLE_CREDS_PATH, SHEET_NAME  (gitignored)
 ├── secrets/creds.json             # service account Google  (gitignored)
-└── dashboard/
-    ├── build_dashboard.py         # пайплайн: данные → JSON → HTML
-    ├── failure_alert.py           # сообщение в Telegram при сбое сборки (только stdlib)
+├── family_bot/                    # Python-пакет
+│   ├── bot.py                     # Telegram wiring; валюты/спендеры через sheet_data + auth
+│   ├── sheets.py / sheet_data.py  # общий Sheets-шов и парсинг строк Data
+│   └── dashboard/                 # python -m family_bot.dashboard
+│       ├── __main__.py            # вызывает build_dashboard.main()
+│       ├── build_dashboard.py     # пайплайн: данные → JSON → HTML
+│       └── failure_alert.py       # сообщение в Telegram при сбое сборки (только stdlib)
+└── dashboard/                     # всё, кроме кода: шаблон, скрипты, результат
     ├── template.html              # вёрстка + вся клиентская логика (JS, Chart.js)
     ├── vendor/chart.umd.min.js    # Chart.js, скачивается при первой сборке и вшивается в HTML (gitignored)
     ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), venv на Python 3.12
@@ -76,7 +79,7 @@ family_bot/
 
 ---
 
-## 3. Пайплайн данных (`build_dashboard.py`)
+## 3. Пайплайн данных (`family_bot/dashboard/build_dashboard.py`)
 
 Поток: **источник → парсинг → доначисления → курсы → нормализация → фильтр
 периода → группировка тем → вшивание JSON в шаблон**.
@@ -445,10 +448,10 @@ cd family_bot
 uv sync    # pyproject.toml + uv.lock; or: pip install -r dashboard/requirements.txt
 
 # из CSV (как делаем сейчас):
-python3 dashboard/build_dashboard.py --csv "/path/FamilyExpenses - Data.csv"
+python3 -m family_bot.dashboard --csv "/path/FamilyExpenses - Data.csv"
 
 # из Google Sheets (нужны secrets/creds.json + .env):
-python3 dashboard/build_dashboard.py
+python3 -m family_bot.dashboard
 
 # опции:
 #   --base EUR              другая базовая валюта
@@ -477,7 +480,7 @@ python3 dashboard/build_dashboard.py
 в тексте и без исходной цепочки исключений: токен стоит в URL запроса, а вывод
 `run.sh` пишется в `build.log` / `launchd.log`.
 
-**По требованию:** `./run.sh [доп. аргументы build_dashboard.py]`. Скрипт
+**По требованию:** `./run.sh [доп. аргументы python -m family_bot.dashboard]`. Скрипт
 через `uv` держит изолированный `venv/` на Python 3.12 с `requirements.txt`.
 В `venv/.deps-stamp` лежат версия Python и SHA-256 `requirements.txt`; при
 несовпадении `venv/` удаляется и создаётся заново. Затем скрипт
@@ -485,7 +488,9 @@ python3 dashboard/build_dashboard.py
 (`--llm --provider anthropic --publish`). Лог — `output/build.log`.
 `./run.sh --trial --csv <файл>` — пробная сборка в том же venv без этих флагов
 (темы по правилам, без Telegram). Собрать без
-отправки: `python build_dashboard.py --llm` (без `--publish`).
+отправки: `python -m family_bot.dashboard --llm` (без `--publish`).
+Пакет `family_bot` в `venv/` не ставится: `run.sh` добавляет корень
+репозитория в `PYTHONPATH`.
 
 **Раз в месяц:** `./schedule.sh install` кладёт в `~/Library/LaunchAgents/`
 plist `com.zovminga.familybot.dashboard.plist` (генерится с абсолютным путём к
@@ -495,7 +500,7 @@ plist `com.zovminga.familybot.dashboard.plist` (генерится с абсол
 догоняет пропущенный запуск при пробуждении. Подкоманды: `install` / `uninstall`
 / `status` / `run` (разовый прогон через launchd). Лог — `output/launchd.log`.
 
-**Сообщение о сбое** (`failure_alert.py`). Если сборка без `--trial` упала,
+**Сообщение о сбое** (`family_bot/dashboard/failure_alert.py`). Если сборка без `--trial` упала,
 в чат `DASHBOARD_CHAT_ID` уходит одно сообщение через `BOT_TOKEN` (Bot API
 `sendMessage`): этап и тип исключения, например «сборка: RuntimeError», и где
 лежит лог. Текст исключения не уходит: он может цитировать строки таблицы
@@ -507,17 +512,17 @@ plist `com.zovminga.familybot.dashboard.plist` (генерится с абсол
   Без `--publish` ошибка пробрасывается как раньше, сообщения нет.
 - `run.sh` ставит `trap … EXIT`: при ненулевом коде, кроме 3, шлёт сообщение
   с этапом самого `run.sh` («поиск uv», «создание venv», «запуск
-  build_dashboard.py») и кодом выхода. Python — из `venv/`, иначе системный
-  `python3`: `failure_alert.py` использует только стандартную библиотеку и
-  синтаксис Python 3.9.
+  python -m family_bot.dashboard») и кодом выхода. Python — из `venv/`, иначе системный
+  `python3` (`python3 -m family_bot.dashboard.failure_alert`): модуль
+  использует только стандартную библиотеку и синтаксис Python 3.9.
 - `BOT_TOKEN` / `DASHBOARD_CHAT_ID` берутся из окружения, иначе из
-  `family_bot/.env` (понимает `export KEY=…` и `# комментарий` после значения).
+  `.env` в корне репозитория (понимает `export KEY=…` и `# комментарий` после значения).
   Если их нет или отправка не прошла — предупреждение в лог, код выхода
   сборки не меняется.
 
-⚠️ Для авто-обновления из Sheets нужен `family_bot/secrets/creds.json`
+⚠️ Для авто-обновления из Sheets нужен `secrets/creds.json` в корне репозитория
 (service account) и таблица, расшаренная на его email; и `ANTHROPIC_API_KEY`
-в `family_bot/.env`.
+в `.env` в корне репозитория.
 
 ---
 
@@ -538,6 +543,8 @@ plist `com.zovminga.familybot.dashboard.plist` (генерится с абсол
 ---
 
 ## 7. Где что менять (шпаргалка)
+
+`build_dashboard.py` лежит в `family_bot/dashboard/`, `template.html` — в `dashboard/`.
 
 | Хочу… | Файл / место |
 |---|---|

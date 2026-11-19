@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-import config
-import sheets
+from family_bot import config
+from family_bot import sheets
 from tests.conftest import ROOT, FakeSheetsClient
 
 REGULAR = [
@@ -54,12 +54,13 @@ def assert_one_line_each(problems: list[str]) -> None:
 
 def test_import_reads_no_env_and_opens_no_sheet() -> None:
     probe = (
-        "import dotenv, sheets\n"
+        "import dotenv\n"
+        "from family_bot import sheets\n"
         "def boom(*a, **k): raise SystemExit('touched ' + str(a))\n"
         "dotenv.load_dotenv = boom\n"
         "sheets.open_client = boom\n"
         "sheets._authorize_spreadsheet = boom\n"
-        "import bot, config\n"
+        "from family_bot import bot, config\n"
         "print('ok')\n"
     )
     result = subprocess.run([sys.executable, "-c", probe], cwd=ROOT,

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-import clock
+from family_bot import clock
 
 
 def test_after_midnight_belgrade_is_next_day_vs_utc(monkeypatch: pytest.MonkeyPatch) -> None:

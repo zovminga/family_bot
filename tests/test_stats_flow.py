@@ -5,8 +5,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-import conversation_states as states
-from flows import stats
+from family_bot import conversation_states as states
+from family_bot.flows import stats
 from tests.known_bugs.fakes import make_update
 
 ROWS = [

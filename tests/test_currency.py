@@ -8,11 +8,11 @@ from typing import Any, ClassVar
 
 import pytest
 
-import currency
-import photo_input as px
-import regular
-import sheet_data
-import voice_input as vx
+from family_bot import currency
+from family_bot import photo_input as px
+from family_bot import regular
+from family_bot import sheet_data
+from family_bot import voice_input as vx
 
 
 def test_legacy_currencies_keep_their_symbols() -> None:
@@ -52,7 +52,7 @@ def test_sheet_data_maps_come_from_registry() -> None:
 
 
 def test_bot_buttons_are_the_registry() -> None:
-    import config
+    from family_bot import config
     buttons = config.Config().currencies
     assert buttons == currency.symbols()
     assert "$" in buttons and "CNY" in buttons

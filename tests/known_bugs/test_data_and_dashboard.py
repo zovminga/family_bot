@@ -3,22 +3,16 @@
 Each test asserts the correct behaviour and is marked xfail(strict=True) with
 its finding id from docs/specs/2026-11-revision.md. A fix removes the marker.
 """
-import sys
-from pathlib import Path
 
 import pytest
 import requests
 
 from tests.known_bugs.fakes import FakeSheets
 
-DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dashboard"
-if str(DASHBOARD_DIR) not in sys.path:
-    sys.path.insert(0, str(DASHBOARD_DIR))
-
-import build_dashboard as bd  # noqa: E402
-from expense import ExpenseRecord, append_expense  # noqa: E402
-from sheet_data import normalize_rows, parse_amount  # noqa: E402
-import voice_input as vx  # noqa: E402
+from family_bot.dashboard import build_dashboard as bd
+from family_bot.expense import ExpenseRecord, append_expense
+from family_bot.sheet_data import normalize_rows, parse_amount
+from family_bot import voice_input as vx
 
 
 # 13. Thousands separator read as decimal: "1,234" -> 1.234, "12,500" -> 12.5.

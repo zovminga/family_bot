@@ -24,7 +24,7 @@ BOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BOT_DIR))
 load_dotenv(BOT_DIR / ".env")
 
-from sheets import open_client  # noqa: E402
+from family_bot.sheets import open_client  # noqa: E402
 
 
 def main() -> int:
@@ -50,7 +50,7 @@ def main() -> int:
     print(f"   {url}")
     print(
         "\nNext: set ALLOWED_USERS in .env (use /whoami in Telegram), "
-        "then run: python bot.py"
+        "then run: family-bot"
     )
     return 0
 

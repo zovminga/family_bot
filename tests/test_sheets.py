@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from regular import parse_regular
-from sheets import GspreadSheetsClient, resolve_creds_path
+from family_bot.regular import parse_regular
+from family_bot.sheets import GspreadSheetsClient, resolve_creds_path
 # Kept importable from here for branches written before the fake moved to conftest.
 from tests.conftest import FakeSheetsClient
 
@@ -30,7 +30,7 @@ def test_fake_dashboard_file_id():
 
 
 def test_regular_load_presets_uses_client(monkeypatch):
-    import regular
+    from family_bot import regular
 
     fake = FakeSheetsClient(regular_values=[
         ["name", "динары", "евро", "доллары", "рубли", "категория", "кто"],
@@ -68,7 +68,7 @@ def test_resolve_creds_path_relative(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GOOGLE_CREDS_PATH", "creds.json")
     # Relative path resolves against sheets.BOT_DIR, not cwd.
-    from sheets import BOT_DIR
+    from family_bot.sheets import BOT_DIR
 
     path = resolve_creds_path()
     assert path == (BOT_DIR / "creds.json").resolve()
@@ -120,7 +120,7 @@ def test_gspread_append_data_rows_is_one_raw_request():
 def test_missing_spreadsheet_raises_domain_error(monkeypatch, tmp_path):
     import gspread
 
-    import sheets
+    from family_bot import sheets
 
     creds = tmp_path / "creds.json"
     creds.write_text("{}")

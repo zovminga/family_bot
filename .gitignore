@@ -6,7 +6,7 @@ creds.json
 .idea/
 .DS_Store
 .pytest_cache/
-# Offline speech-to-text model (downloaded at runtime, ~45MB)
+# Offline speech-to-text model (Render downloads it in the Build Command)
 models/
 __pycache__/
 *.py[cod]

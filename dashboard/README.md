@@ -1,7 +1,8 @@
 # Дашборд семейных трат
 
 Автономный HTML-дашборд по данным из той же Google-таблицы (`FamilyExpenses`),
-куда пишет Telegram-бот. Скрипт `build_dashboard.py` тянет данные через
+куда пишет Telegram-бот. Сборка (`python -m family_bot.dashboard`, код —
+`family_bot/dashboard/build_dashboard.py`) тянет данные через
 `gspread` (или из CSV), конвертирует валюты в базовую (по умолчанию RSD),
 группирует комментарии в темы (по умолчанию — правила, опционально LLM:
 Claude или OpenAI) и собирает один самодостаточный HTML-файл с вшитыми данными.
@@ -34,7 +35,7 @@ cd family_bot
 uv sync    # see README.md; or: pip install -r dashboard/requirements.txt
 ```
 
-Нужны переменные окружения (берутся из `family_bot/.env`):
+Нужны переменные окружения (берутся из `.env` в корне репозитория):
 
 ```bash
 GOOGLE_CREDS_PATH=secrets/creds.json   # service account для Google Sheets
@@ -45,18 +46,18 @@ BOT_TOKEN=...                          # для --publish (отправка да
 DASHBOARD_CHAT_ID=<your_telegram_id>   # чат, куда слать дашборд после сборки
 ```
 
-1. Положи service-account JSON в `family_bot/secrets/creds.json`
+1. Положи service-account JSON в `secrets/creds.json` в корне репозитория
    (папка `secrets/` в `.gitignore`, в публичный репозиторий не попадёт).
 2. Убедись, что таблица расшарена на email service-account'а.
 3. Собери дашборд:
 
 ```bash
-python dashboard/build_dashboard.py                    # база RSD, данные с 2025-10, темы по правилам
-python dashboard/build_dashboard.py --base EUR         # другая базовая валюта
-python dashboard/build_dashboard.py --llm              # темы через Claude (провайдер по умолчанию)
-python dashboard/build_dashboard.py --llm --provider openai   # темы через OpenAI
-python dashboard/build_dashboard.py --from ""          # показать ВСЕ периоды
-python dashboard/build_dashboard.py --from 2025-07     # с конкретного месяца
+python -m family_bot.dashboard                    # база RSD, данные с 2025-10, темы по правилам
+python -m family_bot.dashboard --base EUR         # другая базовая валюта
+python -m family_bot.dashboard --llm              # темы через Claude (провайдер по умолчанию)
+python -m family_bot.dashboard --llm --provider openai   # темы через OpenAI
+python -m family_bot.dashboard --from ""          # показать ВСЕ периоды
+python -m family_bot.dashboard --from 2025-07     # с конкретного месяца
 ```
 
 ### Провайдеры классификации комментариев
@@ -98,7 +99,9 @@ cd family_bot/dashboard
 тогда темы по правилам и без отправки.
 
 Окружение: `run.sh` держит изолированный `venv/` на Python 3.12 и ставит в него
-`requirements.txt` (экспорт `uv.lock`). Нужен [`uv`](https://docs.astral.sh/uv/):
+`requirements.txt` (экспорт `uv.lock`). Сам пакет `family_bot` в venv не
+ставится: `run.sh` добавляет корень репозитория в `PYTHONPATH` и вызывает
+`python -m family_bot.dashboard`. Нужен [`uv`](https://docs.astral.sh/uv/):
 он создаёт venv и сам скачивает Python 3.12, если его нет на машине. В
 `venv/.deps-stamp` записаны версия Python и SHA-256 `requirements.txt`. Если
 они не совпадают с текущими, `run.sh` удаляет `venv/` и создаёт заново. Так

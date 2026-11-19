@@ -8,8 +8,8 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from conversation_states import CHOOSE_ACTION
-from draft_expense import KEY_DRAFTS
+from family_bot.conversation_states import CHOOSE_ACTION
+from family_bot.draft_expense import KEY_DRAFTS
 
 HOME_BUTTON = "🏠 To start"
 HOME_LABELS = {HOME_BUTTON, "To start"}

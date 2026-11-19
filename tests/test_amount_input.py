@@ -1,7 +1,7 @@
 """Amount checks shared by manual input and voice/receipt Drafts."""
 import pytest
 
-import amount_input
+from family_bot import amount_input
 
 
 @pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "-500", "0", "0.00", "", "abc",

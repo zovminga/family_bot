@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from test_dashboard_safety import DASHBOARD_DIR, DOM_STUB, _page_script, _write_csv, bd
+from test_dashboard_safety import DOM_STUB, _page_script, _write_csv, bd
+
+# Real dashboard/ folder (template.html), read before any test monkeypatches it.
+DASHBOARD_DIR = bd.DASHBOARD_DIR
 
 node_only = pytest.mark.skipif(
     shutil.which("node") is None, reason="needs Node to run the page script"
