@@ -317,7 +317,7 @@ dashboard/          импортирует общие модули как пак
 - [x] 2.2 Вынести `flows/stats.py` и `flows/manual.py`. Кнопка «домой» — в `fallbacks`.
   Состояния — `IntEnum`. Тест: у каждого состояния есть обработчик. *(C1)*
 - [x] 2.3 Общие `sheet_data.Row`, `fx.py`, `llm.py` для бота и Dashboard. *(C3, C5)*
-- [ ] 2.4 `logging` вместо `print`. *(C7)*
+- [x] 2.4 `logging` вместо `print`. *(C7)*
 - [x] 2.5 Лист `Users` для Recent currencies (#33). Кнопки меню в `entry_points`. Ответ старой
   карточки Draft после деплоя (#27). *(R17, Q15)*
 - [x] 2.6 Webhook: `secret_token`, путь без токена. *(R20)*

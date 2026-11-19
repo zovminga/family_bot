@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #33 Currency picker, merged after issues #27, #36)  
-**Product code tip:** `5a34d7b` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
+**Updated by:** agent session (issue #26 logging)  
+**Product code tip:** `09ab8ee` (2026-11-19) — `logging` instead of `print`, level from `LOG_LEVEL`, secrets masked in every line (issue #26)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Logging (issue #26, plan 2.4, C7): the bot, the dashboard build, the failure
+  alert and `scripts/` call `family_bot.logs.setup()` once at start; modules use
+  `logging.getLogger(__name__)`, no `print` diagnostics (ruff `T20`; `scripts/`
+  keep `print` for their report). Level from `LOG_LEVEL` (default INFO). Lines
+  go to stderr as `time LEVEL module: message`: Render **Logs**, and
+  `dashboard/output/build.log` / `launchd.log` through `run.sh`. Every line,
+  tracebacks too, passes `errors.mask_secrets`; `httpx` request lines (URL with
+  the token) are held at WARNING. Setup problems stay one WARNING line each.
+  Tests: `tests/test_logs.py`.
 - Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
   Currency step and «💱 Валюта» in the Draft card show the User's Recent
   currencies with flags («🇷🇸 дин», «🇨🇳 CNY»), then «🌍 Другая»: every
@@ -287,11 +296,6 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Since issue #18 two people's Sheets calls can run in two threads on the
   one shared gspread client (`Config.sheets`). gspread does not document
   thread safety; no problem has been seen or tested.
-- Logging is not configured: `errors` logs through the `family_bot.errors`
-  logger, which prints to stderr via Python's fallback handler (WARNING and
-  above). Other modules still `print` exception text to stdout without
-  masking (`bot.py`, `sheets.py`, `fx.py`, `flows/stats.py`); none of
-  it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
 - Full project review with findings, design, and a staged plan:

@@ -77,6 +77,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   clock.py            clock.now() in the family time zone (TZ_NAME)
   monthly_summary.py  JobQueue job: last month's summary on the 1st to DASHBOARD_CHAT_ID
   errors.py           Error handler: short user text, masked log
+  logs.py             Logging setup for entry points (LOG_LEVEL, secrets masked)
   analytics.py        Stats over Row lists (no I/O; rate function passed in)
   voice_input.py      Vosk STT + Claude extract (model in <repo>/models/)
   photo_input.py      Claude Vision receipt → drafts
