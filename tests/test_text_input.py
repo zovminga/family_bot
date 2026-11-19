@@ -186,3 +186,9 @@ def test_menu_text_claude_error_gets_shared_reply(monkeypatch, menu):
 def test_menu_buttons_still_work(menu):
     state, msg, _ = menu(nav.SHOW_STATS)
     assert msg.replies and msg.replies[-1][0] != text_input.HINT
+
+
+def test_menu_this_month_button_shows_summary(menu):
+    state, msg, _ = menu(nav.THIS_MONTH)
+    assert state == CHOOSE_ACTION
+    assert msg.replies and msg.replies[-1][0] != text_input.HINT
