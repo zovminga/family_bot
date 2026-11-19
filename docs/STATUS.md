@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #42, doc/code mismatches)  
-**Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
+**Updated by:** agent session (issue #42 doc/code mismatches, merged after issue #9)  
+**Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -25,6 +25,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Receipt photo: Claude Vision → same Draft card
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
+- Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /
+  `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
+  `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
+  for pip-only hosts (Render Build Command, `dashboard/run.sh`).
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
@@ -63,8 +67,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
-  with native "blocked by" links. #9 (Python 3.12 + pyproject) and #42 (doc
-  mismatches) have no blockers.
+  with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
+  blocked can start once it merges.
 
 ## Only a person knows
 

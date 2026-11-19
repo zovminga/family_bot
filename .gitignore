@@ -1,4 +1,5 @@
 venv/
+.venv/
 secrets/
 creds.json
 .env
