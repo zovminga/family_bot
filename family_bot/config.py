@@ -37,6 +37,8 @@ WEBHOOK_SECRET_ENV = "WEBHOOK_SECRET"
 WEBHOOK_PATH = "telegram"
 # Telegram allows 1-256 characters A-Z, a-z, 0-9, _ and - in secret_token.
 _WEBHOOK_SECRET_RE = re.compile(r"[A-Za-z0-9_-]{1,256}")
+# Random bytes in a generated secret (token_urlsafe turns 32 bytes into 43 characters).
+WEBHOOK_SECRET_BYTES = 32
 
 OpenSheets = Callable[[str, str], SheetsClient]
 
@@ -78,7 +80,19 @@ def load_env_file(path: Path = ENV_FILE) -> None:
 
 
 def is_valid_webhook_secret(value: str) -> bool:
-    """True when Telegram accepts ``value`` as a webhook ``secret_token``."""
+    """
+    Check a webhook secret against Telegram's rule for ``secret_token``.
+
+    Parameters
+    ----------
+    value : str
+        Candidate secret.
+
+    Returns
+    -------
+    bool
+        True when it is 1-256 characters of A-Z, a-z, 0-9, _ and -.
+    """
     return _WEBHOOK_SECRET_RE.fullmatch(value) is not None
 
 
@@ -104,7 +118,7 @@ def webhook_secret(raw: Optional[str]) -> str:
         With one problem line when the value has characters Telegram rejects.
     """
     if not raw:
-        return secrets.token_urlsafe(32)
+        return secrets.token_urlsafe(WEBHOOK_SECRET_BYTES)
     if not is_valid_webhook_secret(raw):
         raise SystemExit(problem(
             f"{WEBHOOK_SECRET_ENV} is not valid",
