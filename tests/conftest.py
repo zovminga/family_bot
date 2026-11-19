@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 import dotenv
+import pytest
 
 dotenv.load_dotenv = lambda *args, **kwargs: False
 for _var in ("GOOGLE_CREDS_PATH", "SHEET_NAME", "BOT_TOKEN", "ANTHROPIC_API_KEY",
@@ -26,6 +27,20 @@ for _var in ("GOOGLE_CREDS_PATH", "SHEET_NAME", "BOT_TOKEN", "ANTHROPIC_API_KEY"
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+# Currencies the stub rate service lists in tests (no network).
+TEST_CURRENCY_CODES = ["AED", "CAD", "CNY", "EUR", "GBP", "GEL", "IQD", "JPY", "RSD",
+                       "RUB", "TRY", "USD"]
+
+
+@pytest.fixture(autouse=True)
+def _offline_currency_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The «🌍 Другая» list reads TEST_CURRENCY_CODES instead of the rate service."""
+    from family_bot import currency_picker
+
+    monkeypatch.setattr(currency_picker, "CATALOG",
+                        currency_picker.Catalog(fetch=lambda: list(TEST_CURRENCY_CODES)))
 
 
 def bot_context(**fields: Any) -> SimpleNamespace:
@@ -71,6 +86,9 @@ class FakeSheetsClient:
         self._url = url
         self._connection_ok = connection_ok
         self.appended_rows: list[list] = []
+        # Users sheet: Recent currencies and Spender name by Telegram id.
+        self.users: dict[int, list[str]] = {}
+        self.user_names: dict[int, str] = {}
 
     @property
     def url(self) -> Optional[str]:
@@ -123,3 +141,11 @@ class FakeSheetsClient:
 
     def set_dashboard_file_id(self, file_id: str) -> None:
         self._dashboard_file_id = file_id
+
+    def read_recent_currencies(self, user_id: int) -> Optional[list[str]]:
+        found = self.users.get(user_id)
+        return list(found) if found else None
+
+    def write_recent_currencies(self, user_id: int, name: str, values: list[str]) -> None:
+        self.users[user_id] = list(values)
+        self.user_names[user_id] = name

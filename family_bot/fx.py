@@ -70,3 +70,24 @@ def rate(from_currency: str, to_currency: str) -> Optional[float]:
         return None
     value = rates.get(to_iso(to_currency))
     return float(value) if value else None
+
+
+# Any base works: the service lists the same currencies for each.
+CODES_BASE = "EUR"
+
+
+def currency_codes() -> list[str]:
+    """
+    ISO codes of every currency the rate service knows.
+
+    Returns
+    -------
+    list[str]
+        Codes as the service lists them.
+
+    Raises
+    ------
+    requests.RequestException
+        The request failed or returned an HTTP error.
+    """
+    return list(fetch_rates(CODES_BASE))

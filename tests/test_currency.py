@@ -155,3 +155,29 @@ def test_regular_header_word_containing_a_stem_is_not_a_currency() -> None:
 ])
 def test_format_amount(amount: float, symbol: str | None, text: str) -> None:
     assert currency.format_amount(amount, symbol) == text
+
+
+# --- Flags and button labels (issue #33, Q12, Q17) ---
+
+@pytest.mark.parametrize("code, flag", [
+    ("RSD", "🇷🇸"), ("EUR", "🇪🇺"), ("RUB", "🇷🇺"), ("JPY", "🇯🇵"), ("GBP", "🇬🇧"),
+    ("USD", "🇺🇸"), ("CNY", "🇨🇳"), ("gel", "🇬🇪"), ("XAF", "🌐"), ("XDR", "🌐"),
+])
+def test_flag_is_the_country_of_the_code(code: str, flag: str) -> None:
+    assert currency.flag(code) == flag
+
+
+@pytest.mark.parametrize("value, label", [
+    ("дин", "🇷🇸 дин"), ("€", "🇪🇺 €"), ("₽", "🇷🇺 ₽"), ("¥", "🇯🇵 ¥"), ("£", "🇬🇧 £"),
+    ("$", "🇺🇸 $"), ("CNY", "🇨🇳 CNY"), ("GEL", "🇬🇪 GEL"),
+])
+def test_label_is_flag_and_stored_value(value: str, label: str) -> None:
+    assert currency.label(value) == label
+
+
+@pytest.mark.parametrize("code, stored", [
+    ("RSD", "дин"), ("EUR", "€"), ("jpy", "¥"), ("CNY", "CNY"), ("GEL", "GEL"), ("try", "TRY"),
+])
+def test_stored_value_keeps_legacy_symbols_and_writes_new_ones_as_iso(code: str,
+                                                                      stored: str) -> None:
+    assert currency.stored_value(code) == stored

@@ -23,7 +23,7 @@ The money unit of an Expense, written as a symbol for the long-standing ones (д
 _Avoid_: `¥` for yuan, "base currency" (when meaning the Currency of one Expense)
 
 **Recent currencies**:
-The three Currencies a User entered most recently, offered first when choosing a Currency.
+The three Currencies a User entered most recently, offered first when choosing a Currency. Kept per Telegram account in the `Users` sheet; a new User starts with the three most frequent in Data.
 _Avoid_: Default currency, favourite currencies
 
 **Conversion**:

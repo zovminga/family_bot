@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Manual add-expense conversation flow.
 
-Category → amount → Currency → comment → date → save. On the comment step
+Category → amount → Currency → comment → date → save. The Currency step is the
+shared picker (``currency_picker``): Recent currencies of this User, «🌍 Другая»
+pages, or a code / Russian name typed as text. A Currency typed with the
+amount («350 дин») skips the step. On the comment step
 «✅ Сегодня, без комментария» saves at once with today's date and no comment.
 Step values live in ``user_data`` (``cat``, ``amt``, ``cur``, ``spender``,
 ``comment``) until the save; every exit goes through ``navigation.go_home``.
@@ -21,6 +24,7 @@ from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, Messag
 from family_bot import amount_input
 from family_bot import clock
 from family_bot import currency
+from family_bot import currency_picker as picker
 from family_bot.currency import format_amount
 from family_bot import navigation as nav
 from family_bot import undo
@@ -34,6 +38,8 @@ Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
 Who = Callable[[Update, ContextTypes.DEFAULT_TYPE], str]
 
 TODAY_NO_COMMENT = "today_no_comment"
+# Callback data prefix of the Currency picker buttons in this flow.
+CURRENCY_CALLBACK = "cur:"
 
 
 async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
@@ -57,6 +63,18 @@ def _on_buttons(found: Optional[currency.Currency], currencies: list[str]) -> Op
     return found.symbol if found is not None and found.symbol in currencies else None
 
 
+def _picker_cb(payload: str) -> str:
+    return CURRENCY_CALLBACK + payload
+
+
+def _inline(grid: picker.Grid) -> InlineKeyboardMarkup:
+    """Picker grid plus the home button as an inline keyboard."""
+    rows = [[InlineKeyboardButton(label, callback_data=data) for label, data in row]
+            for row in grid]
+    rows.append([nav.home_inline_button()])
+    return InlineKeyboardMarkup(rows)
+
+
 class ManualFlow:
     """Manual add-expense handlers with their data sources injected.
 
@@ -65,11 +83,13 @@ class ManualFlow:
     categories : Source[list[str]]
         Current category list (re-read on every call so /reloadcats applies).
     currencies : Source[list[str]]
-        Currency buttons offered by this install.
+        Registered Currencies a typed amount («350 дин») may carry.
     sheets : Source[SheetsClient]
-        Where the Expense is saved.
+        Where the Expense and Recent currencies are saved.
     who : Who
         Spender name for the current User.
+    all_codes : Callable[[], list[str]]
+        Every ISO code that can be chosen (blocking: the rate service).
     """
 
     def __init__(
@@ -79,11 +99,13 @@ class ManualFlow:
         currencies: Source[list[str]],
         sheets: Source[SheetsClient],
         who: Who,
+        all_codes: Callable[[], list[str]],
     ) -> None:
         self._categories = categories
         self._currencies = currencies
         self._sheets = sheets
         self._who = who
+        self._all_codes = all_codes
 
     def states(self) -> dict[object, list[BaseHandler]]:
         """ConversationHandler states for this flow."""
@@ -93,7 +115,10 @@ class ManualFlow:
         return {
             State.CHOOSE_CAT: text(self.choose_cat),
             State.TYPING_AMT: text(self.type_amount),
-            State.CHOOSE_CUR: text(self.choose_cur),
+            State.CHOOSE_CUR: [
+                *text(self.choose_cur),
+                CallbackQueryHandler(self.on_currency_button, pattern=f"^{CURRENCY_CALLBACK}"),
+            ],
             State.TYPING_CMNT: [
                 *text(self.type_comment),
                 CallbackQueryHandler(self.type_comment, pattern="^skip$"),
@@ -140,18 +165,52 @@ class ManualFlow:
         cur = _on_buttons(typed_currency, currencies)
         if cur is not None:
             return await self._set_currency_and_ask_comment(update, context, cur)
-        await _ask_from_list(update, "💱 Валюта?", currencies)
+        await self._ask_currency(update, context, picker.ASK)
         return State.CHOOSE_CUR
 
-    async def choose_cur(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        text = update.message.text
+    async def _ask_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                            prompt: str) -> None:
+        """Reply with the Recent currencies of this User and «🌍 Другая»."""
+        recent = await asyncio.to_thread(
+            picker.load_recent, context.user_data, self._sheets(context),
+            update.effective_user.id)
+        await update.effective_message.reply_text(
+            prompt, reply_markup=_inline(picker.recent_grid(recent, _picker_cb)))
 
-        currencies = self._currencies(context)
-        cur = _on_buttons(currency.find(text), currencies)
-        if cur is None:
-            await _ask_from_list(update, "❌ Такой валюты нет. Выберите из списка:", currencies)
+    async def choose_cur(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Typed Currency: symbol, ISO code or Russian name («дин», «GEL», «юань»)."""
+        text = update.message.text
+        codes = await asyncio.to_thread(self._all_codes)
+        found = picker.search(text, codes)
+        if len(found) == 1:
+            return await self._set_currency_and_ask_comment(
+                update, context, currency.stored_value(found[0]))
+        if found:
+            await update.message.reply_text(
+                f"💱 Нашлось несколько. {picker.TYPE_HINT}",
+                reply_markup=_inline(picker.choice_grid(found[:picker.PAGE_SIZE], _picker_cb)))
             return State.CHOOSE_CUR
-        return await self._set_currency_and_ask_comment(update, context, cur)
+        await self._ask_currency(update, context, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
+        return State.CHOOSE_CUR
+
+    async def on_currency_button(self, update: Update,
+                                 context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Picker button: choose a Currency or turn a «🌍 Другая» page."""
+        query = update.callback_query
+        await query.answer()
+        payload = query.data[len(CURRENCY_CALLBACK):]
+        code = picker.picked_code(payload)
+        if code is not None:
+            cur = currency.stored_value(code)
+            await query.edit_message_text(f"💱 Валюта: {currency.label(cur)}")
+            return await self._set_currency_and_ask_comment(update, context, cur)
+        page = picker.page_number(payload)
+        if page is not None:
+            codes = await asyncio.to_thread(self._all_codes)
+            await query.edit_message_text(
+                picker.page_text(codes, page),
+                reply_markup=_inline(picker.page_grid(codes, page, _picker_cb)))
+        return State.CHOOSE_CUR
 
     async def _set_currency_and_ask_comment(self, update: Update,
                                             context: ContextTypes.DEFAULT_TYPE,
@@ -161,6 +220,9 @@ class ManualFlow:
         # Automatically detect user
         user_name = self._who(update, context)
         context.user_data["spender"] = user_name
+        await asyncio.to_thread(
+            picker.remember, context.user_data, self._sheets(context),
+            update.effective_user.id, user_name, cur)
 
         # Go to comment
         buttons = [
@@ -168,7 +230,7 @@ class ManualFlow:
             [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
             [nav.home_inline_button()]
         ]
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"👤 Кто: {user_name}\n\n💬 Напишите комментарий или нажмите кнопку",
             reply_markup=InlineKeyboardMarkup(buttons)
         )

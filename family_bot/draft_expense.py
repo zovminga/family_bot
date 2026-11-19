@@ -12,10 +12,12 @@ import hashlib
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from family_bot import amount_input
 from family_bot import clock
+from family_bot import currency
+from family_bot import currency_picker as picker
 from family_bot.currency import format_amount
 from family_bot.expense import ExpenseRecord, append_expenses
 from family_bot.sheet_data import DATE_FMT
@@ -92,6 +94,10 @@ class CallbackOutcome:
     saved: tuple[ExpenseRecord, ...] = ()
     # Item index whose new amount the User types next («✏️ Сумма»).
     await_amount: Optional[int] = None
+    # Item index whose Currency the User may type next («🌍 Другая», search).
+    await_currency: Optional[int] = None
+    # Stored value of a Currency the User just chose (goes to Recent currencies).
+    picked: Optional[str] = None
 
 
 def short(text: str, n: int = 20) -> str:
@@ -200,13 +206,75 @@ def category_buttons(session: DraftSession, i: int, categories: list[str]) -> Bu
     return rows
 
 
-def currency_buttons(session: DraftSession, i: int, currencies: list[str]) -> ButtonGrid:
-    rows: ButtonGrid = [[
-        (c, _cb(session, f"setcur:{i}:{idx}"))
-        for idx, c in enumerate(currencies)
-    ]]
-    rows.append([("⬅️ Назад", _cb(session, "menu"))])
-    return rows
+def _currency_cb(session: DraftSession, i: int) -> picker.Callback:
+    return lambda payload: _cb(session, f"cur:{i}:{payload}")
+
+
+def _back_row(session: DraftSession) -> list[tuple[str, str]]:
+    return [("⬅️ Назад", _cb(session, "menu"))]
+
+
+def currency_buttons(session: DraftSession, i: int, recent: Sequence[str]) -> ButtonGrid:
+    """Recent currencies of the User and «🌍 Другая» (``currency_picker``)."""
+    return [*picker.recent_grid(recent, _currency_cb(session, i)), _back_row(session)]
+
+
+def _currency_prompt(session: DraftSession, i: int, line: str) -> str:
+    target = f" для #{i + 1}" if len(session.items) > 1 else ""
+    return card_text(session) + f"\n\n💱 Валюта{target}. {line}"
+
+
+def _currency_page(session: DraftSession, i: int, codes: Sequence[str],
+                   page: int, line: Optional[str] = None) -> CallbackOutcome:
+    grid = picker.page_grid(codes, page, _currency_cb(session, i))
+    return CallbackOutcome(
+        text=_currency_prompt(session, i, line or picker.page_text(codes, page)),
+        buttons=[*grid, _back_row(session)],
+        await_currency=i,
+    )
+
+
+def _set_currency(session: DraftSession, i: int, code: str) -> CallbackOutcome:
+    value = currency.stored_value(code)
+    session.items[i]["currency"] = value
+    return CallbackOutcome(text=card_text(session), buttons=main_buttons(session),
+                           picked=value)
+
+
+def search_currency(session: DraftSession, i: int, text: str,
+                    codes: Sequence[str]) -> CallbackOutcome:
+    """
+    Typed Currency for item i after «🌍 Другая»: one match sets it, several are buttons.
+
+    Parameters
+    ----------
+    session : DraftSession
+        Open Draft.
+    i : int
+        Item index.
+    text : str
+        Typed code or Russian name («GEL», «юань»).
+    codes : Sequence[str]
+        Every ISO code that can be chosen.
+
+    Returns
+    -------
+    CallbackOutcome
+        New card text and buttons; ``picked`` set when the Currency changed.
+    """
+    if not (0 <= i < len(session.items)):
+        return CallbackOutcome()
+    found = picker.search(text, codes)
+    if len(found) == 1:
+        return _set_currency(session, i, found[0])
+    if not found:
+        return _currency_page(session, i, codes, 0, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
+    grid = picker.choice_grid(found[:picker.PAGE_SIZE], _currency_cb(session, i))
+    return CallbackOutcome(
+        text=_currency_prompt(session, i, f"Нашлось несколько. {picker.TYPE_HINT}"),
+        buttons=[*grid, _back_row(session)],
+        await_currency=i,
+    )
 
 
 def spender_buttons(session: DraftSession, i: int, spenders: Sequence[str]) -> ButtonGrid:
@@ -314,21 +382,30 @@ def save_drafts(client: SheetsClient, items: list[dict]) -> list[ExpenseRecord]:
     return records
 
 
+def _registry_codes() -> list[str]:
+    return [c.code for c in currency.CURRENCIES]
+
+
 def apply_callback(
     data: str,
     session: DraftSession,
     categories: list[str],
-    currencies: list[str],
+    recent: Sequence[str],
     client: SheetsClient,
     *,
     now: Optional[datetime] = None,
     spenders: Sequence[str] = (),
+    all_codes: Callable[[], Sequence[str]] = _registry_codes,
 ) -> CallbackOutcome:
     """Apply one draft callback (payload after 'vx:<id>:'). Mutates session.
 
     A closed (saved or cancelled) Draft ignores every tap, so a double tap
     keeps «✅ Сохранено» and writes nothing twice. A failed save leaves the
     Draft open for a retry.
+
+    ``recent`` are the User's Recent currencies shown by «💱 Валюта»;
+    ``all_codes`` lists every Currency for «🌍 Другая» (blocking: rate service).
+    A chosen Currency comes back as ``CallbackOutcome.picked``.
     """
     now = now or clock.now()
     items = session.items
@@ -384,8 +461,14 @@ def apply_callback(
         return CallbackOutcome(
             buttons=category_buttons(session, i, categories), markup_only=True)
     if action == "cur":
+        code = picker.picked_code(arg)
+        if code is not None:
+            return _set_currency(session, i, code)
+        page = picker.page_number(arg)
+        if page is not None:
+            return _currency_page(session, i, all_codes(), page)
         return CallbackOutcome(
-            buttons=currency_buttons(session, i, currencies), markup_only=True)
+            buttons=currency_buttons(session, i, recent), markup_only=True)
     if action == "date":
         return CallbackOutcome(buttons=date_buttons(session, i), markup_only=True)
     if action == "amt":
@@ -410,9 +493,6 @@ def apply_callback(
         if not match:  # category removed from Config since the card was shown
             return CallbackOutcome()
         items[i]["category"] = match[0]
-        return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
-    if action == "setcur":
-        items[i]["currency"] = currencies[int(arg)]
         return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
     if action == "setdate":
         base = now - timedelta(days=1) if arg == "y" else now

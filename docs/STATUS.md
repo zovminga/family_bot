@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #41 household data in settings, merged after issues #31, #32, #35)  
+**Updated by:** agent session (issue #33 Currency picker)  
 **Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -17,6 +17,19 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
+  Currency step and «💱 Валюта» in the Draft card show the User's Recent
+  currencies with flags («🇷🇸 дин», «🇨🇳 CNY»), then «🌍 Другая»: every
+  currency of the rate service in code order, 24 per page. Typed «юань»,
+  «лари» or «GEL» finds it (Russian names from Babel, new bot dependency;
+  several matches come back as buttons). A new Currency is written to Data as
+  its ISO code. Recent currencies are per Telegram account in the new `Users`
+  sheet (bot creates it; `scripts/bootstrap_sheet.py` too); a new User gets
+  the three most frequent in Data, empty Data → `дин`, `€`, `₽`. Code:
+  `currency_picker.py` (Telegram-free, for #34 Conversion in statistics).
+  Render needs the new `requirements.txt` (Babel) — the usual Build Command
+  installs it. If the rate service is down, «🌍 Другая» lists only the seven
+  registry Currencies.
 - Household data in settings, not code (issue #41, plan 5.6, I8):
   `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
   unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
@@ -210,6 +223,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Unread sections are unread source, not missing knowledge.
 
 ## Open
+
+- Currency picker (issue #33): Recent currencies are read from `Users` once
+  per User per bot process (cache in `user_data`), so a hand edit of `Users`
+  shows after a restart. Buttons of an old manual-input picker message (after
+  the User moved on) get no answer. Voice/receipt/typed Drafts still snap to
+  the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
 
 - README «Install from scratch» (issue #40): a clean-clone walk with fake keys
   covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk

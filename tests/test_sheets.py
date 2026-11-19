@@ -165,3 +165,77 @@ def test_fake_delete_data_rows():
     client = FakeSheetsClient(data_values=[["Date"], ["a"], ["b"], ["c"]])
     client.delete_data_rows([2, 4])
     assert client.read_data_values() == [["Date"], ["b"]]
+
+
+# --- Users sheet: Recent currencies (issue #33) ---
+
+class _UsersWorksheet:
+    def __init__(self, values: list[list[str]]) -> None:
+        self.values = [list(r) for r in values]
+        self.calls: list[tuple] = []
+
+    def get_all_values(self) -> list[list[str]]:
+        return [list(r) for r in self.values]
+
+    def append_row(self, row, **kw):
+        self.calls.append(("append", row, kw))
+        self.values.append(list(row))
+
+    def update(self, range_name, values, **kw):
+        self.calls.append(("update", range_name, values, kw))
+        if range_name == "A1":
+            self.values[:len(values)] = [list(r) for r in values]
+
+
+class _UsersSpreadsheet:
+    def __init__(self, ws: "_UsersWorksheet | None") -> None:
+        self.ws = ws
+        self.added: list[str] = []
+
+    def worksheet(self, name):
+        import gspread
+
+        assert name == "Users"
+        if self.ws is None:
+            raise gspread.WorksheetNotFound(name)
+        return self.ws
+
+    def add_worksheet(self, title, rows, cols):
+        self.added.append(title)
+        self.ws = _UsersWorksheet([])
+        return self.ws
+
+
+USERS = [["User ID", "Name", "Recent currencies"],
+         ["111", "Анна", "CNY, дин, €"],
+         ["222", "Борис", ""]]
+
+
+def test_read_recent_currencies_by_user_id():
+    client = GspreadSheetsClient(_UsersSpreadsheet(_UsersWorksheet(USERS)))
+    assert client.read_recent_currencies(111) == ["CNY", "дин", "€"]
+    assert client.read_recent_currencies(222) is None  # empty cell
+    assert client.read_recent_currencies(333) is None
+
+
+def test_read_recent_currencies_without_users_sheet_is_none():
+    assert GspreadSheetsClient(_UsersSpreadsheet(None)).read_recent_currencies(111) is None
+
+
+def test_write_recent_currencies_updates_the_users_row():
+    ws = _UsersWorksheet(USERS)
+    GspreadSheetsClient(_UsersSpreadsheet(ws)).write_recent_currencies(111, "Анна", ["₽", "CNY"])
+    assert ws.calls == [("update", "C2", [["₽, CNY"]], {"value_input_option": "RAW"})]
+
+
+def test_write_recent_currencies_adds_a_row_for_a_new_user():
+    ws = _UsersWorksheet(USERS)
+    GspreadSheetsClient(_UsersSpreadsheet(ws)).write_recent_currencies(333, "Вера", ["€"])
+    assert ws.calls == [("append", ["333", "Вера", "€"], {"value_input_option": "RAW"})]
+
+
+def test_write_recent_currencies_creates_users_sheet_with_headers():
+    book = _UsersSpreadsheet(None)
+    GspreadSheetsClient(book).write_recent_currencies(111, "Анна", ["дин"])
+    assert book.added == ["Users"]
+    assert book.ws.values == [["User ID", "Name", "Recent currencies"], ["111", "Анна", "дин"]]
