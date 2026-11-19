@@ -60,7 +60,9 @@ def make_update(text: Optional[str] = None, user_id: int = 111,
 
 
 class FakeSheets:
-    """Records Data rows; optionally fails on the N-th append.
+    """Records Data rows; optionally fails on the N-th append call.
+
+    A failing ``append_data_rows`` writes nothing, like one Sheets API request.
 
     ``headers`` is the Data header row; empty means a sheet without headers.
     """
@@ -80,3 +82,9 @@ class FakeSheets:
         if self.fail_on_call is not None and self.calls == self.fail_on_call:
             raise RuntimeError("APIError: [429] Quota exceeded")
         self.rows.append(row)
+
+    def append_data_rows(self, rows: list[list[Any]]) -> None:
+        self.calls += 1
+        if self.fail_on_call is not None and self.calls == self.fail_on_call:
+            raise RuntimeError("APIError: [429] Quota exceeded")
+        self.rows.extend(rows)

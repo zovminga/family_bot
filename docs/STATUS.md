@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #16 stats flow module, merged after issues #19, #20)  
-**Product code tip:** `75fe288` (2026-11-19) — statistics flow in `flows/stats.py`, R7 and R8 fixed  
+**Updated by:** agent session (issue #13 Draft ids, merged after issues #16, #19, #20)  
+**Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -33,6 +33,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- Drafts have ids (issue #13): each voice/receipt card saves its own Draft,
+  all its items go in one `append_rows` call (a failed save can be retried
+  without duplicates), a double tap keeps «✅ Сохранено», the category button
+  carries the name, and `go_home` keeps open Drafts. Details:
+  `docs/ARCHITECTURE.md` → Input pipelines.
 - "Today" follows the family time zone (issue #19): `clock.now()` reads
   `TZ_NAME` (default `Europe/Belgrade`). The date buttons, presets, the Draft
   card, voice/receipt prompts, the month list in stats and the Meta
@@ -96,6 +101,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   recorded as open: the dashboard's own row parsing (C3, see
   `docs/ARCHITECTURE.md`) and Preset code names (`DEFAULTS`, `load_defaults`,
   see `CONTEXT.md`).
+- Draft double-tap guard (issue #13) relies on save running with no `await`
+  between the `closed` check and the Sheets write. When issue #18 moves the
+  write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- `go_home` still clears every other `user_data` key, not only its own flow's
+  keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
+- Drafts live only in bot memory: a restart drops them and old cards answer
+  «Черновик уже не активен.» (issue #27 changes that text).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.

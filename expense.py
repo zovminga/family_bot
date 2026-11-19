@@ -72,3 +72,9 @@ class ExpenseRecord:
 def append_expense(client: SheetsClient, record: ExpenseRecord) -> None:
     """Persist one Expense through the SheetsClient seam, matching Data headers."""
     client.append_data_row(record.to_row(client.read_data_headers()))
+
+
+def append_expenses(client: SheetsClient, records: list[ExpenseRecord]) -> None:
+    """Persist several Expenses in one append call: all rows land or none do."""
+    headers = client.read_data_headers()
+    client.append_data_rows([r.to_row(headers) for r in records])

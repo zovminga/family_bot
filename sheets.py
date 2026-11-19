@@ -106,6 +106,8 @@ class SheetsClient(Protocol):
 
     def append_data_row(self, row: list) -> None: ...
 
+    def append_data_rows(self, rows: list[list]) -> None: ...
+
     def read_regular_values(self) -> list[list[str]]: ...
 
     def get_dashboard_file_id(self) -> Optional[str]: ...
@@ -164,6 +166,10 @@ class GspreadSheetsClient:
         "2026-11" is not turned into a date.
         """
         self._worksheet(DATA_SHEET).append_row(row, value_input_option="RAW")
+
+    def append_data_rows(self, rows: list[list]) -> None:
+        """Append several Data rows in one API request (all land or none do)."""
+        self._worksheet(DATA_SHEET).append_rows(rows, value_input_option="RAW")
 
     def read_regular_values(self) -> list[list[str]]:
         return self._worksheet(REGULAR_SHEET).get_all_values()

@@ -104,60 +104,67 @@ def test_dollar_currency_survives_snap():
     assert vx._snap_currency("$", bot.CURS, bot.DEFAULT_CURRENCY) == "$"
 
 
-# 6. A second voice draft silently replaces the first; the OLD card's Save saves the NEW items.
-@known_bug("R1")
-def test_old_card_save_does_not_save_other_draft(ctx):
-    a = draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
-                                   "date": "01.11.2026", "category": "Food"}],
-                                 who="Azat", transcript="chips")
-    a.store(ctx.user_data)
-    b = draft.session_from_voice([{"comment": "taxi", "amount": 900.0, "currency": "дин",
-                                   "date": "01.11.2026", "category": "Transport"}],
-                                 who="Azat", transcript="taxi")
-    b.store(ctx.user_data)
+CHIPS = {"comment": "chips", "amount": 100.0, "currency": "дин",
+         "date": "01.11.2026", "category": "Food"}
+
+
+def save_cb(session):
+    """callback_data of the card's «✅ Сохранить» button."""
+    label, cb = draft.main_buttons(session)[0][0]
+    assert label.startswith("✅")
+    return cb
+
+
+# 6. A second voice draft silently replaced the first; the OLD card's Save saved the NEW items.
+def test_old_card_save_does_not_save_other_draft(ctx, monkeypatch):
+    a = draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [dict(CHIPS)], who="Azat", transcript="chips"))
+    draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [{"comment": "taxi", "amount": 900.0, "currency": "дин",
+          "date": "01.11.2026", "category": "Transport"}],
+        who="Azat", transcript="taxi"))
     sheets = FakeSheets()
-    # user taps "Save" on card A (callback_data carries no draft id)
-    draft.apply_callback("save", draft.DraftSession.load(ctx.user_data), bot.CATS, bot.CURS, sheets)
+    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    run(bot.vx_callback(make_update(query=FakeQuery(save_cb(a))), ctx))  # tap Save on card A
     assert [r[6] for r in sheets.rows] == ["chips"], sheets.rows
 
 
-# 7. go_home (/cancel, 🏠, finishing any manual/preset/stat flow) wipes an open voice draft.
-@known_bug("R9")
+# 7. go_home (/cancel, 🏠, finishing any manual/preset/stat flow) wiped an open voice draft.
 def test_go_home_keeps_open_draft(ctx):
-    draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
-                               "date": "01.11.2026", "category": "Food"}],
-                             who="Azat", transcript="chips").store(ctx.user_data)
+    a = draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [dict(CHIPS)], who="Azat", transcript="chips"))
+    ctx.user_data["amt"] = 5.0  # manual-flow key: still cleared
     run(nav.go_home(make_update("🏠 To start"), ctx))
-    assert draft.DraftSession.load(ctx.user_data).items, "draft lost"
+    kept = draft.get_draft(ctx.user_data, a.id)
+    assert kept is not None and kept.items, "draft lost"
+    assert "amt" not in ctx.user_data
 
 
-# 8. Multi-item save fails half-way → session kept → retry duplicates saved items.
-@known_bug("R2")
+# 8. Multi-item save failed half-way → session kept → retry duplicated saved items.
 def test_partial_save_retry_does_not_duplicate(ctx, monkeypatch):
     items = [{"comment": f"i{n}", "amount": 10.0, "currency": "дин",
               "date": "01.11.2026", "category": "Food"} for n in range(3)]
-    draft.session_from_receipt(items, who="Azat").store(ctx.user_data)
-    sheets = FakeSheets(fail_on_call=3)
+    s = draft.add_draft(ctx.user_data, draft.session_from_receipt(items, who="Azat"))
+    sheets = FakeSheets(fail_on_call=1)
     monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
     with pytest.raises(RuntimeError):
-        run(bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx))
-    run(bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx))  # user retries
+        run(bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx))
+    run(bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx))  # user retries
     comments = [r[6] for r in sheets.rows]
     assert comments == ["i0", "i1", "i2"], comments
 
 
-# 9. Double tap on Save: second callback overwrites "✅ Сохранено" with "Нечего сохранять".
-@known_bug("R16")
+# 9. Double tap on Save: second callback overwrote "✅ Сохранено" with "Нечего сохранять".
 def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
-    draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
-                               "date": "01.11.2026", "category": "Food"}],
-                             who="Azat", transcript="chips").store(ctx.user_data)
+    s = draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [dict(CHIPS)], who="Azat", transcript="chips"))
     sheets = FakeSheets()
     monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
-    q1, q2 = FakeQuery("vx:save"), FakeQuery("vx:save")
+    q1, q2 = FakeQuery(save_cb(s)), FakeQuery(save_cb(s))
     run(bot.vx_callback(make_update(query=q1), ctx))
     run(bot.vx_callback(make_update(query=q2), ctx))
     assert len(sheets.rows) == 1
+    assert q1.edits and q1.edits[-1].startswith("✅"), q1.edits
     assert not q2.edits or q2.edits[-1].startswith("✅"), q2.edits
 
 
@@ -165,15 +172,14 @@ def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
 @known_bug("R11")
 def test_save_does_not_block_event_loop(ctx, monkeypatch):
     class SlowSheets(FakeSheets):
-        def append_data_row(self, row):
+        def append_data_rows(self, rows):
             time.sleep(0.6)
-            super().append_data_row(row)
+            super().append_data_rows(rows)
 
     sheets = SlowSheets()
     monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
-    draft.session_from_voice([{"comment": "chips", "amount": 1.0, "currency": "дин",
-                               "date": "01.11.2026", "category": "Food"}],
-                             who="Azat", transcript="chips").store(ctx.user_data)
+    s = draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [dict(CHIPS)], who="Azat", transcript="chips"))
 
     async def scenario():
         ticks = 0
@@ -186,7 +192,7 @@ def test_save_does_not_block_event_loop(ctx, monkeypatch):
 
         t = asyncio.create_task(ticker())
         await asyncio.sleep(0)
-        await bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx)
+        await bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx)
         ticked_during_save = ticks
         await t
         return ticked_during_save
@@ -206,14 +212,16 @@ def test_edited_message_not_treated_as_new_input():
     assert not h.check_update(upd), "edited '5000' would be accepted as a new amount"
 
 
-# 12. Category index in callback_data goes stale after /reloadcats reorders Config.
-@known_bug("R15")
+# 12. Category index in callback_data went stale after /reloadcats reordered Config.
 def test_setcat_uses_category_shown_on_card():
     old = ["Food", "Transport", "Other"]
     new = ["Transport", "Food", "Other"]  # Config re-sorted, then /reloadcats
-    btn = draft.category_buttons(0, old)
+    s = draft.DraftSession(id="ab12", items=[{
+        "comment": "", "amount": 1.0, "currency": "дин",
+        "date": "01.11.2026", "category": "Food", "who": "A"}])
+    btn = draft.category_buttons(s, 0, old)
     label, cb = btn[0][1]  # user taps "Transport"
-    s = draft.DraftSession(items=[{"comment": "", "amount": 1.0, "currency": "дин",
-                                   "date": "01.11.2026", "category": "Food", "who": "A"}])
-    draft.apply_callback(cb[len("vx:"):], s, new, ["дин"], FakeSheets())
+    draft_id, payload = draft.parse_callback(cb)
+    assert draft_id == s.id
+    draft.apply_callback(payload, s, new, ["дин"], FakeSheets())
     assert s.items[0]["category"] == label, s.items[0]["category"]
