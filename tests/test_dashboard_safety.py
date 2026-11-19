@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 import pytest
@@ -76,11 +77,11 @@ def build_from_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(bd, "fetch_rates", lambda base: {"RSD": 1.0, "EUR": 0.0085})
     monkeypatch.setattr(bd, "get_chartjs", lambda: "/* chart.js stub */")
 
-    def run(rows: list[list[str]]) -> str:
+    def run(rows: list[list[str]], **build_kwargs: Any) -> str:
         csv_path = tmp_path / "data.csv"
         _write_csv(csv_path, rows)
         out = bd.build(base_iso="RSD", model="m", use_llm=False,
-                       csv_path=str(csv_path), from_month=None)
+                       csv_path=str(csv_path), from_month=None, **build_kwargs)
         return out.read_text(encoding="utf-8")
 
     return run
