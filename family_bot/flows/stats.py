@@ -50,6 +50,7 @@ DETAILS_BUTTON = "Показать детали"
 DONE_BUTTON = "Готово"
 BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
 ASK_TARGET = "💱 В какую валюту пересчитать все траты?"
+PICKED_TARGET = "💱 Пересчёт в: {label}"
 # Callback data prefix of the Currency picker buttons in this flow.
 CURRENCY_CALLBACK = "scur:"
 
@@ -130,14 +131,14 @@ class StatsFlow:
         Parsed Data-sheet rows.
     sheets : Source[Optional[SheetsClient]]
         Where Recent currencies are read and saved; None without Sheets.
-
-    Each source takes the handler's context, so it can read the bot's Config.
     who : Who
         Spender name for the current User (written next to Recent currencies).
     all_codes : Callable[[], list[str]]
         Every ISO code that can be chosen (blocking: the rate service).
     get_rate : analytics.GetRate
         FX rate source for conversion (``fx.rate`` in the bot).
+
+    Each source takes the handler's context, so it can read the bot's Config.
     """
 
     def __init__(
@@ -319,7 +320,7 @@ class StatsFlow:
         code = picker.picked_code(payload)
         if code is not None:
             target = currency.stored_value(code)
-            await button.edit_message_text(f"💱 Пересчёт в: {currency.label(target)}")
+            await button.edit_message_text(PICKED_TARGET.format(label=currency.label(target)))
             return await self._convert(update, context, target)
         page = picker.page_number(payload)
         if page is not None:
@@ -441,7 +442,8 @@ def _category_label(category: str) -> str:
 def _details_text(query: StatQuery) -> str:
     lines = ["💱 Детали пересчёта:\n"]
     for from_cur, details in query.conversion_details.items():
-        rate = f"{details['rate']:.4f}".replace(".", ",")
+        # Significant digits, so a rate into a costly Currency (дин → KWD) is not 0,0000.
+        rate = f"{details['rate']:.6g}".replace(".", ",")
         lines.append(
             f"{from_cur} → {query.convert_to}:\n"
             f"  Курс: {rate}\n"

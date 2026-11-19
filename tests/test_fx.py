@@ -121,3 +121,9 @@ def test_failed_read_is_not_repeated_within_one_request(monkeypatch: pytest.Monk
     clock.now = fx.RETRY_AFTER_FAILURE_SEC + 1
     assert fx.rate("дин", "€") is None
     assert bases == ["EUR", "EUR"]
+
+
+def test_rate_code_and_symbol_of_one_currency_needs_no_request(
+        calls: list[tuple[str, float]], fresh_cache: None) -> None:
+    assert fx.rate("EUR", "€") == 1.0
+    assert calls == []

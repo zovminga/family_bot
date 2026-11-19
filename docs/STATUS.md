@@ -23,8 +23,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   any Currency of the rate service works, not only those in Data. The pick
   goes to the User's Recent currencies (spec 3.3: the picker bullet covers
   both places). `fx.rate` reads one table per target Currency (`fx.RATES`),
-  kept 1 h; a failed read is not repeated for 60 s. A missing rate gives
-  «❌ Нет курса для пересчёта в дин: €, GEL. Попробуйте позже.» — no sum.
+  kept 1 h (one lock per target, so a slow read blocks only that target); a
+  failed read is not repeated for 60 s. «EUR» and «€» count as one Currency
+  (compared by ISO code). A missing rate gives «❌ Нет курса для пересчёта в
+  дин: €, GEL.» — no sum. Details show the rate with 6 significant digits.
   `analytics.unique_currencies` and `StatsFlow(fallback_currencies=…)` are gone.
 - Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
   Currency step and «💱 Валюта» in the Draft card show the User's Recent
@@ -254,7 +256,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Currency picker (issue #33): Recent currencies are read from `Users` once
   per User per bot process (cache in `user_data`), so a hand edit of `Users`
   shows after a restart. Buttons of an old picker message (manual input or
-  statistics Conversion, after the User moved on) get no answer. Voice/receipt/typed Drafts still snap to
+  statistics Conversion, after the User moved on) get no answer. The Telegram
+  side of the picker (`_inline`, typed search, page/pick buttons) is copied in
+  `flows/manual.py` and `flows/stats.py`; a shared adapter is a follow-up. Voice/receipt/typed Drafts still snap to
   the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
 
 - Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is

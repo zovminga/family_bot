@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Optional
 
-from family_bot.currency import format_amount
+from family_bot.currency import format_amount, to_iso
 from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
@@ -127,6 +127,11 @@ def aggregate(
     if convert_to_currency:
         if get_rate is None:
             raise ValueError("get_rate is required to convert currencies")
+        target_iso = to_iso(convert_to_currency)
+        for w in working:
+            # «EUR» and «€» are one Currency: relabel, no rate needed.
+            if to_iso(w["currency"]) == target_iso:
+                w["currency"] = convert_to_currency
         originals = sorted({w["currency"] for w in working} - {convert_to_currency})
         found = {c: get_rate(c, convert_to_currency) for c in originals}
         missing = [c for c, rate in found.items() if rate is None]
@@ -134,7 +139,7 @@ def aggregate(
             # Never sum without a rate: say which Currencies could not be converted.
             return (
                 f"❌ Нет курса для пересчёта в {convert_to_currency}: "
-                f"{', '.join(missing)}. Попробуйте позже.",
+                f"{', '.join(missing)}.",
                 {},
             )
         rates = {c: rate for c, rate in found.items() if rate is not None}

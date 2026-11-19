@@ -23,6 +23,10 @@ RATES_URL = "https://api.exchangerate-api.com/v4/latest/{base}"
 TIMEOUT_SEC = 10.0
 # A bot user waits for the stats answer, so a pair lookup gives up sooner.
 RATE_TIMEOUT_SEC = 5.0
+# Statistics Conversion reuses a rate table this long (rate of the day, Q7).
+RATE_TTL_SEC = 3600.0
+# A failed read is not repeated for the other Currencies of the same request.
+RETRY_AFTER_FAILURE_SEC = 60.0
 
 
 def fetch_rates(base_iso: str, timeout: float = TIMEOUT_SEC) -> dict[str, float]:
@@ -53,19 +57,15 @@ def fetch_rates(base_iso: str, timeout: float = TIMEOUT_SEC) -> dict[str, float]
     return rates
 
 
-RATE_TTL_SEC = 3600.0
-# A failed read is not repeated for the other Currencies of the same request.
-RETRY_AFTER_FAILURE_SEC = 60.0
-
-
 class RateCache:
     """
     Rate tables by base Currency, cached; a failed read is remembered briefly.
 
     Parameters
     ----------
-    fetch : Callable[[str], dict[str, float]]
-        Reads ``{ISO: units per 1 base}`` for a base ISO code (network).
+    fetch : Optional[Callable[[str], dict[str, float]]]
+        Reads ``{ISO: units per 1 base}`` for a base ISO code; default
+        ``fetch_rates`` with ``RATE_TIMEOUT_SEC`` (network).
     clock : Callable[[], float]
         Monotonic seconds, for the cache age.
     """
@@ -75,12 +75,16 @@ class RateCache:
         self._fetch = fetch or (lambda base: fetch_rates(base, timeout=RATE_TIMEOUT_SEC))
         self._clock = clock
         self._tables: dict[str, tuple[float, Optional[dict[str, float]]]] = {}
-        # One read per base even when two Users ask at the same moment.
-        self._lock = threading.Lock()
+        # One read per base even when two Users ask at the same moment; a slow
+        # read for one base does not hold up the others.
+        self._locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
 
     def table(self, base_iso: str) -> Optional[dict[str, float]]:
         """``{ISO: units per 1 base}``, or None when the service failed."""
-        with self._lock:
+        with self._locks_guard:
+            lock = self._locks.setdefault(base_iso, threading.Lock())
+        with lock:
             cached = self._tables.get(base_iso)
             if cached is not None:
                 at, table = cached
@@ -118,7 +122,7 @@ def rate(from_currency: str, to_currency: str) -> Optional[float]:
     Optional[float]
         The rate, or None when the request failed or the currency has no rate.
     """
-    if from_currency == to_currency:
+    if to_iso(from_currency) == to_iso(to_currency):
         return 1.0
     table = RATES.table(to_iso(to_currency))
     value = table.get(to_iso(from_currency)) if table else None
