@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #14 currency registry, merged after issues #10, #11, #17)  
-**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
+**Updated by:** agent session (issue #20 dashboard build safety)  
+**Product code tip:** `2894108` (2026-11-19) — dashboard build safety (issue #20, D1–D4)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -46,6 +46,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `mypy` (library modules) and `pip-audit` on every pull request and push to
   `main`, installing with `uv sync --locked` on Python 3.12.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
+  `template.html`) and data JSON is embedded with `json_for_script()`, so a
+  comment with HTML or `</script>` stays text. A Telegram publish error masks
+  `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
+  A failed Claude batch is not cached, the next run retries it.
 
 ## Settled (do not re-open as unknowns)
 

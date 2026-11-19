@@ -265,6 +265,11 @@ let monitorDim = "category"; // category | theme | who — grouping of the month
 const excluded = new Set(); // categories excluded from the entire analysis
 const charts = {};
 
+// Escape text for HTML (element content and quoted attributes). Every value that
+// comes from the sheet (comment, category, who, currency, theme, date, month)
+// goes through esc() before it is put into innerHTML.
+const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (ch) => ESC[ch]);
 const fmt = (n) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
 const PALETTE = ["#6ea8fe","#4ade80","#fbbf24","#f87171","#a78bfa","#22d3ee","#fb923c","#f472b6","#34d399","#94a3b8","#e879f9","#facc15"];
 const DOW = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -289,7 +294,7 @@ function bdHtml(rows, { force = false } = {}) {
   const bd = nativeBreakdown(rows);
   if (bd.length <= 1 && !force) return "";
   const items = bd.map(([sym, e]) =>
-    `<div class="bd-row"><span>${fmt(e.sum)} ${sym}</span><span class="bd-sub">≈ ${fmt(e.base)} ${BASE_SYM} · ${e.n} оп.</span></div>`).join("");
+    `<div class="bd-row"><span>${fmt(e.sum)} ${esc(sym)}</span><span class="bd-sub">≈ ${fmt(e.base)} ${esc(BASE_SYM)} · ${e.n} оп.</span></div>`).join("");
   return `<div class="bd-title">Как есть · по валютам</div>${items}`;
 }
 // Extra lines appended to Chart.js tooltips.
@@ -373,26 +378,26 @@ function renderKpis(rows) {
     const diff = b ? ((a - b) / b) * 100 : 0;
     const cls = diff >= 0 ? "up" : "down";
     const arrow = diff >= 0 ? "▲" : "▼";
-    momHtml = `<div class="d ${cls}">${arrow} ${Math.abs(diff).toFixed(0)}% к ${prev}</div>`;
+    momHtml = `<div class="d ${cls}">${arrow} ${Math.abs(diff).toFixed(0)}% к ${esc(prev)}</div>`;
   }
   const topCat = groupSum(rows, "category")[0];
   const lastRows = last ? scopedRows().filter(r => r.month === last) : [];
   const topCatRows = topCat ? rows.filter(r => r.category === topCat[0]) : [];
 
   const cards = [
-    { t: `Всего (${moneyLabel()})`, v: fmt(total), d: `${n} операций`, rows: rows,
+    { t: `Всего (${esc(moneyLabel())})`, v: fmt(total), d: `${n} операций`, rows: rows,
       tip: "Сумма всех операций под текущими фильтрами. В режиме «в одной валюте» каждая операция переведена в RSD по сегодняшнему курсу и просуммирована." },
-    { t: "Средний чек", v: fmt(avg), d: moneyLabel(), rows: rows,
+    { t: "Средний чек", v: fmt(avg), d: esc(moneyLabel()), rows: rows,
       tip: "Всего ÷ число операций = средняя величина ОДНОЙ траты (не за месяц, не за день). Здесь: " + fmt(total) + " ÷ " + n + " = " + fmt(avg) + " " + moneyLabel() + "." },
-    { t: `Текущий месяц${last ? " · " + last : ""}`, v: fmt(last ? sumMonth(last) : 0) + " " + BASE_SYM, d: momHtml || "&nbsp;", rows: lastRows,
+    { t: `Текущий месяц${last ? " · " + esc(last) : ""}`, v: fmt(last ? sumMonth(last) : 0) + " " + esc(BASE_SYM), d: momHtml || "&nbsp;", rows: lastRows,
       tip: "Сумма операций за последний месяц в данных (в RSD по курсу). ▲/▼ — изменение к предыдущему месяцу по формуле (тек − пред) ÷ пред. Не зависит от фильтра по месяцу." },
-    { t: "Топ-категория", v: topCat ? topCat[0] : "—", d: topCat ? fmt(topCat[1]) + " " + moneyLabel() : "", rows: topCatRows,
+    { t: "Топ-категория", v: topCat ? esc(topCat[0]) : "—", d: topCat ? fmt(topCat[1]) + " " + esc(moneyLabel()) : "", rows: topCatRows,
       tip: "Категория с наибольшей суммой трат под текущими фильтрами." },
   ];
   document.getElementById("kpis").innerHTML = cards.map(c => {
     const attr = bdAttr(c.rows || []);
     const vClass = attr ? "v bd" : "v";
-    const info = c.tip ? ` <span class="info" data-tip="${c.tip.replace(/"/g, "&quot;")}">i</span>` : "";
+    const info = c.tip ? ` <span class="info" data-tip="${esc(c.tip)}">i</span>` : "";
     return `<div class="kpi"><div class="t">${c.t}${info}</div><div class="${vClass}"${attr}>${c.v}</div><div class="d">${c.d}</div></div>`;
   }).join("");
 }
@@ -450,14 +455,14 @@ let lastCatTiers = {}; // populated by renderOptimization, reused for drill-down
 function renderInsights(rows) {
   const out = [];
   if (!rows.length) { document.getElementById("insights").innerHTML = "<li>Нет данных под выбранные фильтры.</li>"; return; }
-  const sym = moneyLabel();
+  const sym = esc(moneyLabel()), bsym = esc(BASE_SYM);
 
   // top category by share
   const cats = groupSum(rows, "category");
   const total = rows.reduce((s, r) => s + val(r), 0);
   if (cats.length) {
     const [name, sum] = cats[0];
-    out.push(`Главная статья — <b>${name}</b>: ${fmt(sum)} ${sym} (${(sum / total * 100).toFixed(0)}% всех трат).`);
+    out.push(`Главная статья — <b>${esc(name)}</b>: ${fmt(sum)} ${sym} (${(sum / total * 100).toFixed(0)}% всех трат).`);
   }
 
   // month-over-month per category (independent of the period filter, base currency)
@@ -476,8 +481,8 @@ function renderInsights(rows) {
       if (!down || d < down.d) down = { c, d };
     });
     const pct = (c, d) => { const base = b[c] || 0; return base ? ` (${d >= 0 ? "+" : ""}${Math.round(d / base * 100)}%)` : ""; };
-    if (up && up.d > 0) out.push(`📈 Вырос сильнее всего <b>${up.c}</b>: +${fmt(up.d)} ${BASE_SYM}${pct(up.c, up.d)} в ${last} к ${prev}.`);
-    if (down && down.d < 0) out.push(`📉 Сильнее всего упал <b>${down.c}</b>: ${fmt(down.d)} ${BASE_SYM}${pct(down.c, down.d)} в ${last} к ${prev}.`);
+    if (up && up.d > 0) out.push(`📈 Вырос сильнее всего <b>${esc(up.c)}</b>: +${fmt(up.d)} ${bsym}${pct(up.c, up.d)} в ${esc(last)} к ${esc(prev)}.`);
+    if (down && down.d < 0) out.push(`📉 Сильнее всего упал <b>${esc(down.c)}</b>: ${fmt(down.d)} ${bsym}${pct(down.c, down.d)} в ${esc(last)} к ${esc(prev)}.`);
   }
 
   // recurring categories: present in (almost) every month — these are your fixed/regular spend
@@ -499,12 +504,12 @@ function renderInsights(rows) {
       .sort((x, y) => catBase[y] - catBase[x]);
     if (recurring.length) {
       const avg = (c) => catBase[c] / nMonths;
-      const list = recurring.slice(0, 5).map(c => `${c} (~${fmt(avg(c))} ${BASE_SYM}/мес)`).join(", ");
+      const list = recurring.slice(0, 5).map(c => `${esc(c)} (~${fmt(avg(c))} ${bsym}/мес)`).join(", ");
       out.push(`🔁 Регулярные траты (почти каждый месяц): ${list}.`);
 
       // cut candidate: biggest recurring OPTIONAL (flex) bucket by average monthly spend
       const cut = recurring.filter(c => catTier[c] === "flex")[0];
-      if (cut) out.push(`✂️ Кандидат на сокращение — <b>${cut}</b>: в среднем ${fmt(avg(cut))} ${BASE_SYM}/мес, статья необязательная (в отличие от аренды).`);
+      if (cut) out.push(`✂️ Кандидат на сокращение — <b>${esc(cut)}</b>: в среднем ${fmt(avg(cut))} ${bsym}/мес, статья необязательная (в отличие от аренды).`);
     }
   }
 
@@ -651,7 +656,7 @@ function renderOptimization(rows) {
     const perMonth = tierSum[t] / nM, share = Math.round(tierSum[t] / grand * 100);
     return `<div class="opt-tier" style="border-left-color:${TIERS[t].color}">
       <div class="lab" style="color:${TIERS[t].color}">${TIERS[t].label}</div>
-      <div class="amt">${fmt(perMonth)} <span style="font-size:13px;color:var(--muted)">${BASE_SYM}/мес</span></div>
+      <div class="amt">${fmt(perMonth)} <span style="font-size:13px;color:var(--muted)">${esc(BASE_SYM)}/мес</span></div>
       <div class="nt">${share}% бюджета · ${TIERS[t].note}</div>
     </div>`;
   }).join("");
@@ -664,21 +669,21 @@ function renderOptimization(rows) {
     const last = months[months.length - 1], prev = months[months.length - 2];
     const sumTierMonth = (mo) => rows.filter(r => r.month === mo && rowTier(r) === "flex").reduce((s, r) => s + (r.amount_base || 0), 0);
     const d = sumTierMonth(last) - sumTierMonth(prev);
-    if (d > 0) dir = ` В ${last} необязательные выросли на <span class="trend-up">+${fmt(d)} ${BASE_SYM}</span> к ${prev} — есть что притормозить.`;
-    else if (d < 0) dir = ` В ${last} необязательные снизились на <span class="trend-down">${fmt(d)} ${BASE_SYM}</span> к ${prev} — так держать.`;
+    if (d > 0) dir = ` В ${esc(last)} необязательные выросли на <span class="trend-up">+${fmt(d)} ${esc(BASE_SYM)}</span> к ${esc(prev)} — есть что притормозить.`;
+    else if (d < 0) dir = ` В ${esc(last)} необязательные снизились на <span class="trend-down">${fmt(d)} ${esc(BASE_SYM)}</span> к ${esc(prev)} — так держать.`;
   }
   const ranked = [...bucket.entries()].sort((a, b) => b[1].sum - a[1].sum); // [label, {sum,tier}]
   const topAny = ranked[0];
   const topFlex = ranked.find(([, e]) => e.tier === "flex");
   let topFlexNote = "";
   if (topFlex) {
-    topFlexNote = ` Крупнейшая среди необязательных (💸) — <b>${topFlex[0]}</b> (~${fmt(topFlex[1].sum / nM)} ${BASE_SYM}/мес).`;
+    topFlexNote = ` Крупнейшая среди необязательных (💸) — <b>${esc(topFlex[0])}</b> (~${fmt(topFlex[1].sum / nM)} ${esc(BASE_SYM)}/мес).`;
     if (topAny && topAny[1].tier !== "flex") {
-      topFlexNote += ` Вообще больше тратится на <b>${topAny[0]}</b> (~${fmt(topAny[1].sum / nM)} ${BASE_SYM}/мес), но это ${TIERS[topAny[1].tier].label} — резать сложнее.`;
+      topFlexNote += ` Вообще больше тратится на <b>${esc(topAny[0])}</b> (~${fmt(topAny[1].sum / nM)} ${esc(BASE_SYM)}/мес), но это ${TIERS[topAny[1].tier].label} — резать сложнее.`;
     }
   }
-  take.innerHTML = `💸 Необязательные траты ≈ <b>${fmt(flexMonth)} ${BASE_SYM}/мес</b> (${flexPct}% бюджета). `
-    + `Урезав их на 30%, сэкономите ~<b>${fmt(flexMonth * 0.3)} ${BASE_SYM}/мес</b>.${topFlexNote}${dir}`;
+  take.innerHTML = `💸 Необязательные траты ≈ <b>${fmt(flexMonth)} ${esc(BASE_SYM)}/мес</b> (${flexPct}% бюджета). `
+    + `Урезав их на 30%, сэкономите ~<b>${fmt(flexMonth * 0.3)} ${esc(BASE_SYM)}/мес</b>.${topFlexNote}${dir}`;
 
   // chart: all buckets ranked by avg/month, colored by tier
   makeChart("optChart", {
@@ -730,7 +735,7 @@ function renderMonthlyMonitor(rows) {
   const heat = (v) => v ? ` style="background:rgba(110,168,254,${(0.10 + 0.80 * (v / maxCell)).toFixed(3)})"` : "";
 
   const head = `<thead><tr><th>${DIM_LABEL[monitorDim]}</th>`
-    + months.map(m => `<th class="num">${monthShort(m)}</th>`).join("")
+    + months.map(m => `<th class="num">${esc(monthShort(m))}</th>`).join("")
     + `<th class="num">Σ</th><th class="num">ср/мес</th><th class="num">тренд</th></tr></thead>`;
 
   const lastM = months[months.length - 1], prevM = months[months.length - 2];
@@ -750,13 +755,13 @@ function renderMonthlyMonitor(rows) {
       if (d > 0) tr = `<span class="trend-up">▲ ${pct}%</span>`;
       else if (d < 0) tr = `<span class="trend-down">▼ ${Math.abs(pct)}%</span>`;
     }
-    return `<tr><td class="name" data-drill="${encodeURIComponent(g)}" style="cursor:pointer">${g}</td>${cells}<td class="num"><b>${fmt(gtot.get(g))}</b></td><td class="num">${fmt(gtot.get(g) / months.length)}</td><td class="num">${tr}</td></tr>`;
+    return `<tr><td class="name" data-drill="${encodeURIComponent(g)}" style="cursor:pointer">${esc(g)}</td>${cells}<td class="num"><b>${fmt(gtot.get(g))}</b></td><td class="num">${fmt(gtot.get(g) / months.length)}</td><td class="num">${tr}</td></tr>`;
   }).join("");
 
   // footer: monthly totals across shown groups
   const colTot = months.map(mo => valid.reduce((s, r) => s + (r.month === mo ? val(r) : 0), 0));
   const grand = colTot.reduce((s, x) => s + x, 0);
-  const foot = `<tfoot><tr><td class="name">Итого (${moneyLabel()})</td>`
+  const foot = `<tfoot><tr><td class="name">Итого (${esc(moneyLabel())})</td>`
     + colTot.map(v => `<td class="num"><b>${fmt(v)}</b></td>`).join("")
     + `<td class="num"><b>${fmt(grand)}</b></td><td class="num"><b>${fmt(grand / months.length)}</b></td><td></td></tr></tfoot>`;
 
@@ -787,11 +792,11 @@ function renderGrouping(rows) {
   rows.forEach(r => { (byTheme[r.theme || "Без комментария"] ||= []).push(r); });
   const themes = [...map.entries()].sort((a, b) => b[1].sum - a[1].sum);
   document.getElementById("grouping").innerHTML = themes.map(([t, e]) => {
-    const kws = (rules[t] || []).map(k => `<span class="tag">${k.trim()}</span>`).join(" ");
+    const kws = (rules[t] || []).map(k => `<span class="tag">${esc(k.trim())}</span>`).join(" ");
     const comments = [...e.comments.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)
-      .map(([c, n]) => `${c}${n > 1 ? " ×" + n : ""}`).join(" · ");
+      .map(([c, n]) => `${esc(c)}${n > 1 ? " ×" + n : ""}`).join(" · ");
     const attr = bdAttr(byTheme[t] || []);
-    return `<details><summary>${t} — <span class="amt${attr ? " bd" : ""}"${attr}>${fmt(e.sum)} ${moneyLabel()}</span> · ${e.count} оп.</summary>
+    return `<details><summary>${esc(t)} — <span class="amt${attr ? " bd" : ""}"${attr}>${fmt(e.sum)} ${esc(moneyLabel())}</span> · ${e.count} оп.</summary>
       <div class="grp-body">
         ${kws ? `<div class="kw">Ключевые слова правила: ${kws}</div>` : ""}
         <div class="cmts">${comments || "<i>без текстовых комментариев</i>"}</div>
@@ -810,13 +815,13 @@ function renderTable(rows) {
   });
   const body = sorted.map(r => {
     // In base mode, reveal the original (as-is) amount on hover.
-    const orig = `<div class="bd-title">Как есть</div><div class="bd-row"><span>${fmt(r.amount)} ${r.currency_symbol || r.currency}</span><span class="bd-sub">≈ ${fmt(r.amount_base || 0)} ${BASE_SYM}</span></div>`;
+    const orig = `<div class="bd-title">Как есть</div><div class="bd-row"><span>${fmt(r.amount)} ${esc(r.currency_symbol || r.currency)}</span><span class="bd-sub">≈ ${fmt(r.amount_base || 0)} ${esc(BASE_SYM)}</span></div>`;
     const attr = (mode === "base" && r.currency !== BASE) ? ` data-bd="${encodeURIComponent(orig)}"` : "";
     return `<tr>
-    <td>${r.date}</td><td>${r.category}</td>
+    <td>${esc(r.date)}</td><td>${esc(r.category)}</td>
     <td class="num${attr ? " bd" : ""}"${attr}>${fmt(val(r))}</td>
-    <td>${mode === "base" ? BASE_SYM : (r.currency_symbol || r.currency)}</td>
-    <td>${r.who}</td><td><span class="tag">${r.theme}</span></td><td>${r.comment || ""}</td>
+    <td>${esc(mode === "base" ? BASE_SYM : (r.currency_symbol || r.currency))}</td>
+    <td>${esc(r.who)}</td><td><span class="tag">${esc(r.theme)}</span></td><td>${esc(r.comment)}</td>
   </tr>`; }).join("");
   document.querySelector("#txTable tbody").innerHTML = body || `<tr><td colspan="7" class="empty">Нет операций</td></tr>`;
   document.getElementById("rowCount").textContent = rows.length;
@@ -826,7 +831,7 @@ function renderTable(rows) {
 function renderExcludeChips() {
   const cats = uniqueSorted("category");
   const chips = cats.map(c =>
-    `<span class="tag chip-x${excluded.has(c) ? " off" : ""}" data-cat="${c}">${c}</span>`).join("");
+    `<span class="tag chip-x${excluded.has(c) ? " off" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`).join("");
   const reset = excluded.size ? `<span class="tag chip-reset" data-reset="1">сбросить (${excluded.size})</span>` : "";
   document.getElementById("excludeChips").innerHTML = chips + reset;
 }
@@ -850,9 +855,9 @@ function openDrillRows(title, rows) {
   });
   const arr = [...cm.entries()].sort((a, b) => b[1].sum - a[1].sum);
 
-  document.getElementById("drillTitle").innerHTML = title;
+  document.getElementById("drillTitle").textContent = title;
   document.getElementById("drillSummary").innerHTML =
-    `Всего <b>${fmt(total)} ${moneyLabel()}</b> · ${rows.length} операций · ${arr.length} разных назначений. На что именно ушли деньги:`;
+    `Всего <b>${fmt(total)} ${esc(moneyLabel())}</b> · ${rows.length} операций · ${arr.length} разных назначений. На что именно ушли деньги:`;
 
   const top = arr.slice(0, 15);
   makeChart("drillChart", {
@@ -867,11 +872,11 @@ function openDrillRows(title, rows) {
   });
 
   const body = arr.map(([c, e]) => {
-    const tags = [...e.themes].map(t => `<span class="tag">${t}</span>`).join(" ");
-    return `<tr><td class="name">${c}</td><td>${tags}</td><td class="num">${fmt(e.sum)}</td><td class="num">${e.n}</td><td class="num">${Math.round(e.sum / total * 100)}%</td></tr>`;
+    const tags = [...e.themes].map(t => `<span class="tag">${esc(t)}</span>`).join(" ");
+    return `<tr><td class="name">${esc(c)}</td><td>${tags}</td><td class="num">${fmt(e.sum)}</td><td class="num">${e.n}</td><td class="num">${Math.round(e.sum / total * 100)}%</td></tr>`;
   }).join("");
   document.getElementById("drillTable").innerHTML =
-    `<thead><tr><th>На что (комментарий)</th><th>Тема</th><th class="num">${moneyLabel()}</th><th class="num">Оп.</th><th class="num">Доля</th></tr></thead><tbody>${body}</tbody>`;
+    `<thead><tr><th>На что (комментарий)</th><th>Тема</th><th class="num">${esc(moneyLabel())}</th><th class="num">Оп.</th><th class="num">Доля</th></tr></thead><tbody>${body}</tbody>`;
 
   document.getElementById("drillModal").style.display = "flex";
 }
@@ -891,10 +896,11 @@ function render() {
 }
 
 function init() {
-  const link = DATA.spreadsheet_url ? ` · <a href="${DATA.spreadsheet_url}" target="_blank">открыть таблицу</a>` : "";
-  const fromNote = DATA.from_month ? ` · данные с ${DATA.from_month}` : "";
+  const url = /^https:\/\//.test(DATA.spreadsheet_url || "") ? DATA.spreadsheet_url : "";
+  const link = url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener">открыть таблицу</a>` : "";
+  const fromNote = DATA.from_month ? ` · данные с ${esc(DATA.from_month)}` : "";
   document.getElementById("subtitle").innerHTML =
-    `${DATA.rows.length} операций · база: ${BASE}${fromNote} · обновлено ${DATA.generated_at}${link}`;
+    `${DATA.rows.length} операций · база: ${esc(BASE)}${fromNote} · обновлено ${esc(DATA.generated_at)}${link}`;
 
   populate("fMonth", uniqueSorted("month").filter(Boolean));
   populate("fWho", uniqueSorted("who").filter(v => v && v !== "—"));
@@ -950,7 +956,7 @@ function init() {
     if (bdEl && bdEl.dataset.bd) {
       tip.innerHTML = decodeURIComponent(bdEl.dataset.bd); tip.style.display = "block";
     } else if (tipEl && tipEl.dataset.tip) {
-      tip.innerHTML = `<div class="bd-title">Как считается</div><div style="line-height:1.5">${tipEl.dataset.tip}</div>`;
+      tip.innerHTML = `<div class="bd-title">Как считается</div><div style="line-height:1.5">${esc(tipEl.dataset.tip)}</div>`;
       tip.style.display = "block";
     }
   });
