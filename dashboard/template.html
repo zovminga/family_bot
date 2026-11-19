@@ -404,7 +404,7 @@ function groupSum(rows, key) {
 // AS_OF is the build date. Its month is "this month", its day is how many days
 // of it have passed. An unfinished month is compared with the same days of
 // other months, never with whole months.
-const AS_OF = DATA.as_of || new Date().toISOString().slice(0, 10);
+const AS_OF = DATA.as_of;
 const CUR_MONTH = AS_OF.slice(0, 7), CUR_DAY = Number(AS_OF.slice(8, 10));
 const HISTORY_MONTHS = 3; // "usual" = mean of this many months before this one
 const TOP_NOW_CATS = 5;
@@ -455,7 +455,8 @@ function changeHtml(a, b) {
 //     earlier than the first month in the data (n of them, months with no
 //     expenses count as 0).
 //   Y (usual) = history sum ÷ n.
-//   Z (forecast) = X + (history spent on days after CUR_DAY) ÷ n.
+//   Z (forecast) = X + (history spent on days CUR_DAY+1 .. last day of this
+//     month) ÷ n. Days 29–31 of longer history months are left out.
 //   Compared: X against days 1..CUR_DAY of the previous month.
 // Filters apply except the period; exclusions apply.
 function renderThisMonth() {
@@ -476,7 +477,9 @@ function renderThisMonth() {
   const lines = [];
   if (n) {
     const usual = unitTotals(past, 1 / n);
-    const forecast = unitTotals(past.filter(r => rowDay(r) > CUR_DAY), 1 / n, unitTotals(now));
+    const lastDay = daysInMonth(CUR_MONTH);
+    const rest = past.filter(r => rowDay(r) > CUR_DAY && rowDay(r) <= lastDay);
+    const forecast = unitTotals(rest, 1 / n, unitTotals(now));
     lines.push(`обычно <b>${text(usual)}</b>`, `прогноз <b>${text(forecast)}</b>`);
   }
   const prevMo = shiftMonth(CUR_MONTH, -1);
@@ -485,8 +488,9 @@ function renderThisMonth() {
     if (ch) lines.push(`${ch} к ${esc(periodLabel(prevMo, CUR_DAY))}`);
   }
   if (n) lines.push(`«обычно» — среднее за ${n} мес. до этого`);
-  const tip = "Сумма с 1-го числа по день сборки. «Обычно» — средняя сумма за месяц по " + HISTORY_MONTHS
+  const tip = "Сумма операций этого месяца на день сборки. «Обычно» — средняя сумма за месяц по " + HISTORY_MONTHS
     + " предыдущим месяцам. Прогноз — уже потрачено плюс сколько в среднем тратилось в оставшиеся дни месяца за те же месяцы. "
+    + "В списке категорий «к N-му обычно» — среднее за те же дни 1…N. "
     + "▲/▼ — к тем же дням прошлого месяца. Фильтр «Период» здесь не действует, остальные фильтры и исключения действуют.";
   document.getElementById("thisMonth").innerHTML =
     `<div class="t">Этот месяц · ${name}, ${CUR_DAY} из ${daysInMonth(CUR_MONTH)} дней <span class="info" data-tip="${esc(tip)}">i</span></div>`
@@ -497,7 +501,7 @@ function renderThisMonth() {
   const items = cats.map(([c]) => {
     const cur = now.filter(r => r.category === c);
     const before = past.filter(r => r.category === c && rowDay(r) <= CUR_DAY);
-    const usual = n ? `<span class="usual"><span class="muted">обычно ${text(unitTotals(before, 1 / n))}</span> ${changeHtml(sumVal(cur), sumVal(before) / n)}</span>` : "";
+    const usual = n ? `<span class="usual"><span class="muted">к ${CUR_DAY}-му обычно ${text(unitTotals(before, 1 / n))}</span> ${changeHtml(sumVal(cur), sumVal(before) / n)}</span>` : "";
     return `<li><span class="name">${esc(c)}</span> <b>${text(unitTotals(cur))}</b> ${usual}</li>`;
   }).join("");
   const head = n ? `Категории к ${CUR_DAY}-му числу · обычно = среднее за ${n} мес.` : "Категории этого месяца";

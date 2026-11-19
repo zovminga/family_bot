@@ -11,7 +11,10 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from datetime import date
+from pathlib import Path
+from typing import Any
 
 import pytest
 from test_dashboard_safety import DOM_STUB, _page_script, build_from_rows  # noqa: F401
@@ -59,8 +62,9 @@ console.log(JSON.stringify({ base, native: grab(), errors: ERRORS }));
 """
 
 
-def _run(build_from_rows, tmp_path, rows):  # noqa: F811
-    html = build_from_rows(rows, as_of=AS_OF)
+def _run(build_from_rows: Callable[..., str], tmp_path: Path,  # noqa: F811
+         rows: list[list[str]], as_of: date = AS_OF) -> dict[str, Any]:
+    html = build_from_rows(rows, as_of=as_of)
     runner = tmp_path / "run.js"
     runner.write_text(DOM_STUB + _page_script(html) + DUMP, encoding="utf-8")
     proc = subprocess.run(
@@ -68,7 +72,8 @@ def _run(build_from_rows, tmp_path, rows):  # noqa: F811
     )
     out = json.loads(proc.stdout)
     # Intl.NumberFormat("ru-RU") groups digits with a no-break space.
-    return json.loads(re.sub(r"[  ]", " ", json.dumps(out, ensure_ascii=False)))
+    result: dict[str, Any] = json.loads(re.sub(r"[  ]", " ", json.dumps(out, ensure_ascii=False)))
+    return result
 
 
 def _text(html: str) -> str:
@@ -116,8 +121,8 @@ def test_unfinished_month_compared_with_same_days(page):
 def test_top_categories_against_three_month_average(page):
     cats = _text(page["base"]["cats"])
     # Food by day 19: 800 now, (300 + 600 + 300) / 3 = 400 usually.
-    assert re.search(r"Food 800 дин обычно 400 дин ▲ 100%", cats), cats
-    assert re.search(r"Rent 1 000 дин обычно 1 000 дин", cats), cats
+    assert re.search(r"Food 800 дин к 19-му обычно 400 дин ▲ 100%", cats), cats
+    assert re.search(r"Rent 1 000 дин к 19-му обычно 1 000 дин", cats), cats
     # Order: by this month's sum.
     assert cats.index("Rent") < cats.index("Food") < cats.index("Fun")
 
@@ -171,3 +176,14 @@ def test_per_currency_never_added(build_from_rows, tmp_path):  # noqa: F811
     assert "40 €" in cats
     for total in ("1 940", "1 910", "2 440"):
         assert total not in card, f"{total}: дин and € added"
+
+
+@node_only
+def test_forecast_skips_days_this_month_does_not_have(build_from_rows, tmp_path):  # noqa: F811
+    # On 30 November, spending on 31 October is not part of the forecast.
+    rows = [_row("01.10.2026", "Rent", 1000), _row("31.10.2026", "Food", 300),
+            _row("01.11.2026", "Rent", 1000)]
+    page = _run(build_from_rows, tmp_path, rows, as_of=date(2026, 11, 30))
+    card = _text(page["base"]["month"])
+    assert "обычно 1 300 дин" in card
+    assert "прогноз 1 000 дин" in card
