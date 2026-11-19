@@ -41,7 +41,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
   `analytics.format_month_summary` writes the text, so the monthly summary on
   the 1st (issue #36) can call them for the previous month. Phones get the
-  new button with the next menu (`/start` or 🏠 after the deploy).
+  new button with the next menu (`/start` or 🏠 after the deploy). Like every
+  menu button, it gets no answer after a bot restart until `/start` (see Open).
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,

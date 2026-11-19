@@ -177,7 +177,7 @@ class CurrencySummary:
     """
     Month totals in one Currency (never mixed with other Currencies).
 
-    Parameters
+    Attributes
     ----------
     total : float
         Sum of all expenses in this Currency.
@@ -197,7 +197,7 @@ class MonthSummary:
     """
     One month of expenses, split by Currency.
 
-    Parameters
+    Attributes
     ----------
     month : str
         ``YYYY-MM``.
@@ -277,15 +277,15 @@ def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> st
         return "\n".join([*lines, NO_DATA])
 
     lines.append("💰 Итого: " + " · ".join(
-        format_amount(s.total, cur) for cur, s in summary.by_currency.items()))
-    several = len(summary.by_currency) > 1
-    for cur, s in summary.by_currency.items():
+        format_amount(sums.total, cur) for cur, sums in summary.by_currency.items()))
+    multi_currency = len(summary.by_currency) > 1
+    for cur, sums in summary.by_currency.items():
         lines.append("")
-        if several:
+        if multi_currency:
             lines += [f"— {cur} —", ""]
         lines.append("🏷 Топ категорий:")
         lines += [f"{i}. {name} — {format_amount(amount, cur)}"
-                  for i, (name, amount) in enumerate(s.categories[:top], 1)]
+                  for i, (name, amount) in enumerate(sums.categories[:top], 1)]
         lines += ["", "👤 По людям:"]
-        lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in s.spenders]
+        lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in sums.spenders]
     return "\n".join(lines)
