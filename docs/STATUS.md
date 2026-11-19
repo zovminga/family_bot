@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #22 Config in post_init, merged after issue #38)  
-**Product code tip:** `096ecaa` (2026-11-19) — Config loaded in `post_init`, one-line setup problems (issue #22)  
+**Updated by:** agent session (issue #30 typed text → Draft, merged after issues #22, #38)  
+**Product code tip:** `7495d06` (2026-11-19) — typed text «кофе 350» in the main menu → Draft card (issue #30)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -23,6 +23,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - In-bot statistics with FX conversion (`analytics.py`)
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
+- Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
+  parsed by `voice_input.extract_expenses` (`text_input.py`). Text without a
+  digit or with no expense found gets a hint; a Claude error gets
+  «❌ Не разобрал, введите вручную».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
 - Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /
@@ -124,6 +128,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Typed text (issue #30) reaches `bot.text_expense` only inside the
+  conversation: after a bot restart the user needs `/start` first (menu texts
+  in `entry_points` are plan §3.2 «Состояние»). Text without a digit
+  («кофе триста») gets the hint without a Claude call, to avoid paid calls on
+  chat text; voice still parses number words. Without `ANTHROPIC_API_KEY`,
+  text with a digit gets «❌ Не разобрал, введите вручную».
 - Lint and type checks are relaxed so CI passed without product-code edits
   (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
   per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips

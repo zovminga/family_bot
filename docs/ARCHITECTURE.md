@@ -20,6 +20,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── draft_expense.py        Draft review UI state machine
     ├── voice_input.py          OGG → Vosk → Claude → draft items
     ├── photo_input.py          image → Claude Vision → draft items
+    ├── text_input.py           «кофе 350» → voice_input.extract_expenses → Draft
     ├── regular.py              Regular_expenses → preset dicts
     ├── analytics.py            stats on normalized rows
     ├── expense.py              ExpenseRecord → row
@@ -72,6 +73,7 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in `conversat
 
 ```
 /start → CHOOSE_ACTION (main menu)
+           ├─ other text → text_expense → Draft card (stays in CHOOSE_ACTION)
            ├─ manual add → CHOOSE_CAT → TYPING_AMT → CHOOSE_CUR
            │                 → TYPING_CMNT → CHOOSE_DT [| TYPING_DT] → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
@@ -129,6 +131,8 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
+**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` first.
+
 **Photo** (`photo_input.py`): image bytes → Claude Vision line items + semantic buckets → Python grouping/sums → `session_from_receipt`. No fiscal QR / zbar (Render-friendly).
 
 **Draft save:** `draft_expense.save_drafts` → `expense.append_expenses` → one
@@ -149,11 +153,11 @@ a restart drops them.
 **Errors:** `bot.build_application()` registers `errors.on_error` with
 `add_error_handler`. An exception a handler does not catch is logged (traceback,
 tokens and keys masked) and the user gets «❌ Не сохранилось. Попробуйте ещё раз».
-Voice and photo catch their own errors: a failed Vosk or Claude call shows
+Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
 
-Voice/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
+Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
 
 ## Runtime modes
