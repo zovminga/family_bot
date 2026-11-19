@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #34 Conversion in statistics)  
-**Product code tip:** `5a34d7b` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
+**Product code tip:** `ff9bf09` (2026-11-19) — Conversion in statistics: shared Currency picker, rate tables cached 1 h (issue #34)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
