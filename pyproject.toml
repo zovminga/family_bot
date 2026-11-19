@@ -85,7 +85,7 @@ module = ["vosk"]
 ignore_missing_imports = true
 
 # Existing type errors, relaxed per module so CI is green without touching
-# product code. Each list names only the error codes that module trips today.
+# product code. Remove a code once the module no longer trips it.
 [[tool.mypy.overrides]]
 module = ["analytics"]
 disable_error_code = ["type-var", "return-value", "arg-type", "misc", "operator", "index"]

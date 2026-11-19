@@ -6,7 +6,7 @@ import pytest
 
 from regular import parse_regular
 from sheets import resolve_creds_path
-# Also importable from here, the fake's former home, for older imports.
+# Kept importable from here for branches written before the fake moved to conftest.
 from tests.conftest import FakeSheetsClient
 
 

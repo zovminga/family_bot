@@ -65,8 +65,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `bot.py`, does not use `--strict`, and disables named error codes in
   `analytics`, `flow_preset`, `navigation`, `photo_input`, `voice_input`. Both
   lists are in `pyproject.toml`; shrink them as modules are cleaned up.
-- `tests/test_sheets.py` still re-exports `FakeSheetsClient` for older
-  imports. Drop it once no test imports the fake from there.
+- `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
+  before the move still import it. Drop the re-export once no branch imports
+  the fake from `tests.test_sheets`.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
   recorded as open: stats not returning home (R7, R8, see
   `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
