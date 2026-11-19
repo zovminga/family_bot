@@ -8,6 +8,7 @@ CHOOSE_ACTION and drops the query.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine, Optional, TypeVar
 
@@ -168,7 +169,8 @@ class StatsFlow:
 
         if text == "📜 Last 3 records":
             category = load_query(_user_data(context)).category
-            await _message(update).reply_text(self._last_records(context, category))
+            await _message(update).reply_text(
+                await asyncio.to_thread(self._last_records, context, category))
             return await nav.go_home(update, context)
 
         if text == "📅 Custom period":
@@ -242,7 +244,8 @@ class StatsFlow:
 
         await _message(update).reply_text(
             "💱 Convert all expenses to which currency?",
-            reply_markup=_keyboard([[c] for c in self._currencies(context)]),
+            reply_markup=_keyboard(
+                [[c] for c in await asyncio.to_thread(self._currencies, context)]),
         )
         return STAT_CONVERT_CURRENCY
 
@@ -317,15 +320,18 @@ class StatsFlow:
                 f"📊 Statistics , category '{query.category}':\n❌ Error: period not specified")
             return
 
-        stats, query.conversion_details = analytics.aggregate(
-            self._load_rows(context),
-            category=query.category,
-            month=query.month,
-            date_from=query.date_from,
-            date_to=query.date_to,
-            group_by_currency=query.group_by_currency,
-            convert_to_currency=query.convert_to,
-            get_rate=self._get_rate,
+        # Sheets read and FX requests block, so they run in a worker thread.
+        stats, query.conversion_details = await asyncio.to_thread(
+            lambda: analytics.aggregate(
+                self._load_rows(context),
+                category=query.category,
+                month=query.month,
+                date_from=query.date_from,
+                date_to=query.date_to,
+                group_by_currency=query.group_by_currency,
+                convert_to_currency=query.convert_to,
+                get_rate=self._get_rate,
+            )
         )
         suffix = f" (in {query.convert_to})" if query.convert_to else ""
         await _message(update).reply_text(

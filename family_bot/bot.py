@@ -34,6 +34,7 @@ from family_bot.conversation_states import (
 )
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot.sheet_data import normalize_rows, DATE_FMT
+from family_bot.per_user import PerUserUpdateProcessor
 from family_bot.sheets import SheetsClient
 from family_bot import analytics
 
@@ -46,7 +47,7 @@ def cfg(context: ContextTypes.DEFAULT_TYPE) -> config.Config:
 
 async def post_init(app: Application) -> None:
     """Load Config once the bot starts; print each setup problem as one line."""
-    settings = config.load(os.environ)
+    settings = await asyncio.to_thread(config.load, os.environ)
     app.bot_data[config.KEY] = settings
     for line in settings.problems:
         print(line)
@@ -75,7 +76,7 @@ def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
 async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the latest built dashboard to the chat by its stored file_id."""
     msg = update.effective_message
-    file_id = get_dashboard_file_id(cfg(context).sheets)
+    file_id = await asyncio.to_thread(get_dashboard_file_id, cfg(context).sheets)
     if not file_id:
         await msg.reply_text(
             "📊 Дашборд ещё не собран. Собери его на компьютере "
@@ -362,8 +363,9 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Черновик уже не активен.")
         return
     settings = cfg(context)
-    outcome = draft.apply_callback(
-        data, session, settings.categories, settings.currencies, settings.sheets)
+    # A save writes to Sheets, so the whole callback runs in a worker thread.
+    outcome = await asyncio.to_thread(
+        draft.apply_callback, data, session, settings.categories, settings.currencies, settings.sheets)
     await _apply_draft_outcome(query, outcome)
 
 
@@ -580,7 +582,7 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
     cur = context.user_data["cur"]
     who = context.user_data["spender"]
     cmnt = context.user_data.get("comment", "")
-    append_expense(cfg(context).sheets, ExpenseRecord(
+    await asyncio.to_thread(append_expense, cfg(context).sheets, ExpenseRecord(
         date=date_str,
         category=cat,
         amount=amt,
@@ -652,8 +654,8 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Tests connection to Google Sheets."""
     sheets = cfg(context).sheets
     try:
-        if sheets is not None and sheets.test_connection():
-            test_cats = sheets.read_categories()
+        if sheets is not None and await asyncio.to_thread(sheets.test_connection):
+            test_cats = await asyncio.to_thread(sheets.read_categories)
             if test_cats:
                 text = f"✅ Connection successful!\n📋 Available categories: {len(test_cats)}\n{', '.join(test_cats)}"
             else:
@@ -671,7 +673,7 @@ async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reloads categories (and presets) from Google Sheets."""
     settings = cfg(context)
     old_cats = settings.categories.copy()
-    problems = config.reload(settings)
+    problems = await asyncio.to_thread(config.reload, settings)
     cats = settings.categories
 
     if old_cats == cats:
@@ -697,7 +699,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Main ----------
 def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
-    app = Application.builder().token(bot_token).post_init(post_init).build()
+    app = (Application.builder().token(bot_token).post_init(post_init)
+           .concurrent_updates(PerUserUpdateProcessor()).build())
 
     # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
     app.add_handler(EDITED_MESSAGES, group=-2)
