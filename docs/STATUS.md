@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #15 input checks, merged after issues #12, #21, #37)  
+**Updated by:** agent session (issue #30 typed text → Draft)  
 **Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -23,6 +23,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - In-bot statistics with FX conversion (`analytics.py`)
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
+- Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
+  parsed by `voice_input.extract_expenses` (`text_input.py`). Text without a
+  digit or with no expense found gets a hint; a Claude error gets
+  «❌ Не разобрал, введите вручную».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
 - Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /

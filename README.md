@@ -10,7 +10,7 @@ own allowlist). Your finances never mix with someone else's install.
 
 ## Features
 
-- Add expenses by category (manual, voice, receipt photo)
+- Add expenses by category (manual, typed text like «кофе 350», voice, receipt photo)
 - Multi-currency (дин, €, ₽, ¥, £, $, CNY; list in `currency.py`)
 - Statistics and optional HTML dashboard
 - Categories and presets loaded from Google Sheets
@@ -92,7 +92,7 @@ ALLOWED_USERS=111111111:Azat,222222222:Lisa
 Restart the bot. Anyone not on this list is rejected (they cannot read or
 write your sheet). `/whoami` still works so new members can send you their ID.
 
-### 5. Optional: voice & receipt photos
+### 5. Optional: voice, typed text & receipt photos
 
 Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still work.
 
