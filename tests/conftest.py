@@ -1,19 +1,20 @@
 """Pytest configuration: keep repo root on sys.path, isolate from secrets.
 
-Importing bot.py loads .env and reaches Google Sheets at import time. A checkout
-that holds a real .env (for example the copy the dashboard launchd job uses)
-would then talk to the live spreadsheet. Neutralise both before any test module
-imports bot.
+Importing bot.py reads no .env and opens no spreadsheet (Config loads in
+post_init). ``bot.main()`` does read .env, so a checkout that holds a real one
+(for example the copy the dashboard launchd job uses) could reach live
+services from a test. Neutralise .env and the secret variables up front.
 
 Also holds FakeSheetsClient, the in-memory SheetsClient shared by unit tests
-(`from tests.conftest import FakeSheetsClient`).
+(`from tests.conftest import FakeSheetsClient`), and ``bot_context``.
 """
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from types import SimpleNamespace
+from typing import Any, Optional
 
 import dotenv
 
@@ -21,11 +22,33 @@ dotenv.load_dotenv = lambda *args, **kwargs: False
 for _var in ("GOOGLE_CREDS_PATH", "SHEET_NAME", "BOT_TOKEN", "ANTHROPIC_API_KEY",
              "DASHBOARD_CHAT_ID"):
     os.environ.pop(_var, None)
-os.environ["ALLOWED_USERS"] = "111:Azat,222:Lisa"
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def bot_context(**fields: Any) -> SimpleNamespace:
+    """Handler context holding a Config in bot_data, as after post_init.
+
+    Defaults: Allowlist 111:Azat, 222:Lisa, fallback categories, no Sheets.
+    Pass any Config field to override (``sheets=FakeSheets()``).
+    """
+    import config
+
+    settings = config.Config(**{
+        "allowed_users": {111: "Azat", 222: "Lisa"},
+        "categories": list(config.FALLBACK_CATEGORIES),
+        **fields,
+    })
+    return SimpleNamespace(user_data={}, args=[], bot_data={config.KEY: settings})
+
+
+def settings_of(context: SimpleNamespace) -> Any:
+    """The Config inside a ``bot_context``."""
+    import config
+
+    return context.bot_data[config.KEY]
 
 
 class FakeSheetsClient:

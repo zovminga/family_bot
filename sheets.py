@@ -65,6 +65,10 @@ def resolve_creds_path(creds_path: Optional[str] = None) -> Path:
     return path
 
 
+class SpreadsheetNotFound(RuntimeError):
+    """SHEET_NAME names no spreadsheet the service account can open."""
+
+
 def _authorize_spreadsheet(
     creds_path: Optional[str] = None,
     sheet_name: Optional[str] = None,
@@ -80,7 +84,10 @@ def _authorize_spreadsheet(
     if not name:
         raise RuntimeError("Environment variable SHEET_NAME not found.")
 
-    return gspread.service_account(filename=str(creds_file), scopes=SCOPE).open(name)
+    try:
+        return gspread.service_account(filename=str(creds_file), scopes=SCOPE).open(name)
+    except gspread.SpreadsheetNotFound as e:
+        raise SpreadsheetNotFound(name) from e
 
 
 @runtime_checkable

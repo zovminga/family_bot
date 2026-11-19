@@ -62,6 +62,7 @@ Skip the STATUS bump only for pure typo/format edits that change no facts about 
 
 ```
 bot.py              Telegram wiring (handlers, ConversationHandler, webhook/polling)
+config.py           Config loaded in post_init, kept in bot_data; setup problems
 auth.py             ALLOWED_USERS parse + gate
 expense.py          ExpenseRecord + append
 draft_expense.py    Voice/photo confirmation card

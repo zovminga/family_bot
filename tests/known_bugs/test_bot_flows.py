@@ -7,6 +7,7 @@ import asyncio
 import math
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from telegram import Chat, Message, Update, User
@@ -16,6 +17,7 @@ import bot
 import draft_expense as draft
 import navigation as nav
 from flows import stats as flow_stats
+from tests.conftest import settings_of
 from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
 from conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
 
@@ -39,7 +41,7 @@ def run(coro):
 
 @pytest.fixture(autouse=True)
 def _rows(monkeypatch):
-    monkeypatch.setattr(bot, "load_expense_rows", lambda: list(ROWS))
+    monkeypatch.setattr(bot, "load_expense_rows", lambda sheets: list(ROWS))
 
 
 def last_reply_texts(update):
@@ -96,10 +98,10 @@ def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
     assert "amt" not in ctx.user_data, f"{text!r} accepted as {ctx.user_data.get('amt')}"
 
 
-# 5. "$" must be in bot.CURS so voice/photo dollars stay dollars (R4).
-def test_dollar_currency_survives_snap():
+# 5. "$" must be on the Currency buttons so voice/photo dollars stay dollars (R4).
+def test_dollar_currency_survives_snap(ctx: SimpleNamespace) -> None:
     import voice_input as vx
-    assert vx._snap_currency("$", bot.CURS, bot.DEFAULT_CURRENCY) == "$"
+    assert vx._snap_currency("$", settings_of(ctx).currencies, bot.DEFAULT_CURRENCY) == "$"
 
 
 CHIPS = {"comment": "chips", "amount": 100.0, "currency": "дин",
@@ -122,7 +124,7 @@ def test_old_card_save_does_not_save_other_draft(ctx, monkeypatch):
           "date": "01.11.2026", "category": "Transport"}],
         who="Azat", transcript="taxi"))
     sheets = FakeSheets()
-    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    settings_of(ctx).sheets = sheets
     run(bot.vx_callback(make_update(query=FakeQuery(save_cb(a))), ctx))  # tap Save on card A
     assert [r[6] for r in sheets.rows] == ["chips"], sheets.rows
 
@@ -144,7 +146,7 @@ def test_partial_save_retry_does_not_duplicate(ctx, monkeypatch):
               "date": "01.11.2026", "category": "Food"} for n in range(3)]
     s = draft.add_draft(ctx.user_data, draft.session_from_receipt(items, who="Azat"))
     sheets = FakeSheets(fail_on_call=1)
-    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    settings_of(ctx).sheets = sheets
     with pytest.raises(RuntimeError):
         run(bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx))
     run(bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx))  # user retries
@@ -157,7 +159,7 @@ def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
     s = draft.add_draft(ctx.user_data, draft.session_from_voice(
         [dict(CHIPS)], who="Azat", transcript="chips"))
     sheets = FakeSheets()
-    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    settings_of(ctx).sheets = sheets
     q1, q2 = FakeQuery(save_cb(s)), FakeQuery(save_cb(s))
     run(bot.vx_callback(make_update(query=q1), ctx))
     run(bot.vx_callback(make_update(query=q2), ctx))
@@ -175,7 +177,7 @@ def test_save_does_not_block_event_loop(ctx, monkeypatch):
             super().append_data_rows(rows)
 
     sheets = SlowSheets()
-    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    settings_of(ctx).sheets = sheets
     s = draft.add_draft(ctx.user_data, draft.session_from_voice(
         [dict(CHIPS)], who="Azat", transcript="chips"))
 
