@@ -111,7 +111,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   write into `asyncio.to_thread`, mark the Draft as saving before the await.
 - Logging is not configured: `errors` logs through the `family_bot.errors`
   logger, which prints to stderr via Python's fallback handler (WARNING and
-  above). Other modules still `print`. Issue #26 switches to `logging`.
+  above). Other modules still `print` exception text to stdout without
+  masking (`bot.py`, `sheets.py`, `analytics.py`, `flows/stats.py`); none of
+  it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
 - Drafts live only in bot memory: a restart drops them and old cards answer

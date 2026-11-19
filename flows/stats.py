@@ -18,6 +18,7 @@ from telegram.ext import BaseHandler, ContextTypes, MessageHandler, filters
 
 import analytics
 import clock
+import errors
 import navigation as nav
 from conversation_states import (
     CHOOSE_ACTION, STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
@@ -293,8 +294,9 @@ class StatsFlow:
             return analytics.format_last_n(
                 self._load_rows(), n=LAST_RECORDS_SHOWN,
                 category=None if category == ALL_CATEGORIES else category)
-        except Exception as e:  # noqa: BLE001 - report failures to the user
-            return f"❌ Error getting records: {e}"
+        except Exception as e:  # noqa: BLE001 - details go to the log
+            errors.log_exception("Last records", e)
+            return "❌ Не удалось загрузить записи. Попробуйте ещё раз"
 
     async def _reply_result(self, update: Update, query: StatQuery) -> None:
         """Send the statistics text and store conversion details in the query."""
