@@ -11,7 +11,8 @@ from typing import Callable, Optional
 
 import requests
 
-from sheet_data import DATE_FMT, SYMBOL_TO_ISO
+from currency import to_iso
+from sheet_data import DATE_FMT
 
 GetRate = Callable[[str, str], Optional[float]]
 
@@ -21,8 +22,8 @@ def http_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
     try:
         if from_currency == to_currency:
             return 1.0
-        from_cur = SYMBOL_TO_ISO.get(from_currency, from_currency)
-        to_cur = SYMBOL_TO_ISO.get(to_currency, to_currency)
+        from_cur = to_iso(from_currency)
+        to_cur = to_iso(to_currency)
         url = f"https://api.exchangerate-api.com/v4/latest/{from_cur}"
         response = requests.get(url, timeout=5)
         if response.status_code == 200:

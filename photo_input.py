@@ -25,6 +25,8 @@ import base64
 import os
 from typing import Optional
 
+import currency
+
 # Reuse the JSON/snap helpers from voice_input to avoid duplicating logic.
 from voice_input import (
     _extract_json_object,
@@ -67,6 +69,8 @@ def _build_prompt(categories: list[str], currencies: list[str],
                   today: str, who: str, default_currency: str) -> str:
     cats = "\n".join(f"- {c}" for c in categories)
     curs = ", ".join(currencies)
+    codes = ", ".join(f"{c.code}→{c.symbol}" for c in currency.CURRENCIES
+                      if c.symbol in currencies)
     return (
         "На фото — кассовый чек. Распознай его и верни СТРОГО JSON.\n\n"
         f"Сегодня: {today} (формат ДД.ММ.ГГГГ). Пользователь: {who}.\n\n"
@@ -90,7 +94,8 @@ def _build_prompt(categories: list[str], currencies: list[str],
         "group = название его category.\n"
         "- merchant: название магазина, если видно.\n"
         "- date: дата покупки с чека в формате ДД.ММ.ГГГГ. Если не видно — сегодня.\n"
-        "- currency: символ валюты чека из списка выше.\n\n"
+        "- currency: символ валюты чека из списка выше. Код ISO на чеке переведи "
+        f"в символ: {codes}.\n\n"
         "Формат ответа (без markdown, без пояснений вокруг):\n"
         '{"merchant":"...","date":"ДД.ММ.ГГГГ","currency":"дин",'
         '"items":[{"name":"...","amount":123.45,"category":"...","group":"..."}],'

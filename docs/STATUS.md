@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #42 doc/code mismatches, merged after issue #9)  
-**Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
+**Updated by:** agent session (issue #14 currency registry)  
+**Product code tip:** issue #14 merge (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -29,6 +29,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
   for pip-only hosts (Render Build Command, `dashboard/run.sh`).
+- Currency registry `currency.py` (issue #14): `$` is back on the buttons and
+  in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
+  accepts symbol, ISO code or Russian word. Adding a Currency is one line.
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
@@ -63,7 +66,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
-- 24 known-bug reproductions live in `tests/known_bugs/` as
+- Known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)

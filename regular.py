@@ -18,17 +18,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+from currency import CURRENCIES
 from sheets import SheetsClient, open_client
 from sheet_data import parse_amount
 
-# Currency column header (substring) -> symbol used in the Data sheet.
-CURRENCY_WORDS = [
-    ("динар", "дин"),
-    ("евро", "€"),
-    ("доллар", "$"),
-    ("рубл", "₽"),
-    ("фунт", "£"),
-]
 
 
 def _find_col(header: list[str], substr: str) -> Optional[int]:
@@ -48,8 +41,14 @@ def parse_regular(values: list[list[str]]) -> dict:
     if not values:
         return {"monthly": [], "oneoff": []}
     header = values[0]
-    cur_cols = {i: sym for word, sym in CURRENCY_WORDS
-                for i in [_find_col(header, word)] if i is not None}
+    # Currency column header contains a registry word stem -> stored symbol.
+    cur_cols: dict[int, str] = {}
+    for cur in CURRENCIES:
+        for stem in cur.stems:
+            i = _find_col(header, stem)
+            if i is not None:
+                cur_cols.setdefault(i, cur.symbol)
+                break
     cat_col = _find_col(header, "категор")
     who_col = _find_col(header, "кто")
 
