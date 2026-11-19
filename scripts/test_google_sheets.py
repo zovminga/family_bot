@@ -3,19 +3,25 @@
 
 Not part of pytest — run from repo root:
   python3 scripts/test_google_sheets.py
+
+Reads .env from the repo root first, like the bot.
 """
 
 import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parent.parent
+ENV_FILE = ROOT / ".env"
 sys.path.insert(0, str(ROOT))
 
 from sheets import open_client
 
 
 def main():
+    load_dotenv(ENV_FILE)
     print("🔍 Testing Google Sheets connection...")
     print("=" * 50)
 

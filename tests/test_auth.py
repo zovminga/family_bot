@@ -43,3 +43,15 @@ def test_spender_name():
     users = {111: "Azat"}
     assert spender_name(111, "tg_name", users) == "Azat"
     assert spender_name(999, "tg_name", users) == "tg_name"
+
+
+def test_parse_comma_inside_name():
+    # I7: a comma inside a name must not split the entry
+    assert parse_allowed_users("111:Иван, Петров,222:Lisa") == {
+        111: "Иван, Петров",
+        222: "Lisa",
+    }
+
+
+def test_parse_trailing_separator():
+    assert parse_allowed_users("111:Azat,") == {111: "Azat"}

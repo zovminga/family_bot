@@ -27,9 +27,9 @@ def run(coro: Any) -> Any:
 
 def make_flow() -> stats.StatsFlow:
     return stats.StatsFlow(
-        categories=lambda: ["Food", "Transport"],
-        load_rows=lambda: list(ROWS),
-        fallback_currencies=lambda: ["дин"],
+        categories=lambda _ctx: ["Food", "Transport"],
+        load_rows=lambda _ctx: list(ROWS),
+        fallback_currencies=lambda _ctx: ["дин"],
         get_rate=lambda src, dst: 1.0 if src == dst else 117.0,
     )
 
@@ -67,13 +67,13 @@ def test_conversion_details_then_home() -> None:
 
 
 def test_last_records_error_hides_raw_text() -> None:
-    def broken_rows() -> list[dict]:
+    def broken_rows(_ctx: object) -> list[dict]:
         raise RuntimeError("APIError: [503] secret details")
 
     flow = stats.StatsFlow(
-        categories=lambda: ["Food"],
+        categories=lambda _ctx: ["Food"],
         load_rows=broken_rows,
-        fallback_currencies=lambda: ["дин"],
+        fallback_currencies=lambda _ctx: ["дин"],
         get_rate=lambda src, dst: 1.0,
     )
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(category="Food")})
