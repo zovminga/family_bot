@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #33 Currency picker)  
+**Updated by:** agent session (issue #33 Currency picker, merged after issues #27, #36)  
 **Product code tip:** `5a34d7b` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -30,6 +30,25 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Render needs the new `requirements.txt` (Babel) — the usual Build Command
   installs it. If the rate service is down, «🌍 Другая» lists only the seven
   registry Currencies.
+- After a restart (issue #27, plan 2.5, R17, Q15): main-menu buttons (old
+  English labels too, `navigation.MENU_ACTIONS`) and 🏠 are conversation
+  `entry_points`, so they work without `/start`. `allow_reentry=False`:
+  inside a flow its states read the text as before. A button on an old Draft
+  card gets an alert «Черновик устарел после обновления бота, отправьте ещё
+  раз» (`draft_expense.STALE_TEXT`); the card keeps its text and loses its
+  buttons. An old «↩️ Отменить» gets the alert «…пока бот не
+  перезапускался…». Typed text («кофе 350») still needs `/start` or a menu
+  tap after a restart. Tests: `tests/test_restart.py`.
+- Monthly summary (issue #36, plan 4.2, F4): on the 1st at
+  `MONTHLY_SUMMARY_HOUR` (default 9) in `TZ_NAME` the bot sends last month's
+  summary (same text as «📅 Этот месяц») to `DASHBOARD_CHAT_ID`
+  (`monthly_summary.py`, PTB `JobQueue.run_monthly`; the `job-queue` extra
+  adds APScheduler). Unset `DASHBOARD_CHAT_ID` → no job and one setup line at
+  start (the line also shows in the «not connected to Google Sheets» reply); no
+  Sheets → no job. A wrong `TZ_NAME` → the job uses `Europe/Belgrade`. The two
+  settings are parsed in `config.py`. A failure is logged, the bot keeps running. The job lives in memory:
+  if the bot is down at that hour (deploy, restart, sleeping instance), that
+  month is skipped, not sent late.
 - Household data in settings, not code (issue #41, plan 5.6, I8):
   `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
   unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
@@ -76,8 +95,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
   `analytics.format_month_summary` writes the text, so the monthly summary on
   the 1st (issue #36) can call them for the previous month. Phones get the
-  new button with the next menu (`/start` or 🏠 after the deploy). Like every
-  menu button, it gets no answer after a bot restart until `/start` (see Open).
+  new button with the next menu (`/start` or 🏠 after the deploy).
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
@@ -230,6 +248,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the User moved on) get no answer. Voice/receipt/typed Drafts still snap to
   the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
 
+- Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is
+  only in the owner's Mac `.env` (dashboard publish). The Render service is on
+  the paid Starter plan (seen on the owner's Render dashboard), which does not
+  sleep, so the job fires if no deploy runs at that hour.
 - README «Install from scratch» (issue #40): a clean-clone walk with fake keys
   covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
   download. Not walked: the Google Cloud console steps, a real spreadsheet, and
@@ -246,8 +268,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   runtime log has no «Downloading Vosk model» line on the first voice message
   (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
-  conversation: after a bot restart the user needs `/start` first (menu texts
-  in `entry_points` are plan §3.2 «Состояние»). Text without a digit
+  conversation: after a bot restart the user needs `/start` or a menu button
+  first (menu buttons are `entry_points` since issue #27). Text without a digit
   («кофе триста») gets the hint without a Claude call, to avoid paid calls on
   chat text; voice still parses number words. Without `ANTHROPIC_API_KEY`,
   text with a digit gets «❌ Не разобрал, введите вручную».
@@ -272,8 +294,6 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
-- Drafts live only in bot memory: a restart drops them and old cards answer
-  «Черновик уже не активен.» (issue #27 changes that text).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
