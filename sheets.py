@@ -8,9 +8,10 @@ they do not authorize or open worksheets themselves.
 from __future__ import annotations
 
 import os
-import clock
 from pathlib import Path
 from typing import Any, Optional, Protocol, runtime_checkable
+
+import clock
 
 BOT_DIR = Path(__file__).resolve().parent
 

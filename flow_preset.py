@@ -2,11 +2,10 @@
 """Preset expense flow: pick a ⚡ template and save immediately."""
 from __future__ import annotations
 
-import clock
-
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+import clock
 from conversation_states import CHOOSE_ACTION, CHOOSE_PRESET
 from expense import ExpenseRecord, append_expense
 import navigation as nav
