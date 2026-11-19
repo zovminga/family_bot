@@ -120,8 +120,8 @@ land or none do, so a retry after a Sheets error writes no duplicates.
 `DraftSession`; several cards stay usable at once. Callback data is
 `vx:<id>:<action>[:<item>[:<arg>]]` (`draft_expense.parse_callback`). The
 category button carries the category name (`setcat:<i>:<name>`); a name that
-would push callback data past Telegram's 64 bytes falls back to its index
-(`setcati:<i>:<idx>`). Save or cancel marks the Draft `closed`; later taps on
+would push callback data past Telegram's 64 bytes is carried as an 8-char
+hash of the name (`setcathash:<i>:<hash>`), matched against current categories. Save or cancel marks the Draft `closed`; later taps on
 that card do nothing, so a double tap keeps «✅ Сохранено». Up to 20 closed
 Drafts are kept per user, open ones are never pruned. An unknown id (card from
 before a restart) gets «Черновик уже не активен.». Drafts are not persisted:

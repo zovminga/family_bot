@@ -174,15 +174,14 @@ def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
 @known_bug("R11")
 def test_save_does_not_block_event_loop(ctx, monkeypatch):
     class SlowSheets(FakeSheets):
-        def append_data_row(self, row):
+        def append_data_rows(self, rows):
             time.sleep(0.6)
-            super().append_data_row(row)
+            super().append_data_rows(rows)
 
     sheets = SlowSheets()
     monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
-    draft.session_from_voice([{"comment": "chips", "amount": 1.0, "currency": "дин",
-                               "date": "01.11.2026", "category": "Food"}],
-                             who="Azat", transcript="chips").store(ctx.user_data)
+    s = draft.add_draft(ctx.user_data, draft.session_from_voice(
+        [dict(CHIPS)], who="Azat", transcript="chips"))
 
     async def scenario():
         ticks = 0
@@ -195,7 +194,7 @@ def test_save_does_not_block_event_loop(ctx, monkeypatch):
 
         t = asyncio.create_task(ticker())
         await asyncio.sleep(0)
-        await bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx)
+        await bot.vx_callback(make_update(query=FakeQuery(save_cb(s))), ctx)
         ticked_during_save = ticks
         await t
         return ticked_during_save

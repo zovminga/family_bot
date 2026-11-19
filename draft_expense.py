@@ -7,6 +7,7 @@ and call edit_message_*.
 """
 from __future__ import annotations
 
+import hashlib
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -22,6 +23,10 @@ KEY_DRAFTS = "drafts"
 CALLBACK_PREFIX = "vx:"
 # Telegram rejects a keyboard whose callback_data exceeds 64 bytes.
 CALLBACK_DATA_MAX_BYTES = 64
+# Draft id length in random bytes (2 bytes = 4 hex chars).
+DRAFT_ID_BYTES = 2
+# Hex chars of the category-name hash used when the name itself is too long.
+CATEGORY_HASH_CHARS = 8
 # Saved / cancelled drafts kept so a repeat tap on their card is a no-op.
 MAX_CLOSED_DRAFTS = 20
 
@@ -43,9 +48,9 @@ class DraftSession:
 def add_draft(user_data: dict, session: DraftSession) -> DraftSession:
     """Give the Draft a fresh short id and keep it next to the other open Drafts."""
     drafts: dict[str, DraftSession] = user_data.setdefault(KEY_DRAFTS, {})
-    draft_id = secrets.token_hex(2)
+    draft_id = secrets.token_hex(DRAFT_ID_BYTES)
     while draft_id in drafts:
-        draft_id = secrets.token_hex(2)
+        draft_id = secrets.token_hex(DRAFT_ID_BYTES)
     session.id = draft_id
     drafts[draft_id] = session
     closed = [k for k, d in drafts.items() if d.closed]
@@ -148,22 +153,27 @@ def item_edit_buttons(session: DraftSession, i: int) -> ButtonGrid:
     ]
 
 
-def _category_cb(session: DraftSession, i: int, idx: int, name: str) -> str:
+def _category_hash(name: str) -> str:
+    return hashlib.sha1(name.encode()).hexdigest()[:CATEGORY_HASH_CHARS]
+
+
+def _category_cb(session: DraftSession, i: int, name: str) -> str:
     """Carry the category name, so a reordered Config cannot change the pick.
 
-    A name too long for Telegram's callback_data limit falls back to its index.
+    A name too long for Telegram's callback_data limit is carried as a short
+    hash of the name ('setcathash'), matched against the current categories.
     """
     by_name = _cb(session, f"setcat:{i}:{name}")
     if len(by_name.encode()) <= CALLBACK_DATA_MAX_BYTES:
         return by_name
-    return _cb(session, f"setcati:{i}:{idx}")
+    return _cb(session, f"setcathash:{i}:{_category_hash(name)}")
 
 
 def category_buttons(session: DraftSession, i: int, categories: list[str]) -> ButtonGrid:
     rows: ButtonGrid = []
     row: list[tuple[str, str]] = []
-    for idx, c in enumerate(categories):
-        row.append((c, _category_cb(session, i, idx, c)))
+    for c in categories:
+        row.append((c, _category_cb(session, i, c)))
         if len(row) == 2:
             rows.append(row)
             row = []
@@ -288,7 +298,7 @@ def apply_callback(
     except (IndexError, ValueError):
         return CallbackOutcome()
     if not (0 <= i < len(items)):
-        return CallbackOutcome()
+        return CallbackOutcome(text="Черновик изменился, начни заново.")
     arg = parts[2] if len(parts) > 2 else ""
 
     if action == "ed":
@@ -307,8 +317,11 @@ def apply_callback(
     if action == "setcat" and arg:
         items[i]["category"] = arg
         return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
-    if action == "setcati":
-        items[i]["category"] = categories[int(arg)]
+    if action == "setcathash":
+        match = [c for c in categories if _category_hash(c) == arg]
+        if not match:  # category removed from Config since the card was shown
+            return CallbackOutcome()
+        items[i]["category"] = match[0]
         return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
     if action == "setcur":
         items[i]["currency"] = currencies[int(arg)]
