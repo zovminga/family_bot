@@ -1,7 +1,4 @@
-"""Claude client settings and JSON extraction from model replies.
-
-Shared by voice, receipt photo, typed text and the dashboard comment grouping.
-"""
+"""Claude client settings and JSON extraction from model replies (bot and dashboard)."""
 from __future__ import annotations
 
 import json

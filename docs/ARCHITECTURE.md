@@ -65,7 +65,7 @@ Finances never share across installs.
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
-| `llm.py` | `client()`: Claude client with the bot limits (`LLM_TIMEOUT_SEC` 30 s, `LLM_MAX_RETRIES` 1); `reply_text(resp)` and `extract_json_object(text)` for model replies. Used by voice, receipt photo, typed text and dashboard grouping | Parse JSON out of a model reply by hand |
+| `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
 | `navigation.py` | «return home» labels/callbacks; `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
@@ -178,7 +178,7 @@ Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
 
-The bot's Claude clients (`voice_input`, `photo_input`) come from `llm.client()`: 30 s timeout and 1 retry (`llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`). The dashboard's grouping client keeps the SDK defaults.
+The bot's Claude clients (`voice_input`, `photo_input`) come from `llm.client()`, with the timeout and retry limits `llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`. The dashboard's grouping client keeps the SDK defaults.
 
 Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
