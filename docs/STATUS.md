@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #21 build failure alert)  
+**Updated by:** agent session (issue #21 build failure alert, merged after issue #37)  
 **Product code tip:** `786cd63` (2026-11-19) — Telegram alert when a dashboard build fails (issue #21)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -68,6 +68,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
   exception type (`dashboard/failure_alert.py`, stdlib only). Details:
   `dashboard/SPEC.md` §5.1.
+- Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
+  inside their card. «По каждой» with no Currency chosen shows sums per
+  Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
+  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
 
 ## Settled (do not re-open as unknowns)
 
