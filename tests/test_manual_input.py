@@ -144,8 +144,8 @@ def test_main_registers_edit_drop_before_allowlist(monkeypatch):
     monkeypatch.setattr(bot.Application, "run_polling", lambda self, **kw: apps.append(self))
     bot.main()
     groups = apps[0].handlers
-    assert bot.EDITED_MESSAGES in groups[-2], groups
-    assert min(groups) == -2, "something runs before the edit drop"
+    assert bot.EDITED_MESSAGES in groups[min(groups)], groups
+    assert len(groups[min(groups)]) == 1, "something runs alongside the edit drop"
 
 def _message(text):
     return Message(message_id=5, date=datetime.now(timezone.utc),

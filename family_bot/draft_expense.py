@@ -12,8 +12,9 @@ import hashlib
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional, Sequence
 
+from family_bot import amount_input
 from family_bot import clock
 from family_bot.currency import format_amount
 from family_bot.expense import ExpenseRecord, append_expenses
@@ -22,6 +23,8 @@ from family_bot.sheets import SheetsClient
 
 # user_data key: dict draft id -> DraftSession, so several cards live at once.
 KEY_DRAFTS = "drafts"
+# user_data key: AmountEdit while the User types a new amount («✏️ Сумма»).
+KEY_AMOUNT_EDIT = "draft_amount_edit"
 
 CALLBACK_PREFIX = "vx:"
 # Telegram rejects a keyboard whose callback_data exceeds 64 bytes.
@@ -46,6 +49,15 @@ class DraftSession:
     header: Optional[str] = None
     id: str = ""
     closed: bool = False  # saved or cancelled: its card buttons do nothing
+
+
+@dataclass(frozen=True)
+class AmountEdit:
+    """A Draft item waiting for a typed amount, and the card message to redraw."""
+
+    draft_id: str
+    index: int
+    card: Any  # Telegram message of the Draft card (adapter-owned)
 
 
 def add_draft(user_data: dict, session: DraftSession) -> DraftSession:
@@ -87,6 +99,10 @@ class CallbackOutcome:
     text: Optional[str] = None
     buttons: Optional[ButtonGrid] = None
     markup_only: bool = False
+    # Records just written by «✅ Сохранить» (the adapter offers «↩️ Отменить»).
+    saved: tuple[ExpenseRecord, ...] = ()
+    # Item index whose new amount the User types next («✏️ Сумма»).
+    await_amount: Optional[int] = None
 
 
 def short(text: str, n: int = 20) -> str:
@@ -136,6 +152,7 @@ def main_buttons(session: DraftSession) -> ButtonGrid:
             ("📅 Дата", _cb(session, "date:0")),
             ("💱 Валюта", _cb(session, "cur:0")),
         ])
+        rows.append(_amount_who_row(session, 0))
     else:
         for i, it in enumerate(items):
             rows.append([(
@@ -145,6 +162,13 @@ def main_buttons(session: DraftSession) -> ButtonGrid:
     return rows
 
 
+def _amount_who_row(session: DraftSession, i: int) -> list[tuple[str, str]]:
+    return [
+        ("✏️ Сумма", _cb(session, f"amt:{i}")),
+        ("👤 Кто", _cb(session, f"who:{i}")),
+    ]
+
+
 def item_edit_buttons(session: DraftSession, i: int) -> ButtonGrid:
     return [
         [
@@ -152,6 +176,7 @@ def item_edit_buttons(session: DraftSession, i: int) -> ButtonGrid:
             ("📅 Дата", _cb(session, f"date:{i}")),
             ("💱 Валюта", _cb(session, f"cur:{i}")),
         ],
+        _amount_who_row(session, i),
         [("⬅️ Назад", _cb(session, "menu"))],
     ]
 
@@ -193,6 +218,42 @@ def currency_buttons(session: DraftSession, i: int, currencies: list[str]) -> Bu
     ]]
     rows.append([("⬅️ Назад", _cb(session, "menu"))])
     return rows
+
+
+def spender_buttons(session: DraftSession, i: int, spenders: Sequence[str]) -> ButtonGrid:
+    """One button per Allowlist Spender name.
+
+    The callback carries the index, not the name: a long Cyrillic name would
+    break the 64-byte limit. Drafts and the Allowlist both live only until a
+    restart, so the index points at the same name when tapped.
+    """
+    rows: ButtonGrid = [[
+        (name, _cb(session, f"setwho:{i}:{idx}")) for idx, name in enumerate(spenders)
+    ]]
+    rows.append([("⬅️ Назад", _cb(session, "menu"))])
+    return rows
+
+
+def amount_prompt(session: DraftSession, i: int) -> str:
+    target = f" для #{i + 1}" if len(session.items) > 1 else ""
+    return (card_text(session)
+            + f"\n\n✏️ Введите новую сумму{target}. Например: 1 200 или 350 дин")
+
+
+def set_amount(session: DraftSession, i: int, text: str, currencies: list[str]) -> bool:
+    """Apply a typed amount to item i; False (nothing changed) if it fails the checks.
+
+    Same rules as the manual flow (`amount_input.parse_amount_text`). A Currency
+    typed with the amount replaces the item's Currency if this install offers it.
+    """
+    parsed = amount_input.parse_amount_text(text)
+    if parsed is None or not (0 <= i < len(session.items)):
+        return False
+    amount, typed = parsed
+    session.items[i]["amount"] = amount
+    if typed is not None and typed.symbol in currencies:
+        session.items[i]["currency"] = typed.symbol
+    return True
 
 
 def date_buttons(session: DraftSession, i: int) -> ButtonGrid:
@@ -247,9 +308,9 @@ def session_from_receipt(
     )
 
 
-def save_drafts(client: SheetsClient, items: list[dict]) -> None:
+def save_drafts(client: SheetsClient, items: list[dict]) -> list[ExpenseRecord]:
     """Write all items in one append call: it either lands whole or not at all."""
-    append_expenses(client, [
+    records = [
         ExpenseRecord(
             date=it["date"],
             category=it["category"],
@@ -259,7 +320,9 @@ def save_drafts(client: SheetsClient, items: list[dict]) -> None:
             comment=it["comment"],
         )
         for it in items
-    ])
+    ]
+    append_expenses(client, records)
+    return records
 
 
 def apply_callback(
@@ -270,6 +333,7 @@ def apply_callback(
     client: SheetsClient,
     *,
     now: Optional[datetime] = None,
+    spenders: Sequence[str] = (),
 ) -> CallbackOutcome:
     """Apply one draft callback (payload after 'vx:<id>:'). Mutates session.
 
@@ -298,7 +362,7 @@ def apply_callback(
         # arrives meanwhile must already see a closed Draft. Reopen on failure.
         session.closed = True
         try:
-            save_drafts(client, items)
+            records = save_drafts(client, items)
         except Exception:
             session.closed = False
             raise
@@ -310,7 +374,7 @@ def apply_callback(
             )
         else:
             text = f"✅ Сохранено трат: {len(items)}"
-        return CallbackOutcome(text=text)
+        return CallbackOutcome(text=text, saved=tuple(records))
 
     parts = data.split(":", 2)
     action = parts[0]
@@ -335,6 +399,20 @@ def apply_callback(
             buttons=currency_buttons(session, i, currencies), markup_only=True)
     if action == "date":
         return CallbackOutcome(buttons=date_buttons(session, i), markup_only=True)
+    if action == "amt":
+        return CallbackOutcome(
+            text=amount_prompt(session, i),
+            buttons=[[("⬅️ Назад", _cb(session, "menu"))]],
+            await_amount=i,
+        )
+    if action == "who":
+        return CallbackOutcome(
+            buttons=spender_buttons(session, i, spenders), markup_only=True)
+    if action == "setwho":
+        if not arg.isdigit() or int(arg) >= len(spenders):
+            return CallbackOutcome()
+        items[i]["who"] = spenders[int(arg)]
+        return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
     if action == "setcat" and arg:
         items[i]["category"] = arg
         return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
