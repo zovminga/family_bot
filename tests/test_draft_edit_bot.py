@@ -47,7 +47,7 @@ def test_typed_amount_updates_the_card(ctx):
     assert (session.items[0]["amount"], session.items[0]["currency"]) == (1200.0, "€")
     card, kw = query.message.edits[-1]
     assert "1 200 €" in card
-    assert draft.KEY_AMOUNT_EDIT not in ctx.user_data
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
 
 
 def test_bad_amount_is_asked_again(ctx):
@@ -58,7 +58,7 @@ def test_bad_amount_is_asked_again(ctx):
         run(bot.draft_amount_text(upd, ctx))
     assert "больше нуля" in upd.message.replies[0][0]
     assert session.items[0]["amount"] == 350.0
-    assert draft.KEY_AMOUNT_EDIT in ctx.user_data
+    assert bot.KEY_AMOUNT_EDIT in ctx.user_data
 
 
 def test_text_without_pending_edit_passes_through(ctx):
@@ -70,14 +70,22 @@ def test_home_button_drops_pending_edit_and_passes_through(ctx):
     session = _open_draft(ctx)
     _tap(ctx, session, "amt:0")
     assert run(bot.draft_amount_text(make_update(nav.HOME_BUTTON), ctx)) is None
-    assert draft.KEY_AMOUNT_EDIT not in ctx.user_data
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
+
+
+@pytest.mark.parametrize("text", [nav.ADD_EXPENSE, "/start", "кофе"])
+def test_menu_button_command_or_word_drops_pending_edit(ctx, text):
+    session = _open_draft(ctx)
+    _tap(ctx, session, "amt:0")
+    assert run(bot.draft_amount_text(make_update(text), ctx)) is None
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
 
 
 def test_other_card_button_drops_pending_edit(ctx):
     session = _open_draft(ctx)
     _tap(ctx, session, "amt:0")
     _tap(ctx, session, "menu")
-    assert draft.KEY_AMOUNT_EDIT not in ctx.user_data
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
 
 
 def test_pending_edit_on_saved_draft_passes_through(ctx):

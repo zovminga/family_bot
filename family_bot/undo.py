@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from family_bot.currency import format_amount
+from family_bot.draft_expense import ButtonGrid
 from family_bot.expense import ExpenseRecord, delete_expenses
 from family_bot.sheet_data import parse_amount
 from family_bot.sheets import SheetsClient
@@ -28,9 +29,6 @@ UNDO_WINDOW_MINUTES = 30
 UNDO_WINDOW = timedelta(minutes=UNDO_WINDOW_MINUTES)
 # Save id length in random bytes (4 bytes = 8 hex chars).
 SAVE_ID_BYTES = 4
-
-ButtonGrid = list[list[tuple[str, str]]]  # (label, callback_data)
-
 
 @dataclass(frozen=True)
 class LastSave:
@@ -61,7 +59,7 @@ def _done_text(records: tuple[ExpenseRecord, ...]) -> str:
         r = records[0]
         amount = parse_amount(r.amount)
         shown = format_amount(amount, r.currency) if amount is not None else str(r.amount)
-        return f"↩️ Отменено, запись удалена: {r.category} — {shown}, {r.date}"
+        return f"↩️ Отменено, трата удалена: {r.category} — {shown}, {r.date}"
     return f"↩️ Отменено, удалено трат: {len(records)}"
 
 
@@ -74,7 +72,9 @@ def undo(user_data: dict, callback_data: str, client: SheetsClient,
     """
     save = user_data.get(KEY_LAST_SAVE)
     if not isinstance(save, LastSave) or callback_data != CALLBACK_PREFIX + save.id:
-        return UndoResult("Отменить можно только свою последнюю запись.", done=False)
+        return UndoResult(
+            "Отменить можно только свою последнюю трату, пока бот не перезапускался. "
+            "Удалите строку в таблице.", done=False)
     if now - save.saved_at > UNDO_WINDOW:
         return UndoResult(
             f"Отменить можно только в первые {UNDO_WINDOW_MINUTES} минут после сохранения. "

@@ -12,7 +12,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
 from family_bot import amount_input
 from family_bot import clock
@@ -23,8 +23,6 @@ from family_bot.sheets import SheetsClient
 
 # user_data key: dict draft id -> DraftSession, so several cards live at once.
 KEY_DRAFTS = "drafts"
-# user_data key: AmountEdit while the User types a new amount («✏️ Сумма»).
-KEY_AMOUNT_EDIT = "draft_amount_edit"
 
 CALLBACK_PREFIX = "vx:"
 # Telegram rejects a keyboard whose callback_data exceeds 64 bytes.
@@ -49,15 +47,6 @@ class DraftSession:
     header: Optional[str] = None
     id: str = ""
     closed: bool = False  # saved or cancelled: its card buttons do nothing
-
-
-@dataclass(frozen=True)
-class AmountEdit:
-    """A Draft item waiting for a typed amount, and the card message to redraw."""
-
-    draft_id: str
-    index: int
-    card: Any  # Telegram message of the Draft card (adapter-owned)
 
 
 def add_draft(user_data: dict, session: DraftSession) -> DraftSession:

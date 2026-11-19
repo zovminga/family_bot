@@ -33,7 +33,7 @@ def test_undo_deletes_exactly_the_saved_row():
     client = _client()
     result = undo.undo(user_data, data, client, NOW + timedelta(minutes=1))
     assert result.done
-    assert result.text == "↩️ Отменено, запись удалена: Food — 350 дин, 19.11.2026"
+    assert result.text == "↩️ Отменено, трата удалена: Food — 350 дин, 19.11.2026"
     assert [r[6] for r in client.read_data_values()[1:]] == ["bread"]
 
 
