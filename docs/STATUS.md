@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #22 Config in post_init, startup problems)  
+**Updated by:** agent session (issue #22 Config in post_init, merged after issue #38)  
 **Product code tip:** `096ecaa` (2026-11-19) — Config loaded in `post_init`, one-line setup problems (issue #22)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -93,7 +93,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
   inside their card. «По каждой» with no Currency chosen shows sums per
   Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
-  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
+  charts then use the base currency.
+- Dashboard first screen (issue #38): above the filters, «Этот месяц: X,
+  обычно Y, прогноз Z» and the top Categories against their 3-month average
+  for the same days. The build stamps `as_of` (build date). An unfinished
+  month is compared with the same days of the previous month in the card,
+  insights, monitor trend and optimization takeaway. Formulas:
+  `dashboard/SPEC.md` §4.0. Plan 4.3 done.
 
 ## Settled (do not re-open as unknowns)
 
