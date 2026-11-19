@@ -104,6 +104,8 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
 3. Build command: `pip install -r requirements.txt`. Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
 4. Start command: `python bot.py`
 5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
+6. Optional: `TZ_NAME` — the family's IANA time zone (default `Europe/Belgrade`).
+   Render runs in UTC; the bot takes "today" and "yesterday" in this zone.
 
 ## Commands
 
