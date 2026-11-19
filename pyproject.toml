@@ -31,11 +31,11 @@ dev = [
 ]
 
 [tool.uv]
-# Not an installable package yet: modules live in the repo root.
+# Modules live in the repo root, so uv installs dependencies only, not the project.
 package = false
 default-groups = ["bot", "dashboard", "dev"]
-# Lock only versions that ship wheels for the dashboard Mac and the Linux host.
-# vosk 0.3.45 has no macOS wheel, so this keeps the lock on one that does.
+# Lock only versions that ship wheels for the dashboard Mac and the Linux host,
+# so a package release without a wheel for one of them never enters the lock.
 required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
