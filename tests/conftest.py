@@ -43,6 +43,19 @@ def _offline_currency_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
                         currency_picker.Catalog(fetch=lambda: list(TEST_CURRENCY_CODES)))
 
 
+@pytest.fixture(autouse=True)
+def _offline_rates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``fx.rate`` never reaches the rate service; a test that needs rates sets fx.RATES."""
+    import requests
+
+    from family_bot import fx
+
+    def no_network(base: str) -> dict[str, float]:
+        raise requests.ConnectionError(f"no network in tests ({base})")
+
+    monkeypatch.setattr(fx, "RATES", fx.RateCache(fetch=no_network))
+
+
 def bot_context(**fields: Any) -> SimpleNamespace:
     """Handler context holding a Config in bot_data, as after post_init.
 

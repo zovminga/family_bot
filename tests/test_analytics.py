@@ -13,7 +13,6 @@ from family_bot.analytics import (
     format_month_summary,
     last_n,
     month_summary,
-    unique_currencies,
 )
 from family_bot.sheet_data import Row
 
@@ -32,11 +31,6 @@ ROWS = [
         amount=5.0, currency="дин", who="Azat", comment="c",
     ),
 ]
-
-
-def test_unique_currencies():
-    assert unique_currencies(ROWS) == ["дин", "€"]
-    assert unique_currencies([], fallback=["₽"]) == ["₽"]
 
 
 def test_last_n_sheet_order_newest_first():
@@ -97,8 +91,16 @@ def test_aggregate_missing_rate():
         convert_to_currency="дин",
         get_rate=lambda *_: None,
     )
-    assert text == "❌ Не удалось получить курс € → дин"
+    assert text == "❌ Нет курса для пересчёта в дин: €. Попробуйте позже."
     assert details == {}
+
+
+def test_aggregate_names_every_missing_currency():
+    rows = [*ROWS, Row(date=date(2026, 8, 3), month="2026-08", category="Food", amount=5.0,
+                       currency="GEL", who="Ann", comment="")]
+    text, _ = aggregate(rows, month="2026-08", convert_to_currency="дин",
+                        get_rate=lambda src, dst: 100.0 if src == "€" else None)
+    assert text == "❌ Нет курса для пересчёта в дин: GEL. Попробуйте позже."
 
 
 def test_format_last_n_shows_date_text():

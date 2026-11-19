@@ -68,8 +68,8 @@ Finances never share across installs.
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
-| `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
+| `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). `rate` reads the table of the target Currency from `RATES` (`RateCache`): every source Currency of one stats request shares one call, the table is kept 1 h (`RATE_TTL_SEC`), a failed read is not repeated for 60 s. Tests replace `fx.RATES` (autouse fixture: no network). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, `default_currency` (stored symbol of `BASE_CURRENCY`, written when an expense names no Currency; unset → EUR), `summary_chat_id` (`DASHBOARD_CHAT_ID`, `None` when unset) and `summary_hour` (`MONTHLY_SUMMARY_HOUR`), setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`, `BASE_CURRENCY`, `DASHBOARD_CHAT_ID`, `MONTHLY_SUMMARY_HOUR`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
@@ -108,7 +108,10 @@ Stats (`flows/stats.py`): the menu tap and the category step each start a new
 `StatQuery`, so a previous request's month, dates or conversion currency never
 carry over. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
 drops it too. `STAT_SHOW_DETAILS` is entered only when there are conversion
-details to show. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
+details to show. The Conversion target (`STAT_CONVERT_CURRENCY`) uses the
+Currency picker like manual input (callback prefix `scur:`, typed code or name
+too); any Currency of the rate service, and the pick goes to the User's Recent
+currencies. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
 `STATS.states()` into the `ConversationHandler`. Manual add (`flows/manual.py`)
 works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
