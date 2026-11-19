@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #41 household data in settings, merged after issues #31, #32, #35)  
+**Updated by:** agent session (issue #27 menu and old cards after a deploy)  
 **Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -17,6 +17,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- After a restart (issue #27, plan 2.5, R17, Q15): main-menu buttons (old
+  English labels too, `navigation.MENU_ACTIONS`) and 🏠 are conversation
+  `entry_points`, so they work without `/start`. `allow_reentry=False`:
+  inside a flow its states read the text as before. A button on an old Draft
+  card gets an alert «Черновик устарел после обновления бота, отправьте ещё
+  раз» (`draft_expense.STALE_TEXT`); the card keeps its text and loses its
+  buttons. An old «↩️ Отменить» gets the alert «…пока бот не
+  перезапускался…». Typed text («кофе 350») still needs `/start` or a menu
+  tap after a restart. Tests: `tests/test_restart.py`.
 - Household data in settings, not code (issue #41, plan 5.6, I8):
   `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
   unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
@@ -63,8 +72,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
   `analytics.format_month_summary` writes the text, so the monthly summary on
   the 1st (issue #36) can call them for the previous month. Phones get the
-  new button with the next menu (`/start` or 🏠 after the deploy). Like every
-  menu button, it gets no answer after a bot restart until `/start` (see Open).
+  new button with the next menu (`/start` or 🏠 after the deploy).
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
@@ -227,8 +235,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   runtime log has no «Downloading Vosk model» line on the first voice message
   (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
-  conversation: after a bot restart the user needs `/start` first (menu texts
-  in `entry_points` are plan §3.2 «Состояние»). Text without a digit
+  conversation: after a bot restart the user needs `/start` or a menu button
+  first (menu buttons are `entry_points` since issue #27). Text without a digit
   («кофе триста») gets the hint without a Claude call, to avoid paid calls on
   chat text; voice still parses number words. Without `ANTHROPIC_API_KEY`,
   text with a digit gets «❌ Не разобрал, введите вручную».
@@ -253,8 +261,6 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
-- Drafts live only in bot memory: a restart drops them and old cards answer
-  «Черновик уже не активен.» (issue #27 changes that text).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
