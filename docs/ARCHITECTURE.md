@@ -116,8 +116,9 @@ works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 - Allowlist: `TypeHandler` in group `-2` (`enforce_allowlist`); `/whoami` exempt.
 - Typed amount after «✏️ Сумма» on a Draft card: `draft_amount_text` in group
   `-1`. It acts only while `user_data["draft_amount_edit"]` is set, redraws the
-  card and stops the update (`ApplicationHandlerStop`); otherwise the text goes
-  on to the conversation.
+  card and stops the update (`ApplicationHandlerStop`). A command, text with
+  no digit (menu button, word), a new Draft card or any card button ends the
+  wait, and the text goes on to the conversation.
   When Google Sheets is not set up (`Config.sheets is None`) an allowed User
   gets the setup problems instead of the flow; `/whoami` still answers.
 
@@ -181,7 +182,9 @@ those rows (`expense.delete_expenses` → one `SheetsClient.delete_data_rows`
 call, gspread `batch_update` with `deleteDimension`, bottom-up). Data has no row
 id, so the row is found by its values: date, Category, Currency, Spender,
 comment equal, amount equal as a number; the bottom-most match wins, each row
-once. A row edited or deleted in the sheet since → nothing is deleted. Refused
+once. A row edited or deleted in the sheet since → nothing is deleted. Read
+and delete run under one lock (one bot process), so two Users' undos cannot
+shift each other's rows; a hand edit in the sheet between them still can. Refused
 (alert, button stays): another User's save (their `user_data` holds none), an
 earlier save of the same User, a save older than 30 minutes or from before a
 restart.
@@ -189,8 +192,7 @@ restart.
 **Draft card edits:** «✏️ Сумма» (`amt:<i>`) sets
 `user_data["draft_amount_edit"]`; the next text goes through
 `draft_expense.set_amount` (`amount_input.parse_amount_text`, same checks as the
-manual flow; a Currency typed with it replaces the item's). Any card button
-ends the wait. «👤 Кто» (`who:<i>`) lists the Allowlist Spender names;
+manual flow; a Currency typed with it replaces the item's). «👤 Кто» (`who:<i>`) lists the Allowlist Spender names;
 `setwho:<i>:<index>` carries the index (names may not fit 64 bytes; Drafts and
 the Allowlist both live until restart).
 

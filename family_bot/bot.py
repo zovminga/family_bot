@@ -2,10 +2,11 @@
 import os
 import json
 import asyncio
+from dataclasses import dataclass
 from typing import Optional
 
 from telegram import (
-    BotCommand, Update, InlineKeyboardButton, InlineKeyboardMarkup
+    BotCommand, Message, Update, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.error import TelegramError
 from telegram.ext import (
@@ -214,6 +215,20 @@ MANUAL = flow_manual.ManualFlow(
 # Extraction lives in voice_input / photo_input; review/edit/save lives in
 # draft_expense. Handlers here are thin Telegram adapters.
 DEFAULT_CURRENCY = "дин"  # used when the currency wasn't spoken
+# user_data key: AmountEdit while the User types a new amount («✏️ Сумма»).
+KEY_AMOUNT_EDIT = "draft_amount_edit"
+BAD_DRAFT_AMOUNT = (
+    "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
+    "Например: 1 200 или 350 дин. Попробуйте ещё раз или нажмите «⬅️ Назад» в карточке.")
+
+
+@dataclass(frozen=True)
+class AmountEdit:
+    """A Draft item waiting for a typed amount, and the card message to redraw."""
+
+    draft_id: str
+    index: int
+    card: Message
 
 
 def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
@@ -237,6 +252,7 @@ async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
 async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
                       session: draft.DraftSession) -> None:
     """Register the Draft and turn the status message into its card."""
+    context.user_data.pop(KEY_AMOUNT_EDIT, None)  # a new card ends a «✏️ Сумма» wait
     draft.add_draft(context.user_data, session)
     await status.edit_text(
         draft.card_text(session),
@@ -380,7 +396,7 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     # Any card button ends a pending «✏️ Сумма» wait.
-    context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
+    context.user_data.pop(KEY_AMOUNT_EDIT, None)
     draft_id, data = draft.parse_callback(query.data)
     session = draft.get_draft(context.user_data, draft_id)
     if session is None:
@@ -393,7 +409,7 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         draft.apply_callback, data, session, settings.categories, settings.currencies,
         settings.sheets, spenders=spenders)
     if outcome.await_amount is not None:
-        context.user_data[draft.KEY_AMOUNT_EDIT] = draft.AmountEdit(
+        context.user_data[KEY_AMOUNT_EDIT] = AmountEdit(
             draft_id=session.id, index=outcome.await_amount, card=query.message)
     if outcome.saved:
         buttons = undo.remember(context.user_data, list(outcome.saved), clock.now())
@@ -404,33 +420,33 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Typed amount after «✏️ Сумма»: redraw the Draft card, keep it from the flows.
 
-    Runs before the conversation (its own handler group). Without a pending
-    edit, or for the home button, or when the Draft is gone, the text passes
-    on to the conversation as usual.
+    Runs before the conversation (its own handler group). The wait ends and
+    the text passes on to the conversation as usual when the Draft is gone, or
+    the text is a command or has no digit (a menu button, a word): the User
+    has moved on. Text with a digit that fails the amount checks is asked again.
     """
-    edit = context.user_data.get(draft.KEY_AMOUNT_EDIT)
-    if not isinstance(edit, draft.AmountEdit):
+    edit = context.user_data.get(KEY_AMOUNT_EDIT)
+    if not isinstance(edit, AmountEdit):
         return
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
     session = draft.get_draft(context.user_data, edit.draft_id)
-    if session is None or session.closed or text.strip() in nav.HOME_LABELS:
-        context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
+    moved_on = text.startswith("/") or not any(ch.isdigit() for ch in text)
+    if session is None or session.closed or moved_on:
+        context.user_data.pop(KEY_AMOUNT_EDIT, None)
         return
     if not draft.set_amount(session, edit.index, text, cfg(context).currencies):
-        await update.message.reply_text(
-            "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
-            "Например: 1 200 или 350 дин. Попробуйте ещё раз или нажмите «⬅️ Назад» в карточке.")
+        await update.message.reply_text(BAD_DRAFT_AMOUNT)
         raise ApplicationHandlerStop
-    context.user_data.pop(draft.KEY_AMOUNT_EDIT, None)
+    context.user_data.pop(KEY_AMOUNT_EDIT, None)
     await edit.card.edit_text(
         draft.card_text(session), reply_markup=_inline_markup(draft.main_buttons(session)))
     raise ApplicationHandlerStop
 
 
-DRAFT_AMOUNT_TEXT = MessageHandler(filters.TEXT & ~filters.COMMAND, draft_amount_text)
+DRAFT_AMOUNT_TEXT = MessageHandler(filters.TEXT, draft_amount_text)
 
 
-async def undo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def undo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """«↩️ Отменить» under «✅ Сохранено»: delete that save's rows from Data."""
     query = update.callback_query
     result = await asyncio.to_thread(

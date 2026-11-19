@@ -7,6 +7,7 @@ single locality.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Union
@@ -19,6 +20,9 @@ from family_bot.sheets import DATA_HEADERS, SheetsClient
 REQUIRED_FIELDS = ("date", "category", "amount", "currency", "who", "comment")
 # Text fields compared when looking a written Expense up again (amount apart).
 MATCH_TEXT_FIELDS = ("date", "category", "currency", "who", "comment")
+# One undo at a time across Users: rows found by one read must not shift
+# under another undo's delete before this delete runs.
+_DELETE_LOCK = threading.Lock()
 # Amounts are stored to cents, so two amounts closer than this are equal.
 AMOUNT_TOLERANCE = 0.005
 
@@ -105,8 +109,15 @@ def delete_expenses(client: SheetsClient, records: list[ExpenseRecord]) -> bool:
     format it). The bottom-most match is taken, each row at most once.
     Identical rows are interchangeable, so taking any of them leaves the same
     data. A record with no matching row (edited or deleted in the sheet since)
-    deletes nothing and returns False.
+    deletes nothing and returns False. Read and delete run under one lock, so
+    two Users' undos cannot shift each other's rows; a hand edit in the sheet
+    between the two calls still can.
     """
+    with _DELETE_LOCK:
+        return _delete_matching(client, records)
+
+
+def _delete_matching(client: SheetsClient, records: list[ExpenseRecord]) -> bool:
     values = client.read_data_values()
     if not values:
         return False

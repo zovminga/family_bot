@@ -46,7 +46,7 @@ def test_manual_save_offers_undo_that_deletes_that_row(monkeypatch):
     monkeypatch.setattr(bot.clock, "now", lambda: datetime(2026, 11, 19, 12, 5))
     tap = FakeQuery(data)
     run(bot.undo_callback(make_update(query=tap), ctx))
-    assert tap.edits == ["↩️ Отменено, запись удалена: Food — 350 дин, 19.11.2026"]
+    assert tap.edits == ["↩️ Отменено, трата удалена: Food — 350 дин, 19.11.2026"]
     assert [r[6] for r in sheets.read_data_values()[1:]] == ["later"]
 
 
@@ -69,7 +69,7 @@ def test_other_users_tap_gets_alert_and_keeps_the_button(monkeypatch):
     tap = FakeQuery(data)
     run(bot.undo_callback(make_update(query=tap, user_id=222), stranger))
     assert tap.edits == []
-    assert tap.answers[-1][0] == "Отменить можно только свою последнюю запись."
+    assert tap.answers[-1][0].startswith("Отменить можно только свою последнюю трату")
     assert undo.KEY_LAST_SAVE in owner.user_data
 
 
