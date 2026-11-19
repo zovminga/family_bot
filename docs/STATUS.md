@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #17 header writes, merged after issues #10, #11)  
-**Product code tip:** `bb8c7c8` (2026-11-19) — Data writes by header names, RAW, thousands-comma amounts  
+**Updated by:** agent session (issue #14 currency registry, merged after issues #10, #11, #17)  
+**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -29,6 +29,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
   for pip-format installs (Render Build Command; `dashboard/run.sh` installs it with `uv pip`).
+- Currency registry `currency.py` (issue #14): `$` is back on the buttons and
+  in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
+  accepts symbol, ISO code or Russian word. Adding a Currency is one line,
+  except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
