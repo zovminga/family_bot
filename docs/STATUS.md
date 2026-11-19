@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #13 Draft ids, merged after issues #16, #19, #20)  
+**Updated by:** agent session (issue #12 error handler)  
 **Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -58,6 +58,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Statistics flow lives in `flows/stats.py` (issue #16): request state is one
   `StatQuery`, a new request never reuses the previous month or currency,
   `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
+- Error handler (issue #12): `errors.on_error` is registered in
+  `bot.build_application()`. A failing handler logs a masked traceback and the
+  user gets «❌ Не сохранилось. Попробуйте ещё раз»; a Vosk/Claude failure on
+  voice or photo gets «❌ Не разобрал, введите вручную». No raw exception text
+  reaches the user (R3, U5 fixed).
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
@@ -104,6 +109,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the
   write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- Logging is not configured: `errors` logs through the `family_bot.errors`
+  logger, which prints to stderr via Python's fallback handler (WARNING and
+  above). Other modules still `print`. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
 - Drafts live only in bot memory: a restart drops them and old cards answer
