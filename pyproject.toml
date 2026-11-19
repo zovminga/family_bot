@@ -73,7 +73,7 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
 python_version = "3.12"
-# Library modules only. bot.py and the dashboard/scripts entry points are not checked.
+# Library modules only. family_bot/bot.py, family_bot/dashboard/build_dashboard.py and scripts/ are not checked.
 files = [
     "family_bot/amount_input.py",
     "family_bot/analytics.py",

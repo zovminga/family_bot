@@ -99,7 +99,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   A failed Claude batch is not cached, the next run retries it.
 - Failed dashboard build alert (issue #21): a non-trial `run.sh` build that
   fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
-  exception type (`dashboard/failure_alert.py`, stdlib only). Details:
+  exception type (`family_bot/dashboard/failure_alert.py`, stdlib only). Details:
   `dashboard/SPEC.md` §5.1.
 - Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
   inside their card. «По каждой» with no Currency chosen shows sums per
