@@ -24,6 +24,7 @@ from family_bot import errors
 from family_bot import flow_preset
 from family_bot import navigation as nav
 from family_bot import text_input
+from family_bot.flows import manual
 from family_bot.flows import stats as flow_stats
 from family_bot.sheet_data import Row
 from tests.conftest import FakeSheetsClient, bot_context
@@ -137,6 +138,10 @@ def test_manual_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(m.choose_dt(seen.update(query=FakeQuery("custom")), ctx))
     run(m.type_dt(seen.update("никогда"), ctx))
     run(m.type_dt(seen.update("13.07.2025"), ctx))
+    run(m.begin(seen.update(nav.ADD_EXPENSE), ctx))
+    run(m.choose_cat(seen.update("Еда"), ctx))
+    run(m.type_amount(seen.update("350 дин"), ctx))
+    run(m.today_no_comment(seen.update(query=FakeQuery(manual.TODAY_NO_COMMENT)), ctx))
     texts = seen.collect()
     assert "✅ Сохранено: Еда — 1 234,50 дин, 13.07.2025" in texts
     assert_russian(texts)
