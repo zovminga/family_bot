@@ -24,9 +24,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the decimal mark. Main-menu and home buttons still accept the old English
   labels, because reply keyboards sent before the deploy stay on phones until
   the next menu. `post_init` fills the Telegram command menu (`bot.COMMANDS`).
-  Open: the fallback categories used when the Config sheet is empty
-  (`config.FALLBACK_CATEGORIES`) stay English, because they are written to
-  Data; translating them is the owner's call.
+  The fallback categories used when the Config sheet is empty or unreadable
+  (`config.FALLBACK_CATEGORIES`) are Russian (owner's decision): Еда,
+  Транспорт, Развлечения, Другое. The bootstrap list for a new sheet
+  (`sheets.DEFAULT_CATEGORIES`) stays English: dashboard tiers map those names.
   `tests/test_russian_ui.py` walks the flows and fails on an English word.
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
 - Manual expense ConversationHandler (category → amount → currency → comment → date),
