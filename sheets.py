@@ -8,9 +8,10 @@ they do not authorize or open worksheets themselves.
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Protocol, runtime_checkable
+
+import clock
 
 BOT_DIR = Path(__file__).resolve().parent
 
@@ -190,7 +191,7 @@ class GspreadSheetsClient:
         ws.update_acell(META_UPDATED_AT_LABEL_CELL, "updated_at")
         ws.update_acell(
             META_UPDATED_AT_CELL,
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            clock.now().strftime("%Y-%m-%d %H:%M"),
         )
 
     def _ensure_worksheet(

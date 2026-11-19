@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+import clock
 from expense import ExpenseRecord, append_expenses
 from sheet_data import DATE_FMT
 from sheets import SheetsClient
@@ -262,7 +263,7 @@ def apply_callback(
     keeps «✅ Сохранено» and writes nothing twice. A failed save leaves the
     Draft open for a retry.
     """
-    now = now or datetime.now()
+    now = now or clock.now()
     items = session.items
 
     if session.closed:
