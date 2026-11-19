@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import urllib.request
 import zipfile
@@ -24,6 +25,8 @@ from typing import Optional
 
 from family_bot import currency, llm
 from family_bot.amount_input import positive_amount
+
+logger = logging.getLogger(__name__)
 
 # Repo root (family_bot/ lives one level below): the model goes to <repo>/models.
 BOT_DIR = Path(__file__).resolve().parent.parent
@@ -95,7 +98,7 @@ def ensure_model() -> Path:
         return path
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     zip_path = MODELS_DIR / f"{DEFAULT_MODEL_NAME}.zip"
-    print(f"→ Downloading Vosk model {DEFAULT_MODEL_NAME} (one-time)…")
+    logger.info("→ Downloading Vosk model %s (one-time)…", DEFAULT_MODEL_NAME)
     urllib.request.urlretrieve(MODEL_URL, zip_path)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(MODELS_DIR)

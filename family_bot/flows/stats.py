@@ -9,6 +9,7 @@ CHOOSE_ACTION and drops the query.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine, Optional, TypeVar
 
@@ -24,6 +25,8 @@ from family_bot import errors
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
+
+logger = logging.getLogger(__name__)
 
 QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
@@ -297,7 +300,7 @@ class StatsFlow:
             return analytics.unique_currencies(
                 self._load_rows(context), fallback=self._fallback_currencies(context))
         except Exception as e:  # noqa: BLE001 - offer fallback currencies
-            print(f"Error getting currencies: {e}")
+            logger.warning("Error getting currencies: %s", e)
             return self._fallback_currencies(context)
 
     def _last_records(self, context: ContextTypes.DEFAULT_TYPE, category: str) -> str:

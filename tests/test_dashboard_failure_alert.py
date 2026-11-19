@@ -89,17 +89,17 @@ def test_send_http_protocol_error_does_not_raise(creds: None) -> None:
     assert fa.send_failure_alert("x", send=sender) is False
 
 
-def test_send_skips_without_credentials(capsys: pytest.CaptureFixture[str]) -> None:
+def test_send_skips_without_credentials(caplog: pytest.LogCaptureFixture) -> None:
     sender = FakeSender()
     assert fa.send_failure_alert("x", send=sender) is False
     assert sender.calls == []
-    assert "not set" in capsys.readouterr().err
+    assert "not set" in caplog.text
 
 
-def test_send_error_is_reported_masked(creds: None, capsys: pytest.CaptureFixture[str]) -> None:
+def test_send_error_is_reported_masked(creds: None, caplog: pytest.LogCaptureFixture) -> None:
     sender = FakeSender(OSError(f"cannot reach https://api.telegram.org/bot{TOKEN}/sendMessage"))
     assert fa.send_failure_alert("x", send=sender) is False
-    err = capsys.readouterr().err
+    err = caplog.text
     assert TOKEN not in err
     assert "<BOT_TOKEN>" in err
 
