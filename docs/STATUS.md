@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #35 «📅 Этот месяц»)  
-**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
+**Product code tip:** `46fc1a0` (2026-11-19) — «📅 Этот месяц» one-tap month summary (issue #35)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
