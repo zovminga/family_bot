@@ -3,23 +3,62 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark light" />
 <title>Семейные траты — дашборд</title>
 <!-- Chart.js is inlined at build time (see __CHARTJS__) so the file is fully
      self-contained: it renders offline and inside in-app browsers (Telegram)
      without needing to reach a CDN. -->
 <script>__CHARTJS__</script>
 <style>
+  /* Dark theme by default, light when the system asks for it. Charts read
+     these variables too (cssVar), so every colour lives here. */
   :root {
+    color-scheme: dark;
     --bg: #0e1116;
     --panel: #171b22;
     --panel-2: #1f242d;
+    --panel-open: #1a212b;
     --border: #272d38;
     --text: #e6e9ef;
     --muted: #8b95a7;
     --accent: #6ea8fe;
+    --on-accent: #08111f;
     --good: #4ade80;
     --bad: #f87171;
     --warn: #fbbf24;
+    --grid: rgba(255,255,255,0.06);
+    --heat: 110,168,254; /* monitor cell colour, alpha per cell */
+    --tip-bg: #0b0e13;
+    --shadow: rgba(0,0,0,.5);
+    --insights-bg: linear-gradient(135deg, #1a2230, #171b22);
+    --take-bg: linear-gradient(135deg, #20301f, #171b22);
+    --take-border: #2c5e2c;
+    --tier-fixed: #94a3b8; --tier-base: #fbbf24; --tier-flex: #f87171; /* optimization groups */
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f4f6fa;
+      --panel: #ffffff;
+      --panel-2: #eef1f6;
+      --panel-open: #e8edf5;
+      --border: #d9dee7;
+      --text: #1a1f29;
+      --muted: #5b6475;
+      --accent: #2563eb;
+      --on-accent: #ffffff;
+      --good: #15803d;
+      --bad: #dc2626;
+      --warn: #b45309;
+      --grid: rgba(0,0,0,0.08);
+      --heat: 59,130,246;
+      --tip-bg: #ffffff;
+      --shadow: rgba(15,23,42,.18);
+      --insights-bg: linear-gradient(135deg, #e8f0fe, #ffffff);
+      --take-bg: linear-gradient(135deg, #e7f6ea, #ffffff);
+      --take-border: #a7d8b0;
+      --tier-fixed: #64748b; --tier-base: #d97706; --tier-flex: #dc2626;
+    }
   }
   * { box-sizing: border-box; }
   body {
@@ -45,7 +84,7 @@
     background: transparent; color: var(--muted); border: 0; padding: 6px 12px;
     border-radius: 8px; cursor: pointer; font-size: 13px; transition: .15s;
   }
-  .toggle button.active { background: var(--accent); color: #08111f; font-weight: 600; }
+  .toggle button.active { background: var(--accent); color: var(--on-accent); font-weight: 600; }
   .label { color: var(--muted); font-size: 12px; margin-right: 2px; }
 
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 22px; }
@@ -65,7 +104,7 @@
   .now-cats .usual { flex-basis: 100%; }
   .up { color: var(--bad); } .down { color: var(--good); }
 
-  .insights { background: linear-gradient(135deg, #1a2230, #171b22); border: 1px solid var(--border);
+  .insights { background: var(--insights-bg); border: 1px solid var(--border);
     border-radius: 14px; padding: 18px 20px; margin-bottom: 22px; }
   .insights h2 { font-size: 14px; margin: 0 0 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .5px; }
   .insights ul { margin: 0; padding-left: 18px; }
@@ -97,7 +136,7 @@
     position: sticky; left: 0; background: var(--panel); z-index: 1; text-align: left; }
   table.heat td.name { font-weight: 600; }
   table.heat tr:hover td:first-child { color: var(--accent); }
-  .heatcell { color: #e6e9ef; transition: background .1s; }
+  .heatcell { background: rgba(var(--heat), var(--a, 0)); }
   .trend-up { color: var(--bad); font-weight: 600; }
   .trend-down { color: var(--good); font-weight: 600; }
 
@@ -106,7 +145,7 @@
   .opt-tier .lab { font-size: 13px; font-weight: 600; }
   .opt-tier .amt { font-size: 23px; font-weight: 700; margin: 7px 0 2px; letter-spacing: -0.5px; }
   .opt-tier .nt { font-size: 12px; color: var(--muted); line-height: 1.35; }
-  .opt-take { background: linear-gradient(135deg, #20301f, #171b22); border: 1px solid #2c5e2c;
+  .opt-take { background: var(--take-bg); border: 1px solid var(--take-border);
     border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
   .opt-take b { color: var(--good); }
   @media (max-width: 820px) { .opt-tiers { grid-template-columns: minmax(0, 1fr); } }
@@ -118,7 +157,7 @@
   .chip-reset { cursor: pointer; color: var(--accent); border-color: var(--accent); padding: 4px 10px; font-size: 12px; }
 
   details { border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; background: var(--panel-2); }
-  details[open] { background: #1a212b; }
+  details[open] { background: var(--panel-open); }
   summary { cursor: pointer; padding: 11px 14px; font-size: 14px; list-style: none; user-select: none; }
   summary::-webkit-details-marker { display: none; }
   summary::before { content: "▸ "; color: var(--muted); }
@@ -133,7 +172,7 @@
     display: none; align-items: center; justify-content: center; padding: 24px; }
   .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
     padding: 20px 22px; max-width: 820px; width: 100%; max-height: 88vh; overflow: auto;
-    box-shadow: 0 24px 70px rgba(0,0,0,.65); }
+    box-shadow: 0 24px 70px var(--shadow); }
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
   .modal-head h3 { margin: 0; font-size: 18px; }
   .modal-x { background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
@@ -141,19 +180,24 @@
   .modal-x:hover { color: var(--text); border-color: var(--accent); }
   .drill-hint { font-size: 11px; color: var(--muted); font-weight: 400; }
 
-  .bd { cursor: help; border-bottom: 1px dotted var(--muted); }
+  /* cursor: pointer also makes iOS Safari send the tap that opens the hint */
+  .bd { cursor: pointer; border-bottom: 1px dotted var(--muted); }
   .info { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px;
     border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font-size: 10px;
-    font-style: italic; font-weight: 700; cursor: help; margin-left: 6px; vertical-align: middle; line-height: 1; }
+    font-style: italic; font-weight: 700; cursor: pointer; margin-left: 6px; vertical-align: middle; line-height: 1; }
   .info:hover { border-color: var(--accent); color: var(--accent); }
   .card h3 .info { font-size: 9px; }
   #tip { position: absolute; z-index: 1000; display: none; pointer-events: none;
-    background: #0b0e13; border: 1px solid var(--accent); border-radius: 10px;
-    padding: 10px 12px; font-size: 12px; max-width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+    background: var(--tip-bg); color: var(--text); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 10px 12px; font-size: 12px; max-width: min(300px, calc(100vw - 24px)); box-shadow: 0 8px 24px var(--shadow); }
   #tip .bd-title { color: var(--accent); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; font-size: 11px; }
   #tip .bd-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
   #tip .bd-row span:first-child { font-weight: 600; }
   #tip .bd-sub { color: var(--muted); }
+  .more { margin-top: 16px; background: transparent; }
+  .more > summary { font-weight: 600; }
+  .more[open] { background: transparent; }
+  .more > .grid { padding: 0 0 4px; }
   @media (max-width: 820px) { .grid, .now { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 600px) {
     .wrap { padding: 16px 12px 60px; }
@@ -165,15 +209,15 @@
 </head>
 <body>
 <noscript>
-  <div style="max-width:640px;margin:40px auto;padding:20px;border:1px solid #272d38;
-              border-radius:12px;background:#171b22;color:#e6e9ef;line-height:1.5">
+  <div style="max-width:640px;margin:40px auto;padding:20px;border:1px solid var(--border);
+              border-radius:12px;background:var(--panel);color:var(--text);line-height:1.5">
     Этот дашборд интерактивный и работает через JavaScript. Похоже, он открыт
     во встроенном просмотрщике, где скрипты отключены. Открой файл в обычном
     браузере: в Telegram нажми «⋯» → «Открыть в браузере» (Safari / Chrome).
   </div>
 </noscript>
 <div id="fatalError" style="display:none;max-width:640px;margin:40px auto;padding:20px;
-     border:1px solid #f87171;border-radius:12px;background:#171b22;color:#e6e9ef;line-height:1.5">
+     border:1px solid var(--bad);border-radius:12px;background:var(--panel);color:var(--text);line-height:1.5">
   Не удалось построить дашборд. Открой файл в обычном браузере (Telegram → «⋯» →
   «Открыть в браузере»). Если не поможет — пересобери дашборд на компьютере.
 </div>
@@ -215,7 +259,7 @@
   <div class="kpis" id="kpis"></div>
 
   <div class="insights">
-    <h2>🔎 Инсайты <span class="info" data-tip="Автоматически считаются из данных под фильтрами: главная статья расходов (категория с макс. суммой и её доля), самая выросшая категория (макс. прирост суммы в RSD за последний месяц к предыдущему; текущий неполный месяц — к тем же дням прошлого), кто тратит больше, частая тема комментариев и крупнейшая разовая трата.">i</span></h2>
+    <h2>🔎 Инсайты <span class="info" data-tip="Автоматически считаются из данных под фильтрами: главная статья расходов (категория с макс. суммой и её доля), самая выросшая категория (макс. прирост суммы в {base} за последний месяц к предыдущему; текущий неполный месяц — к тем же дням прошлого), кто тратит больше, частая тема комментариев и крупнейшая разовая трата.">i</span></h2>
     <ul id="insights"></ul>
   </div>
 
@@ -223,7 +267,7 @@
     <div class="card full">
       <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         📅 Расходы по месяцам
-        <span class="info" data-tip="Главная таблица для мониторинга: строки — статьи (категории/темы/люди), столбцы — месяцы, число в ячейке — сумма за месяц. Чем ярче ячейка, тем больше потрачено. Σ — итог за весь период, «ср/мес» — среднее за месяц (Σ ÷ число месяцев), «тренд» — изменение последнего месяца к предыдущему; текущий неполный месяц сравнивается с теми же днями прошлого. Наведи на ячейку — разбивка по валютам. Клик по названию строки раскроет, на что именно потрачено. Переключай группировку справа (Категории / Темы / Кто).">i</span>
+        <span class="info" data-tip="Главная таблица для мониторинга: строки — статьи (категории/темы/люди), столбцы — месяцы, число в ячейке — сумма за месяц. Чем ярче ячейка, тем больше потрачено. Σ — итог за весь период, «ср/мес» — среднее за месяц (Σ ÷ число месяцев), «тренд» — изменение последнего месяца к предыдущему; текущий неполный месяц сравнивается с теми же днями прошлого. Наведи или нажми на ячейку — разбивка по валютам. Клик по названию строки раскроет, на что именно потрачено. Переключай группировку справа (Категории / Темы / Кто).">i</span>
         <span class="drill-hint">— клик по строке раскрывает детали</span>
         <span class="toggle" id="grpDim" style="margin-left:auto;">
           <button data-dim="category" class="active">Категории</button>
@@ -234,24 +278,15 @@
       <div class="tbl-scroll" style="max-height:520px;"><table id="monitorTable" class="heat"></table></div>
     </div>
     <div class="card full">
-      <h3>💡 На чём можно сэкономить <span class="info" data-tip="Категории разбиты на 3 группы по возможности оптимизации. 🔒 Обязательные (аренда, счета) — почти не режутся. ⚙️ Базовые (еда, транспорт) — нужны, но можно ужать. 💸 Необязательные (доставка, кафе, развлечения) — главный потенциал экономии. Суммы — в среднем за месяц по периоду, в RSD. График внизу ранжирует статьи по средним тратам за месяц и красит по группе.">i</span></h3>
+      <h3>💡 На чём можно сэкономить <span class="info" data-tip="Категории разбиты на 3 группы по возможности оптимизации. 🔒 Обязательные (аренда, счета) — почти не режутся. ⚙️ Базовые (еда, транспорт) — нужны, но можно ужать. 💸 Необязательные (доставка, кафе, развлечения) — главный потенциал экономии. Суммы — в среднем за месяц по периоду, в {base}. График внизу ранжирует статьи по средним тратам за месяц и красит по группе.">i</span></h3>
       <div id="optSummary" class="opt-tiers"></div>
       <p class="opt-take" id="optTakeaway"></p>
       <div class="chart-box tall"><canvas id="optChart"></canvas></div>
     </div>
-    <div class="card"><h3>По категориям <span class="info" data-tip="Сумма всех трат по каждой категории под текущими фильтрами. В режиме «в одной валюте» — в RSD по курсу, иначе — в исходных суммах. Наведи на сектор — увидишь разбивку по валютам. Кликни по сектору — раскроется, на что именно потрачено.">i</span> <span class="drill-hint">— кликни, чтобы раскрыть</span></h3><div class="chart-box"><canvas id="catChart"></canvas></div></div>
-    <div class="card"><h3>Динамика по месяцам <span class="info" data-tip="Сумма трат за каждый календарный месяц (по полю Month / дате операции).">i</span></h3><div class="chart-box"><canvas id="monthChart"></canvas></div></div>
+    <div class="card"><h3>По категориям <span class="info" data-tip="Сумма всех трат по каждой категории под текущими фильтрами. В режиме «в одной валюте» — в {base} по курсу, иначе — в исходных суммах. Наведи или нажми на сектор — увидишь разбивку по валютам. Кликни по сектору — раскроется, на что именно потрачено.">i</span> <span class="drill-hint">— кликни, чтобы раскрыть</span></h3><div class="chart-box"><canvas id="catChart"></canvas></div></div>
     <div class="card"><h3>Кто сколько тратит <span class="info" data-tip="Сумма трат по человеку (поле Who). Имена нормализованы: Azat=Азат, snezhi=Лиза.">i</span></h3><div class="chart-box"><canvas id="whoChart"></canvas></div></div>
     <div class="card"><h3>По валютам <span class="info" data-tip="Доля каждой валюты в тратах. Размер сектора — по курсу в базовой валюте, иначе динары и евро не сравнить. В подписи — исходная сумма в этой валюте.">i</span></h3><div class="chart-box"><canvas id="curChart"></canvas></div></div>
     <div class="card full"><h3>Темы трат (по комментариям) <span class="info" data-tip="Сумма по теме, выведенной из текста комментария (правила по ключевым словам). Операции без комментария исключены. «Прочее» — то, что не подошло ни под одно правило.">i</span></h3><div class="chart-box tall"><canvas id="themeChart"></canvas></div></div>
-    <div class="card"><h3>Средний чек по категориям <span class="info" data-tip="Для каждой категории: сумма трат ÷ число операций в ней = средняя величина ОДНОЙ траты (не за месяц). Показаны топ-12 по среднему.">i</span></h3><div class="chart-box"><canvas id="avgChart"></canvas></div></div>
-    <div class="card"><h3>Траты по дням недели <span class="info" data-tip="Сумма трат, сгруппированная по дню недели даты операции. Выходные (Сб, Вс) — оранжевым.">i</span></h3><div class="chart-box"><canvas id="dowChart"></canvas></div></div>
-    <div class="card full"><h3>Состав трат по месяцам (топ-категории) <span class="info" data-tip="Стэк топ-7 категорий по сумме: высота каждого сегмента = сумма этой категории за месяц, общая высота столбца = траты за месяц по этим категориям.">i</span></h3><div class="chart-box tall"><canvas id="stackChart"></canvas></div></div>
-    <div class="card full">
-      <h3>🧩 Как сгруппированы комментарии</h3>
-      <p class="grp-note" id="grpNote"></p>
-      <div id="grouping"></div>
-    </div>
     <div class="card full">
       <h3>Операции <span id="rowCount" class="tag"></span></h3>
       <div class="tbl-scroll">
@@ -266,6 +301,22 @@
       </div>
     </div>
   </div>
+
+  <!-- Blocks that repeat the monitor or rarely lead to a decision: folded at the bottom. -->
+  <details class="more" id="moreBlocks">
+    <summary>Ещё графики: динамика, состав по месяцам, средний чек, дни недели, группировка комментариев</summary>
+    <div class="grid">
+      <div class="card"><h3>Динамика по месяцам <span class="info" data-tip="Сумма трат за каждый календарный месяц (по полю Month / дате операции).">i</span></h3><div class="chart-box"><canvas id="monthChart"></canvas></div></div>
+      <div class="card"><h3>Средний чек по категориям <span class="info" data-tip="Для каждой категории: сумма трат ÷ число операций в ней = средняя величина ОДНОЙ траты (не за месяц). Показаны топ-12 по среднему.">i</span></h3><div class="chart-box"><canvas id="avgChart"></canvas></div></div>
+      <div class="card"><h3>Траты по дням недели <span class="info" data-tip="Сумма трат, сгруппированная по дню недели даты операции. Выходные (Сб, Вс) — оранжевым.">i</span></h3><div class="chart-box"><canvas id="dowChart"></canvas></div></div>
+      <div class="card full"><h3>Состав трат по месяцам (топ-категории) <span class="info" data-tip="Стэк топ-7 категорий по сумме: высота каждого сегмента = сумма этой категории за месяц, общая высота столбца = траты за месяц по этим категориям.">i</span></h3><div class="chart-box tall"><canvas id="stackChart"></canvas></div></div>
+      <div class="card full">
+        <h3>🧩 Как сгруппированы комментарии</h3>
+        <p class="grp-note" id="grpNote"></p>
+        <div id="grouping"></div>
+      </div>
+    </div>
+  </details>
 </div>
 
 <div id="drillModal" class="modal">
@@ -299,6 +350,21 @@ const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (ch) => ESC[ch]);
 const fmt = (n) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
 const PALETTE = ["#6ea8fe","#4ade80","#fbbf24","#f87171","#a78bfa","#22d3ee","#fb923c","#f472b6","#34d399","#94a3b8","#e879f9","#facc15"];
+// Colour number i: the hand-picked PALETTE first, then hues 137.5° apart
+// (golden angle) with alternating saturation/lightness, so colours never repeat.
+function paletteColor(i) {
+  if (i < PALETTE.length) return PALETTE[i];
+  const hue = Math.round((i * 137.508 + 20) % 360);
+  return `hsl(${hue} ${i % 2 ? 55 : 72}% ${[52, 64, 44][i % 3]}%)`;
+}
+// One colour per Category for the whole page, in Config sheet order
+// (DATA.categories), so a Category keeps its colour in every chart and filter.
+const CAT_COLOR = new Map();
+(DATA.categories || []).forEach(c => CAT_COLOR.set(c, paletteColor(CAT_COLOR.size)));
+function categoryColor(c) {
+  if (!CAT_COLOR.has(c)) CAT_COLOR.set(c, paletteColor(CAT_COLOR.size));
+  return CAT_COLOR.get(c);
+}
 const DOW = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 function parseDate(d) { const [dd, mm, yy] = (d || "").split(".").map(Number); return (yy && mm && dd) ? new Date(yy, mm - 1, dd) : null; }
 function monthsOf(rows) { return [...new Set(rows.map(r => r.month).filter(Boolean))].sort(); }
@@ -523,7 +589,7 @@ function renderKpis(rows) {
   const cards = [
     { t: `Всего (${esc(sumLabel())})`, v: splitCur ? sumText(rows, { sep: "<br>" }) : fmt(total), split: splitCur,
       d: `${n} операций`, rows: rows,
-      tip: "Сумма всех операций под текущими фильтрами. В режиме «в одной валюте» каждая операция переведена в RSD по сегодняшнему курсу и просуммирована. В режиме «по каждой» без выбранной валюты — отдельная сумма для каждой валюты." },
+      tip: "Сумма всех операций под текущими фильтрами. В режиме «в одной валюте» каждая операция переведена в " + BASE + " по сегодняшнему курсу и просуммирована. В режиме «по каждой» без выбранной валюты — отдельная сумма для каждой валюты." },
     { t: "Средний чек", v: splitCur ? avgSplit || "0" : fmt(avg), split: splitCur,
       d: splitCur ? "одна операция, по валютам" : esc(moneyLabel()), rows: rows,
       tip: splitCur
@@ -553,6 +619,12 @@ const TIER_OF = { // category fallback (used when a row has no informative theme
   "Delivery food": "flex", "Eating out": "flex", "Sweets and snacks": "flex",
   "Entertainment": "flex", "Clothes": "flex", "Sport": "flex", "Travels": "flex",
   "Technics": "flex", "Other": "flex",
+  // Russian names, for a Config sheet written in Russian (Category names stay as in Config)
+  "Еда": "base", "Продукты": "base", "Транспорт": "base", "Быт": "base", "Дом": "base",
+  "Здоровье": "base", "Связь": "base", "Счета": "fixed",
+  "Доставка": "flex", "Кафе": "flex", "Рестораны": "flex", "Сладости": "flex",
+  "Развлечения": "flex", "Одежда": "flex", "Спорт": "flex", "Путешествия": "flex",
+  "Техника": "flex", "Красота": "flex", "Подарки": "flex", "Прочее": "flex",
 };
 const THEME_TIER = { // overrides category when a comment was classified into a theme
   "Жильё и коммуналка": "fixed", "Документы и бюрократия": "fixed",
@@ -570,10 +642,12 @@ const THEME_TIER = { // overrides category when a comment was classified into a 
 // everything else (ChatGPT, Spotify, games, …) is optional (flex).
 const CONNECTIVITY_RE = /(internet|интернет|\bsim\b|сим|airalo|yettel|esim|роуминг|связь|мобильн)/i;
 const TIERS = {
-  fixed: { label: "🔒 Обязательные", note: "фундамент бюджета — почти не оптимизируется", color: "#94a3b8" },
-  base:  { label: "⚙️ Базовые",      note: "нужное, но можно ужать", color: "#fbbf24" },
-  flex:  { label: "💸 Необязательные", note: "главный потенциал экономии", color: "#f87171" },
+  fixed: { label: "🔒 Обязательные", note: "фундамент бюджета — почти не оптимизируется", color: "var(--tier-fixed)" },
+  base:  { label: "⚙️ Базовые",      note: "нужное, но можно ужать", color: "var(--tier-base)" },
+  flex:  { label: "💸 Необязательные", note: "главный потенциал экономии", color: "var(--tier-flex)" },
 };
+// Canvas cannot read var(): resolve the tier colour of the current theme.
+const tierColor = (t) => cssVar(`--tier-${t}`, { fixed: "#94a3b8", base: "#fbbf24", flex: "#f87171" }[t]);
 const TIER_TAG = { fixed: "🔒 обяз.", base: "⚙️ базовое", flex: "💸 необяз." };
 
 // Tier of a single row: theme first, category fallback.
@@ -665,20 +739,33 @@ function makeChart(id, cfg) {
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(el, cfg);
 }
-const axisColor = "#8b95a7", gridColor = "rgba(255,255,255,0.06)";
+// Theme colour from the CSS variables (dark or light, follows the system).
+function cssVar(name, fallback) {
+  const v = globalThis.getComputedStyle?.(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+// Chart colours are read at draw time, so a theme switch only needs a redraw.
+let axisColor = "#8b95a7", gridColor = "rgba(255,255,255,0.06)", panelColor = "#171b22", accentColor = "#6ea8fe";
+let baseScales = {};
+function readThemeColors() {
+  axisColor = cssVar("--muted", "#8b95a7");
+  gridColor = cssVar("--grid", "rgba(255,255,255,0.06)");
+  panelColor = cssVar("--panel", "#171b22");
+  accentColor = cssVar("--accent", "#6ea8fe");
+  baseScales = {
+    x: { ticks: { color: axisColor }, grid: { color: gridColor } },
+    y: { ticks: { color: axisColor }, grid: { color: gridColor } },
+  };
+}
 // On a phone a side legend squeezes the doughnut, so put it below.
 const legendPos = () => (globalThis.innerWidth < 600 ? "bottom" : "right");
-const baseScales = {
-  x: { ticks: { color: axisColor }, grid: { color: gridColor } },
-  y: { ticks: { color: axisColor }, grid: { color: gridColor } },
-};
 
 function renderCharts(rows) {
   // category doughnut
   const cat = groupSum(rows, "category");
   makeChart("catChart", {
     type: "doughnut",
-    data: { labels: cat.map(c => c[0]), datasets: [{ data: cat.map(c => c[1]), backgroundColor: PALETTE, borderColor: "#171b22", borderWidth: 2 }] },
+    data: { labels: cat.map(c => c[0]), datasets: [{ data: cat.map(c => c[1]), backgroundColor: cat.map(c => categoryColor(c[0])), borderColor: panelColor, borderWidth: 2 }] },
     options: { plugins: { legend: { position: legendPos(), labels: { color: axisColor, boxWidth: 12 } },
       tooltip: bdTooltip(rows, (rs, it) => rs.filter(r => r.category === it.label)) }, maintainAspectRatio: false,
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
@@ -690,7 +777,7 @@ function renderCharts(rows) {
   const monthSum = months.map(mo => rows.filter(r => r.month === mo).reduce((s, r) => s + val(r), 0));
   makeChart("monthChart", {
     type: "line",
-    data: { labels: months, datasets: [{ label: moneyLabel(), data: monthSum, borderColor: "#6ea8fe", backgroundColor: "rgba(110,168,254,0.15)", fill: true, tension: 0.3, pointRadius: 3 }] },
+    data: { labels: months, datasets: [{ label: moneyLabel(), data: monthSum, borderColor: accentColor, backgroundColor: `rgba(${cssVar("--heat", "110,168,254")},0.15)`, fill: true, tension: 0.3, pointRadius: 3 }] },
     options: { plugins: { legend: { display: false },
       tooltip: bdTooltip(rows, (rs, it) => rs.filter(r => r.month === it.label)) }, scales: baseScales, maintainAspectRatio: false },
   });
@@ -708,7 +795,7 @@ function renderCharts(rows) {
   const cur = nativeBreakdown(rows);
   makeChart("curChart", {
     type: "doughnut",
-    data: { labels: cur.map(([sym, e]) => `${fmt(e.sum)} ${sym}`), datasets: [{ label: BASE_SYM, data: cur.map(([, e]) => e.base), backgroundColor: PALETTE, borderColor: "#171b22", borderWidth: 2 }] },
+    data: { labels: cur.map(([sym, e]) => `${fmt(e.sum)} ${sym}`), datasets: [{ label: BASE_SYM, data: cur.map(([, e]) => e.base), backgroundColor: PALETTE, borderColor: panelColor, borderWidth: 2 }] },
     options: { plugins: { legend: { position: legendPos(), labels: { color: axisColor, boxWidth: 12 } } }, maintainAspectRatio: false },
   });
 
@@ -729,7 +816,7 @@ function renderCharts(rows) {
     .sort((a, b) => b[1] - a[1]).slice(0, 12);
   makeChart("avgChart", {
     type: "bar",
-    data: { labels: avg.map(a => a[0]), datasets: [{ label: "Средний чек, " + moneyLabel(), data: avg.map(a => a[1]), backgroundColor: "#22d3ee" }] },
+    data: { labels: avg.map(a => a[0]), datasets: [{ label: "Средний чек, " + moneyLabel(), data: avg.map(a => a[1]), backgroundColor: avg.map(a => categoryColor(a[0])) }] },
     options: { indexAxis: "y", plugins: { legend: { display: false },
       tooltip: bdTooltip(rows, (rs, it) => rs.filter(r => r.category === it.label)) }, scales: baseScales, maintainAspectRatio: false },
   });
@@ -750,7 +837,7 @@ function renderCharts(rows) {
   const stackData = topCats.map((c, i) => ({
     label: c,
     data: months.map(mo => rows.filter(r => r.month === mo && r.category === c).reduce((s, r) => s + val(r), 0)),
-    backgroundColor: PALETTE[i % PALETTE.length],
+    backgroundColor: categoryColor(c),
   }));
   makeChart("stackChart", {
     type: "bar",
@@ -830,7 +917,7 @@ function renderOptimization(rows) {
     data: { labels: ranked.map(r => r[0]), datasets: [{
       label: "Среднее за месяц, " + BASE_SYM,
       data: ranked.map(r => r[1].sum / nM),
-      backgroundColor: ranked.map(r => TIERS[r[1].tier].color),
+      backgroundColor: ranked.map(r => tierColor(r[1].tier)),
     }] },
     options: {
       indexAxis: "y",
@@ -869,9 +956,9 @@ function renderMonthlyMonitor(rows) {
   });
   const groups = [...gtot.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18).map(e => e[0]);
 
-  let maxCell = 0;
-  groups.forEach(g => months.forEach(mo => { maxCell = Math.max(maxCell, gm.get(g).get(mo) || 0); }));
-  const heat = (v) => v ? ` style="background:rgba(110,168,254,${(0.10 + 0.80 * (v / maxCell)).toFixed(3)})"` : "";
+  // Brightness is scaled per row: the biggest month of each row is the brightest,
+  // so rent does not wash out the small rows. --a is the alpha of --heat.
+  const heat = (v, rowMax) => v ? ` style="--a:${(0.10 + 0.80 * (v / rowMax)).toFixed(3)}"` : "";
 
   const head = `<thead><tr><th>${DIM_LABEL[monitorDim]}</th>`
     + months.map(m => `<th class="num">${esc(monthShort(m))}</th>`).join("")
@@ -880,12 +967,13 @@ function renderMonthlyMonitor(rows) {
   const cmp = lastTwoMonths(months);
   const body = groups.map(g => {
     const mm = gm.get(g);
+    const rowMax = Math.max(...months.map(mo => mm.get(mo) || 0));
     const cells = months.map(mo => {
       const v = mm.get(mo) || 0;
       const rs = v ? valid.filter(r => r[monitorDim] === g && r.month === mo) : [];
       const attr = v && !splitCur ? bdAttr(rs) : "";
       const txt = !v ? "·" : splitCur ? sumText(rs, { sep: "<br>" }) : fmt(v);
-      return `<td class="num heatcell${attr ? " bd" : ""}"${heat(v)}${attr}>${txt}</td>`;
+      return `<td class="num heatcell${attr ? " bd" : ""}"${heat(v, rowMax)}${attr}>${txt}</td>`;
     }).join("");
     // trend: last month vs previous month (same days when the last is unfinished)
     let tr = "—";
@@ -1005,7 +1093,7 @@ function openDrillRows(title, rows) {
   const top = arr.slice(0, 15);
   makeChart("drillChart", {
     type: "bar",
-    data: { labels: top.map(e => e[0]), datasets: [{ label: moneyLabel(), data: top.map(e => e[1].sum), backgroundColor: "#6ea8fe" }] },
+    data: { labels: top.map(e => e[0]), datasets: [{ label: moneyLabel(), data: top.map(e => e[1].sum), backgroundColor: accentColor }] },
     options: {
       indexAxis: "y",
       plugins: { legend: { display: false },
@@ -1034,6 +1122,7 @@ function render() {
     ? `Валюта не выбрана: суммы показаны по каждой валюте отдельно. Графики и доли — в ${BASE_SYM} по курсу, чтобы их можно было сравнить.`
     : "";
   const rows = filteredRows();
+  readThemeColors();
   // Each section is isolated: a failure in one (e.g. charts) must not blank
   // the others. Errors are logged, not thrown.
   const sections = [renderThisMonth, renderKpis, renderInsights, renderMonthlyMonitor,
@@ -1050,6 +1139,9 @@ function init() {
   const fromNote = DATA.from_month ? ` · данные с ${esc(DATA.from_month)}` : "";
   document.getElementById("subtitle").innerHTML =
     `${DATA.rows.length} операций · база: ${esc(BASE)}${fromNote} · обновлено ${esc(DATA.generated_at)}${link}`;
+
+  // Hint texts in the page name the base currency of this build (--base).
+  document.querySelectorAll("[data-tip]").forEach(el => { el.dataset.tip = el.dataset.tip.replaceAll("{base}", BASE); });
 
   populate("fMonth", uniqueSorted("month").filter(Boolean));
   populate("fWho", uniqueSorted("who").filter(v => v && v !== "—"));
@@ -1097,32 +1189,53 @@ function init() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrill(); });
 
-  // floating currency-breakdown tooltip for any element carrying data-bd
+  // Hints: "i" (data-tip) and currency breakdowns (data-bd). Hover shows them
+  // with a mouse; a tap (click) pins one open, a second tap or a tap elsewhere
+  // closes it — phones have no hover.
   const tip = document.getElementById("tip");
+  let pinned = null;
+  const hintEl = (t) => t.closest("[data-bd]") || t.closest("[data-tip]");
+  function showTip(el) {
+    if (el.dataset.bd) tip.innerHTML = decodeURIComponent(el.dataset.bd);
+    else tip.innerHTML = `<div class="bd-title">Как считается</div><div style="line-height:1.5">${esc(el.dataset.tip)}</div>`;
+    tip.style.display = "block";
+  }
+  function placeTip(px, py) {
+    const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
+    const right = window.scrollX + document.documentElement.clientWidth;
+    let x = px + pad, y = py + pad;
+    if (x + w > right) x = Math.max(window.scrollX + pad, right - w - pad);
+    if (y + h > window.scrollY + document.documentElement.clientHeight) y = Math.max(window.scrollY + pad, py - h - pad);
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  function hideTip() { tip.style.display = "none"; pinned = null; }
   document.addEventListener("mouseover", (e) => {
-    const bdEl = e.target.closest("[data-bd]");
-    const tipEl = e.target.closest("[data-tip]");
-    if (bdEl && bdEl.dataset.bd) {
-      tip.innerHTML = decodeURIComponent(bdEl.dataset.bd); tip.style.display = "block";
-    } else if (tipEl && tipEl.dataset.tip) {
-      tip.innerHTML = `<div class="bd-title">Как считается</div><div style="line-height:1.5">${esc(tipEl.dataset.tip)}</div>`;
-      tip.style.display = "block";
-    }
+    const el = hintEl(e.target);
+    if (el && !pinned) showTip(el);
   });
   document.addEventListener("mousemove", (e) => {
-    if (tip.style.display !== "block") return;
-    const pad = 16, w = tip.offsetWidth, h = tip.offsetHeight;
-    let x = e.pageX + pad, y = e.pageY + pad;
-    if (x + w > window.scrollX + document.documentElement.clientWidth) x = e.pageX - w - pad;
-    if (y + h > window.scrollY + document.documentElement.clientHeight) y = e.pageY - h - pad;
-    tip.style.left = x + "px"; tip.style.top = y + "px";
+    if (tip.style.display === "block" && !pinned) placeTip(e.pageX, e.pageY);
   });
   document.addEventListener("mouseout", (e) => {
-    if (e.target.closest("[data-bd]") || e.target.closest("[data-tip]")) tip.style.display = "none";
+    if (hintEl(e.target) && !pinned) tip.style.display = "none";
+  });
+  document.addEventListener("click", (e) => {
+    const el = hintEl(e.target);
+    if (!el || el === pinned) { hideTip(); return; }
+    pinned = el;
+    showTip(el);
+    const r = el.getBoundingClientRect();
+    placeTip(r.left + window.scrollX, r.bottom + window.scrollY - 6);
   });
 
   // Doughnut legends move below the chart on a phone: redraw on rotation.
   globalThis.matchMedia?.("(max-width: 599px)").addEventListener("change", () => renderCharts(filteredRows()));
+  // Light / dark follows the system: redraw charts with the new colours.
+  globalThis.matchMedia?.("(prefers-color-scheme: light)").addEventListener("change", render);
+  // Charts in the folded block were drawn at zero size: fit them when it opens.
+  document.getElementById("moreBlocks").addEventListener("toggle", (e) => {
+    if (e.target.open) Object.values(charts).forEach(c => c.resize());
+  });
 
   document.querySelectorAll("#txTable th").forEach(th => th.addEventListener("click", () => {
     const k = th.dataset.k;
