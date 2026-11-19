@@ -1,8 +1,9 @@
 """Bot-wide error reporting: short text for the user, masked details for the log.
 
 ``on_error`` is the Application error handler (``add_error_handler``). Handlers
-that catch an error themselves (voice, photo, dashboard) call ``log_exception``
-and reply with one of the user texts below, never with the exception text.
+that catch an error themselves (voice, photo, dashboard, stats) call
+``log_exception`` and reply with a short text of their own or one of the texts
+below, never with the exception text.
 """
 from __future__ import annotations
 
@@ -27,7 +28,19 @@ SECRET_PATTERNS = (
 
 
 def mask_secrets(text: str) -> str:
-    """Replace bot tokens and API keys in ``text`` with ``***``."""
+    """
+    Replace bot tokens and API keys in ``text`` with ``***``.
+
+    Parameters
+    ----------
+    text : str
+        Any text bound for the log.
+
+    Returns
+    -------
+    str
+        The text with secret values from env and token-shaped strings masked.
+    """
     for var in SECRET_ENV_VARS:
         value = os.getenv(var)
         if value:
@@ -38,13 +51,31 @@ def mask_secrets(text: str) -> str:
 
 
 def log_exception(where: str, error: BaseException) -> None:
-    """Log ``error`` with its traceback, secrets masked."""
+    """
+    Log ``error`` with its traceback, secrets masked.
+
+    Parameters
+    ----------
+    where : str
+        Short name of the failed step, first word of the log line.
+    error : BaseException
+        The caught exception; chained causes are logged too.
+    """
     details = "".join(traceback.format_exception(error))
     logger.error("%s failed:\n%s", where, mask_secrets(details))
 
 
 async def on_error(update: object, context: Any) -> None:
-    """Application error handler: log the error, tell the user in short."""
+    """
+    Application error handler: log the error, tell the user in short.
+
+    Parameters
+    ----------
+    update : object
+        The update that failed, or None for errors outside an update.
+    context : Any
+        PTB callback context; ``context.error`` holds the exception.
+    """
     log_exception("Update handler", context.error)
     message = getattr(update, "effective_message", None)
     if message is None:
