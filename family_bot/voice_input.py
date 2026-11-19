@@ -76,7 +76,10 @@ def decode_to_pcm16k_mono(data: bytes) -> bytes:
         frames = out if isinstance(out, list) else [out]
         for f in frames:
             if f is not None:
-                chunks.append(f.to_ndarray().tobytes())
+                # Packed s16 mono: one plane, 2 bytes per sample. The plane
+                # buffer may be padded, so cut it to the sample count.
+                # (to_ndarray() needs numpy, which is not a bot dependency.)
+                chunks.append(bytes(f.planes[0])[: f.samples * 2])
 
     for frame in container.decode(audio=0):
         _emit(frame)

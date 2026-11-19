@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (plan closed: last tree entries, STATUS cleanup)  
-**Product code tip:** `09ab8ee` (2026-11-19) — `logging` instead of `print`, level from `LOG_LEVEL`, secrets masked in every line (issue #26)  
+**Updated by:** agent session (voice decode without numpy)  
+**Product code tip:** `333d6cc` (2026-11-19) — voice notes decode without numpy (every voice note failed on Render)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -116,7 +116,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `analytics.format_month_summary` writes the text, so the monthly summary on
   the 1st (issue #36) can call them for the previous month. Phones get the
   new button with the next menu (`/start` or 🏠 after the deploy).
-- Voice: Vosk STT + Claude → Draft confirmation card
+- Voice: Vosk STT + Claude → Draft confirmation card. Audio decode reads PCM
+  bytes from the PyAV frame directly: `to_ndarray()` needs numpy, which is not a
+  bot dependency, so every voice note failed with «Не разобрал» after the
+  move to `uv export` requirements (`tests/test_voice_decode.py`)
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
   parsed by `voice_input.extract_expenses` (`text_input.py`). Text without a
