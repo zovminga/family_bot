@@ -109,7 +109,7 @@ def test_failed_save_keeps_draft_open():
     assert not session.closed
 
 
-def test_long_category_name_falls_back_to_index():
+def test_long_category_name_survives_reorder():
     long_name = "Развлечения, подписки и прочие радости жизни"
     session = DraftSession(id="ab12", items=[_item()])
     rows = category_buttons(session, 0, ["Food", long_name])
@@ -117,8 +117,18 @@ def test_long_category_name_falls_back_to_index():
     assert label == long_name
     assert len(cb.encode()) <= CALLBACK_DATA_MAX_BYTES
     _, payload = parse_callback(cb)
-    apply_callback(payload, session, ["Food", long_name], ["дин"], FakeSheetsClient())
+    reordered = [long_name, "Other", "Food"]  # Config re-sorted, then /reloadcats
+    apply_callback(payload, session, reordered, ["дин"], FakeSheetsClient())
     assert session.items[0]["category"] == long_name
+
+
+def test_long_category_removed_from_config_changes_nothing():
+    long_name = "Развлечения, подписки и прочие радости жизни"
+    session = DraftSession(id="ab12", items=[_item(category="Food")])
+    _, cb = category_buttons(session, 0, [long_name])[0][0]
+    _, payload = parse_callback(cb)
+    apply_callback(payload, session, ["Food"], ["дин"], FakeSheetsClient())
+    assert session.items[0]["category"] == "Food"
 
 
 def test_setdate_yesterday():

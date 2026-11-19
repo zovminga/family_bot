@@ -92,6 +92,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the
   write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- `go_home` still clears every other `user_data` key, not only its own flow's
+  keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
 - Drafts live only in bot memory: a restart drops them and old cards answer
   «Черновик уже не активен.» (issue #27 changes that text).
 - Full project review with findings, design, and a staged plan:
