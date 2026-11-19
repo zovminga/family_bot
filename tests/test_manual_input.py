@@ -1,0 +1,125 @@
+"""Manual add-expense steps: amount, Category and Currency checks (R6, R13, U3, R12)."""
+import asyncio
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
+from telegram import Chat, Message, Update, User
+from telegram.ext import ApplicationHandlerStop
+
+import bot
+from conversation_states import CHOOSE_CAT, CHOOSE_CUR, TYPING_AMT, TYPING_CMNT
+from tests.known_bugs.fakes import make_update
+
+
+def run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.fixture
+def ctx():
+    return SimpleNamespace(user_data={}, args=[])
+
+
+@pytest.fixture(autouse=True)
+def _lists(monkeypatch):
+    monkeypatch.setattr(bot, "CATS", ["Food", "Transport"])
+    monkeypatch.setattr(bot, "CURS", ["₽", "дин", "€", "$"])
+    monkeypatch.setattr(bot, "ALLOWED_USERS", {111: "Azat"})
+
+
+def replies(update):
+    return [t for t, _ in update.message.replies]
+
+
+# --- Category ---
+
+def test_known_category_is_accepted(ctx):
+    assert run(bot.choose_cat(make_update("Food"), ctx)) == TYPING_AMT
+    assert ctx.user_data["cat"] == "Food"
+
+
+def test_category_match_ignores_case_and_spaces(ctx):
+    assert run(bot.choose_cat(make_update("  food "), ctx)) == TYPING_AMT
+    assert ctx.user_data["cat"] == "Food"
+
+
+def test_category_typo_asks_to_pick_from_list(ctx):
+    upd = make_update("Fod")
+    assert run(bot.choose_cat(upd, ctx)) == CHOOSE_CAT
+    assert "cat" not in ctx.user_data
+    text, kw = upd.message.replies[-1]
+    labels = [btn.text for row in kw["reply_markup"].keyboard for btn in row]
+    assert "Food" in labels and "Transport" in labels, labels
+
+
+# --- Amount ---
+
+@pytest.mark.parametrize("text", ["nan", "inf", "-500", "0", "abc", "350 xyz"])
+def test_bad_amount_stays_on_amount_step(ctx, text):
+    upd = make_update(text)
+    assert run(bot.type_amount(upd, ctx)) == TYPING_AMT
+    assert "amt" not in ctx.user_data
+    assert replies(upd), "user gets no hint"
+
+
+def test_amount_with_thousands_space_goes_to_currency(ctx):
+    assert run(bot.type_amount(make_update("1 200"), ctx)) == CHOOSE_CUR
+    assert ctx.user_data["amt"] == 1200.0
+    assert "cur" not in ctx.user_data
+
+
+def test_amount_with_currency_skips_currency_step(ctx):
+    upd = make_update("350 дин")
+    assert run(bot.type_amount(upd, ctx)) == TYPING_CMNT
+    assert ctx.user_data["amt"] == 350.0
+    assert ctx.user_data["cur"] == "дин"
+    assert ctx.user_data["spender"] == "Azat"
+
+
+def test_amount_with_currency_off_the_buttons_asks_for_currency(ctx):
+    # "¥" is registered but not on this install's buttons
+    assert run(bot.type_amount(make_update("500 ¥"), ctx)) == CHOOSE_CUR
+    assert ctx.user_data["amt"] == 500.0
+    assert "cur" not in ctx.user_data
+
+
+# --- Currency ---
+
+@pytest.mark.parametrize("text,stored", [("€", "€"), ("eur", "€"), ("динар", "дин")])
+def test_currency_by_symbol_code_or_word(ctx, text, stored):
+    assert run(bot.choose_cur(make_update(text), ctx)) == TYPING_CMNT
+    assert ctx.user_data["cur"] == stored
+
+
+@pytest.mark.parametrize("text", ["eru", "¥", "xyz"])
+def test_currency_typo_asks_to_pick_from_list(ctx, text):
+    upd = make_update(text)
+    assert run(bot.choose_cur(upd, ctx)) == CHOOSE_CUR
+    assert "cur" not in ctx.user_data
+    _, kw = upd.message.replies[-1]
+    labels = [btn.text for row in kw["reply_markup"].keyboard for btn in row]
+    assert "€" in labels and "дин" in labels, labels
+
+
+# --- Edited messages (R12) ---
+
+def _message(text):
+    return Message(message_id=5, date=datetime.now(timezone.utc),
+                   chat=Chat(id=111, type="private"),
+                   from_user=User(id=111, first_name="A", is_bot=False), text=text)
+
+
+def test_new_message_is_not_dropped():
+    assert not bot.EDITED_MESSAGES.check_update(Update(update_id=1, message=_message("5000")))
+
+
+def test_edited_message_is_dropped_before_other_handlers(ctx):
+    upd = Update(update_id=1, edited_message=_message("5000"))
+    assert bot.EDITED_MESSAGES.check_update(upd)
+    with pytest.raises(ApplicationHandlerStop):
+        run(bot.EDITED_MESSAGES.callback(upd, ctx))
