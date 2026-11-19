@@ -37,6 +37,20 @@ THIS_MONTH = "📅 Этот месяц"
 SHOW_STATS = "📊 Статистика"
 DASHBOARD = "📈 Дашборд"
 
+# Every text that means a menu button -> that button. English labels: reply
+# keyboards sent before the Russian UI stay on phones.
+MENU_ACTIONS: dict[str, str] = {
+    ADD_EXPENSE: ADD_EXPENSE, "💰 Add expense": ADD_EXPENSE, "Add expense": ADD_EXPENSE,
+    ADD_PRESET: ADD_PRESET, "🧾 Add preset": ADD_PRESET, "Add preset": ADD_PRESET,
+    "🧾 Add default expense": ADD_PRESET, "Add default expense": ADD_PRESET,
+    THIS_MONTH: THIS_MONTH,
+    SHOW_STATS: SHOW_STATS, "📊 Show statistics": SHOW_STATS, "Show statistics": SHOW_STATS,
+    DASHBOARD: DASHBOARD, "📈 Dashboard": DASHBOARD, "Dashboard": DASHBOARD,
+}
+# A menu button tap: a conversation entry point, so the menu works with no
+# conversation state (right after a restart, when memory is empty).
+MENU_TEXT = filters.Text(list(MENU_ACTIONS))
+
 
 MENU_LABELS = {ADD_EXPENSE, ADD_PRESET, THIS_MONTH, SHOW_STATS, DASHBOARD}
 

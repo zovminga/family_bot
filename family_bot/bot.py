@@ -26,6 +26,7 @@ from family_bot import photo_input as px
 from family_bot import text_input
 from family_bot import draft_expense as draft
 from family_bot import flow_preset
+from family_bot import monthly_summary
 from family_bot import navigation as nav
 from family_bot import undo
 from family_bot.flows import manual as flow_manual
@@ -66,6 +67,13 @@ async def post_init(app: Application) -> None:
         print(f"✅ Google Sheets: {len(settings.categories)} categories, "
               f"{len(settings.presets)} presets")
     print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
+    # Without Sheets the job could only fail; the Sheets problem line is printed above.
+    if settings.summary_chat_id is not None and settings.sheets is not None:
+        # Rows are read through bot_data at send time, so /reloadcats changes apply.
+        monthly_summary.schedule(
+            app.job_queue, settings.summary_chat_id, settings.summary_hour,
+            lambda: load_expense_rows(app.bot_data[config.KEY].sheets))
+        print(f"✅ Monthly summary: 1st of each month, {settings.summary_hour}:00")
     try:
         await app.bot.set_my_commands(COMMANDS)
     except TelegramError as e:  # the menu is a convenience, the bot still works
@@ -396,14 +404,16 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the confirmation-card buttons (callback_data starts with 'vx:')."""
     query = update.callback_query
-    await query.answer()
     # Any card button ends a pending «✏️ Сумма» wait.
     context.user_data.pop(KEY_AMOUNT_EDIT, None)
     draft_id, data = draft.parse_callback(query.data)
     session = draft.get_draft(context.user_data, draft_id)
     if session is None:
-        await query.edit_message_text("Черновик уже не активен.")
+        # Keep the card text so the User sees what to send again; drop dead buttons.
+        await query.answer(draft.STALE_TEXT, show_alert=True)
+        await query.edit_message_reply_markup(reply_markup=None)
         return
+    await query.answer()
     settings = cfg(context)
     spenders = list(dict.fromkeys(settings.allowed_users.values()))
     who, _ = get_user_info(update, context)
@@ -515,28 +525,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    action = nav.MENU_ACTIONS.get(text)
 
-    # English labels: reply keyboards sent before the Russian UI stay on phones.
-    if text in (nav.DASHBOARD, "📈 Dashboard", "Dashboard"):
+    if action == nav.DASHBOARD:
         await send_dashboard(update, context)
         return State.CHOOSE_ACTION
 
-    if text in (nav.ADD_EXPENSE, "💰 Add expense", "Add expense"):
+    if action == nav.ADD_EXPENSE:
         return await MANUAL.begin(update, context)
 
-    if text in (
-        nav.ADD_PRESET,
-        "🧾 Add preset",
-        "Add preset",
-        "🧾 Add default expense",  # alias — old button label
-        "Add default expense",
-    ):
+    if action == nav.ADD_PRESET:
         return await flow_preset.begin_preset_picker(update, context, cfg(context).presets)
 
-    if text in (nav.SHOW_STATS, "📊 Show statistics", "Show statistics"):
+    if action == nav.SHOW_STATS:
         return await STATS.begin(update, context)
 
-    if text == nav.THIS_MONTH:
+    if action == nav.THIS_MONTH:
         return await STATS.this_month(update, context)
 
     return await text_expense(update, context)
@@ -660,8 +664,15 @@ def build_application(bot_token: str) -> Application:
     app.add_handler(TypeHandler(Update, enforce_allowlist), group=-2)
     app.add_handler(DRAFT_AMOUNT_TEXT, group=-1)
 
+    # Entry points serve a User with no conversation state: memory is wiped on
+    # every deploy, so menu and home buttons must work without /start. No
+    # re-entry: inside a flow its states read the text, /start and home are fallbacks.
     conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(nav.MENU_TEXT, choose_action),
+            *nav.home_fallbacks(),
+        ],
         states={
             State.CHOOSE_ACTION: [MessageHandler(nav.INPUT_TEXT, choose_action)],
             **MANUAL.states(),
@@ -674,7 +685,7 @@ def build_application(bot_token: str) -> Application:
             CommandHandler("stop", cancel),
             CommandHandler("start", start),  # Add start as fallback
         ],
-        allow_reentry=True,
+        allow_reentry=False,
     )
 
     # Voice- and photo-driven expense entry work from any state, so register them

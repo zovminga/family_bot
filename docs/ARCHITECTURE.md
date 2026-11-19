@@ -39,6 +39,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── amount_input.py         typed/spoken amount checks
     ├── sheet_data.py           Data row parsing → Row (bot + dashboard)
     ├── clock.py                "now" in the family time zone (TZ_NAME)
+    ├── monthly_summary.py      JobQueue job: last month's summary on the 1st
     ├── errors.py               error handler, user texts, secret masking
     └── sheets.py  SheetsClient ──────────────────────────┐
                                                           ▼
@@ -62,6 +63,7 @@ Finances never share across installs.
 | `currency_picker.py` | Choosing a Currency (issue #33, plan 3.6): Recent currencies first («🇷🇸 дин», `currency.label`), «🌍 Другая» pages of every rate-service code (`Catalog`, `fx.currency_codes`, cached 1 h, registry codes when the service fails), `search` by code, symbol or Russian name (Babel CLDR names, all plural forms, no network). Telegram-free: the caller passes `cb` (picker payload `pick:<ISO>` / `page:<n>` → its own callback_data). Recent currencies per User: `load_recent` (cache in `user_data["recent_currencies"]` → Users sheet → three most frequent in Data → `дин`, `€`, `₽`), `remember` (writes Users only when the list changed; a failed write is logged, the Expense still saves). A pick is stored as `currency.stored_value`: legacy symbol, else ISO code (Q8). Blocking: callers use `asyncio.to_thread` | Build Currency buttons another way; read Users directly |
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
+| `monthly_summary.py` | Job on the 1st of each month at `MONTHLY_SUMMARY_HOUR` (default 9) in `TZ_NAME`: `schedule(job_queue, chat_id, hour, load_rows)` (`JobQueue.run_monthly`) and the callback `send_summary`, which reads rows in a thread and sends `analytics.format_month_summary` for `previous_month(clock.now())` to `DASHBOARD_CHAT_ID`. A failure is logged with `errors.log_exception`. The job lives in memory: if the bot is down at that hour, the month is skipped, not sent late | Send scheduled messages another way; catch up a missed summary at start (nothing records that it was sent) |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
@@ -69,7 +71,7 @@ Finances never share across installs.
 | `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
-| `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, `default_currency` (stored symbol of `BASE_CURRENCY`, written when an expense names no Currency; unset → EUR), setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`, `BASE_CURRENCY`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
+| `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, `default_currency` (stored symbol of `BASE_CURRENCY`, written when an expense names no Currency; unset → EUR), `summary_chat_id` (`DASHBOARD_CHAT_ID`, `None` when unset) and `summary_hour` (`MONTHLY_SUMMARY_HOUR`), setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`, `BASE_CURRENCY`, `DASHBOARD_CHAT_ID`, `MONTHLY_SUMMARY_HOUR`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
 | `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `THIS_MONTH`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
 | `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `comment`); data sources injected from `bot.py` | Add manual-input handlers to `bot.py` |
@@ -127,15 +129,20 @@ works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
 Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
 reads `.env` and stops with one line if `BOT_TOKEN` is missing;
-`post_init` loads `Config`, prints each setup problem as one line and fills the
-Telegram command menu from `bot.COMMANDS` (`set_my_commands`; a Telegram error
+`post_init` loads `Config`, prints each setup problem as one line, schedules
+the monthly summary when `DASHBOARD_CHAT_ID` is set and Sheets is open (`monthly_summary.schedule`)
+and fills the Telegram command menu from `bot.COMMANDS` (`set_my_commands`; a Telegram error
 there is logged and the bot still starts).
 
 UI language: every text, button and error is Russian (plan 3.1);
 `tests/test_russian_ui.py` walks the flows and fails on an English word.
 Category and Spender names are shown as in the sheet.
 
-Fallbacks: home button, `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
+Entry points: `/start`, main-menu buttons (`navigation.MENU_TEXT`, old English
+labels included) and the home button. They serve a User with no conversation
+state, which is everyone right after a restart (memory is wiped on deploy).
+`allow_reentry=False`: inside a flow its states read the text.
+Fallbacks: home button, `/cancel`, `/stop`, `/start`.
 Home: state handlers never see it — their filters exclude the home text
 (`navigation.INPUT_TEXT`) and the `to_start` callback. `navigation.home_fallbacks()`
 catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
@@ -171,7 +178,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
-**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` first.
+**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` or a menu button first.
 
 **Photo** (`photo_input.py`): image bytes → Claude Vision line items + semantic buckets → Python grouping/sums → `session_from_receipt`. No fiscal QR / zbar (Render-friendly).
 
@@ -213,8 +220,9 @@ would push callback data past Telegram's 64 bytes is carried as an 8-char
 hash of the name (`setcathash:<i>:<hash>`), matched against current categories. Save or cancel marks the Draft `closed`; later taps on
 that card do nothing, so a double tap keeps «✅ Сохранено». Up to 20 closed
 Drafts are kept per user, open ones are never pruned. An unknown id (card from
-before a restart) gets «Черновик уже не активен.». Drafts are not persisted:
-a restart drops them.
+before a restart) gets the alert `draft_expense.STALE_TEXT` «Черновик устарел
+после обновления бота, отправьте ещё раз»; the card keeps its text and loses
+its buttons. Drafts are not persisted (Q15): a restart drops them.
 
 **Errors:** `bot.build_application()` registers `errors.on_error` with
 `add_error_handler`. An exception a handler does not catch is logged (traceback,

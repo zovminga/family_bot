@@ -38,6 +38,10 @@ MAX_CLOSED_DRAFTS = 20
 
 ButtonGrid = list[list[tuple[str, str]]]  # (label, callback_data)
 
+# Reply to a card whose Draft is not in memory. Drafts live only in memory, so
+# that is a card from before a restart (or a closed Draft past MAX_CLOSED_DRAFTS).
+STALE_TEXT = "Черновик устарел после обновления бота, отправьте ещё раз"
+
 
 @dataclass
 class DraftSession:

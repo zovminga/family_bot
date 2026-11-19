@@ -39,6 +39,12 @@ WEBHOOK_PATH = "telegram"
 _WEBHOOK_SECRET_RE = re.compile(r"[A-Za-z0-9_-]{1,256}")
 # Random bytes in a generated secret (token_urlsafe turns 32 bytes into 43 characters).
 WEBHOOK_SECRET_BYTES = 32
+# Chat for last month's summary on the 1st; the dashboard publishes to the same chat.
+SUMMARY_CHAT_ENV = "DASHBOARD_CHAT_ID"
+# Hour of the 1st (family time zone) when the summary is sent.
+SUMMARY_HOUR_ENV = "MONTHLY_SUMMARY_HOUR"
+DEFAULT_SUMMARY_HOUR = 9
+HOURS_IN_DAY = 24
 
 OpenSheets = Callable[[str, str], SheetsClient]
 
@@ -54,6 +60,10 @@ class Config:
     currencies: list[str] = field(default_factory=currency.symbols)
     # Stored symbol written when an expense names no Currency (BASE_CURRENCY).
     default_currency: str = currency.DEFAULT_BASE.symbol
+    # Chat for the monthly summary (DASHBOARD_CHAT_ID); None: not sent.
+    summary_chat_id: Optional[int] = None
+    # Hour of the 1st, family time zone, when the summary is sent.
+    summary_hour: int = DEFAULT_SUMMARY_HOUR
     problems: list[str] = field(default_factory=list)
 
 
@@ -193,6 +203,37 @@ def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
             f"укажите имя IANA, например {clock.DEFAULT_TZ}, или удалите строку из .env"))
 
 
+def _summary_chat_id(raw: Optional[str], problems: list[str]) -> Optional[int]:
+    """Telegram chat id from DASHBOARD_CHAT_ID; unset or not a number adds a problem line."""
+    env = SUMMARY_CHAT_ENV
+    if not raw:
+        problems.append(problem(
+            f"{env} не задан, сводка за месяц 1-го числа не придёт",
+            f"впишите в {env} id чата семьи (например, из /whoami) и перезапустите бота"))
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError:
+        problems.append(problem(
+            f"{env}={raw!r} — не id чата, сводка за месяц 1-го числа не придёт",
+            "укажите число, например 111111111 или -1001234567890"))
+        return None
+
+
+def _summary_hour(raw: Optional[str], problems: list[str]) -> int:
+    """Hour 0-23 from MONTHLY_SUMMARY_HOUR; a bad value adds a problem line and keeps the default."""
+    default = DEFAULT_SUMMARY_HOUR
+    if not raw:
+        return default
+    if raw.strip().isdigit() and int(raw) < HOURS_IN_DAY:
+        return int(raw)
+    env = SUMMARY_HOUR_ENV
+    problems.append(problem(
+        f"{env}={raw!r} — не час от 0 до {HOURS_IN_DAY - 1}, сводка придёт в {default}:00",
+        f"укажите час числом, например {env}={default}, или удалите строку"))
+    return default
+
+
 def _default_currency(code: Optional[str], problems: list[str]) -> str:
     """
     Stored symbol of the BASE_CURRENCY Currency.
@@ -315,6 +356,8 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
                  problems=problems)
     _check_time_zone(env.get(clock.TZ_ENV), problems)
     cfg.default_currency = _default_currency(env.get(currency.BASE_CURRENCY_ENV), problems)
+    cfg.summary_chat_id = _summary_chat_id(env.get(SUMMARY_CHAT_ENV), problems)
+    cfg.summary_hour = _summary_hour(env.get(SUMMARY_HOUR_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))
     return cfg
