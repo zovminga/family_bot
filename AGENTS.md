@@ -65,7 +65,7 @@ bot.py              Telegram wiring (handlers, ConversationHandler, webhook/poll
 config.py           Config loaded in post_init, kept in bot_data; setup problems
 auth.py             ALLOWED_USERS parse + gate
 expense.py          ExpenseRecord + append
-draft_expense.py    Voice/photo confirmation card
+draft_expense.py    Draft card (voice, photo, text)
 sheets.py           SheetsClient seam
 sheet_data.py       Headers, dates, currency maps
 clock.py            clock.now() in the family time zone (TZ_NAME)
@@ -73,6 +73,7 @@ errors.py           Error handler: short user text, masked log
 analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
 voice_input.py      Vosk STT + Claude extract
 photo_input.py      Claude Vision receipt → drafts
+text_input.py       Typed «кофе 350» → Draft via voice_input.extract_expenses
 regular.py          Regular_expenses → presets
 flow_preset.py      ⚡ preset conversation steps
 flows/stats.py      Statistics conversation (StatsFlow, StatQuery)

@@ -23,6 +23,7 @@ import currency
 import errors
 import voice_input as vx
 import photo_input as px
+import text_input
 import draft_expense as draft
 import flow_preset
 import navigation as nav
@@ -210,6 +211,42 @@ async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
         await query.edit_message_text(outcome.text, **kwargs)
 
 
+async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
+                      session: draft.DraftSession) -> None:
+    """Register the Draft and turn the status message into its card."""
+    draft.add_draft(context.user_data, session)
+    await status.edit_text(
+        draft.card_text(session),
+        reply_markup=_inline_markup(draft.main_buttons(session)),
+    )
+
+
+async def text_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Typed text in the main menu («кофе 350») → the same Draft card as voice."""
+    text = update.message.text
+    if not text_input.looks_like_expense(text):
+        await update.message.reply_text(text_input.HINT)
+        return CHOOSE_ACTION
+    who, _ = get_user_info(update, context)
+    status = await update.message.reply_text("✍️ Разбираю…")
+    today = clock.now().strftime(DATE_FMT)
+    settings = cfg(context)
+    try:
+        session = await asyncio.to_thread(
+            text_input.draft_from_text, text, categories=settings.categories,
+            currencies=settings.currencies,
+            today=today, who=who, default_currency=DEFAULT_CURRENCY)
+    except Exception as e:  # noqa: BLE001
+        errors.log_exception("Text extract", e)
+        await status.edit_text(errors.NOT_PARSED)
+        return CHOOSE_ACTION
+    if session is None:
+        await status.edit_text(text_input.HINT)
+        return CHOOSE_ACTION
+    await _show_draft(status, context, session)
+    return CHOOSE_ACTION
+
+
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Transcribe a voice/audio message and show an editable expense draft."""
     msg = update.effective_message
@@ -257,11 +294,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = draft.session_from_voice(
         items, who=who, transcript=transcript, note=result.get("note", ""))
-    draft.add_draft(context.user_data, session)
-    await status.edit_text(
-        draft.card_text(session),
-        reply_markup=_inline_markup(draft.main_buttons(session)),
-    )
+    await _show_draft(status, context, session)
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -316,11 +349,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         merchant=result.get("merchant", ""),
         note=result.get("note", ""),
     )
-    draft.add_draft(context.user_data, session)
-    await status.edit_text(
-        draft.card_text(session),
-        reply_markup=_inline_markup(draft.main_buttons(session)),
-    )
+    await _show_draft(status, context, session)
 
 
 async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -370,8 +399,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📊 Show statistics" or text == "Show statistics":
         return await STATS.begin(update, context)
 
-    await update.message.reply_text("Please press a button 😉")
-    return CHOOSE_ACTION
+    return await text_expense(update, context)
 
 
 # ----- Preset flow -----

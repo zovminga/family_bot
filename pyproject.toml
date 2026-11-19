@@ -83,6 +83,7 @@ files = [
     "regular.py",
     "sheet_data.py",
     "sheets.py",
+    "text_input.py",
     "voice_input.py",
 ]
 

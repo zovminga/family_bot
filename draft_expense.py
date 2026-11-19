@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Draft Expense confirmation: card text, button grids, callback transitions.
 
-Voice and receipt photo produce Draft items; this module owns review/edit/save.
+Voice, receipt photo and typed text produce Draft items; this module owns
+review/edit/save.
 Telegram I/O stays in bot adapters — they map button grids to InlineKeyboardMarkup
 and call edit_message_*.
 """
@@ -213,6 +214,18 @@ def session_from_voice(
     for it in items:
         it["who"] = who
     return DraftSession(items=items, transcript=transcript, note=note, header=None)
+
+
+def session_from_text(
+    items: list[dict],
+    *,
+    who: str,
+    text: str,
+    note: str = "",
+) -> DraftSession:
+    for it in items:
+        it["who"] = who
+    return DraftSession(items=items, transcript=text, note=note, header=f"✍️ «{text}»")
 
 
 def session_from_receipt(

@@ -31,7 +31,7 @@ Restating Expense amounts in another Currency at the rate of the day the statist
 _Avoid_: Historical rate, exchange (as a noun)
 
 **Draft**:
-An Expense proposed from voice or receipt photo, shown for review before it is saved.
+An Expense proposed from voice, typed text («кофе 350») or receipt photo, shown for review before it is saved.
 Each Draft card has its own short id; several can be open at once.
 _Avoid_: Pending expense, suggestion
 
