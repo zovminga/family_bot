@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #10 CI and repo hygiene)  
-**Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
+**Updated by:** agent session (issue #11 dashboard build on Python 3.12, merged after issue #10 CI)  
+**Product code tip:** `edb7e15` (2026-11-19) — dashboard `run.sh` on Python 3.12, venv rebuilt on dependency change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -28,7 +28,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
-  for pip-only hosts (Render Build Command, `dashboard/run.sh`).
+  for pip-format installs (Render Build Command; `dashboard/run.sh` installs it with `uv pip`).
+- `dashboard/run.sh` builds in `dashboard/venv/` on Python 3.12 via `uv`; the
+  venv is recreated when `dashboard/requirements.txt` changes (stamp file
+  `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
+  and Telegram.
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …);
   `FakeSheetsClient` lives in `tests/conftest.py`.
 - CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
