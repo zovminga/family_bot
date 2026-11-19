@@ -62,7 +62,8 @@ def test_stats_result_does_not_block_on_rows_and_fx() -> None:
         return 117.0
 
     flow = stats.StatsFlow(categories=lambda _ctx: ["Food"], load_rows=slow_rows,
-                           fallback_currencies=lambda _ctx: ["дин"], get_rate=slow_rate)
+                           sheets=lambda _ctx: None, who=lambda _upd, _ctx: "Azat",
+                           all_codes=lambda: ["RSD"], get_rate=slow_rate)
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(
         category="Food", month="2026-10", group_by_currency=False)})
     upd = make_update("дин")

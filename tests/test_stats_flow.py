@@ -6,11 +6,14 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 
+from telegram.ext import CallbackQueryHandler
+
 from family_bot import conversation_states as states
 from family_bot import navigation as nav
 from family_bot.flows import stats
 from family_bot.sheet_data import Row
-from tests.known_bugs.fakes import make_update
+from tests.conftest import TEST_CURRENCY_CODES, FakeSheetsClient
+from tests.known_bugs.fakes import FakeQuery, make_update
 
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
@@ -28,12 +31,14 @@ def run(coro: Any) -> Any:
         loop.close()
 
 
-def make_flow() -> stats.StatsFlow:
+def make_flow(sheets: Any = None, get_rate: Any = None) -> stats.StatsFlow:
     return stats.StatsFlow(
         categories=lambda _ctx: ["Food", "Transport"],
         load_rows=lambda _ctx: list(ROWS),
-        fallback_currencies=lambda _ctx: ["дин"],
-        get_rate=lambda src, dst: 1.0 if src == dst else 117.0,
+        sheets=lambda _ctx: sheets,
+        who=lambda _upd, _ctx: "Azat",
+        all_codes=lambda: list(TEST_CURRENCY_CODES),
+        get_rate=get_rate or (lambda src, dst: 1.0 if src == dst else 117.0),
     )
 
 
@@ -76,7 +81,9 @@ def test_last_records_error_hides_raw_text() -> None:
     flow = stats.StatsFlow(
         categories=lambda _ctx: ["Food"],
         load_rows=broken_rows,
-        fallback_currencies=lambda _ctx: ["дин"],
+        sheets=lambda _ctx: None,
+        who=lambda _upd, _ctx: "Azat",
+        all_codes=lambda: list(TEST_CURRENCY_CODES),
         get_rate=lambda src, dst: 1.0,
     )
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(category="Food")})
@@ -103,10 +110,97 @@ def test_this_month_error_hides_raw_text() -> None:
     flow = stats.StatsFlow(
         categories=lambda _ctx: ["Food"],
         load_rows=broken_rows,
-        fallback_currencies=lambda _ctx: ["дин"],
+        sheets=lambda _ctx: None,
+        who=lambda _upd, _ctx: "Azat",
+        all_codes=lambda: list(TEST_CURRENCY_CODES),
         get_rate=lambda src, dst: 1.0,
     )
     upd = make_update(nav.THIS_MONTH)
     assert run(flow.this_month(upd, SimpleNamespace(user_data={}))) == states.State.CHOOSE_ACTION
     text = replies(upd)[0]
     assert text.startswith("❌") and "503" not in text, text
+
+
+# --- Conversion target: the same Currency picker as manual input (issue #34) ---
+
+def _labels(markup: Any) -> dict[str, str]:
+    return {b.text: b.callback_data for row in markup.inline_keyboard for b in row}
+
+
+def _asked_for_target(sheets: Any = None, get_rate: Any = None) -> tuple[Any, Any, Any]:
+    flow, ctx = make_flow(sheets, get_rate), SimpleNamespace(user_data={})
+    ctx.user_data[stats.QUERY_KEY] = stats.StatQuery(month="2026-10")
+    upd = make_update(stats.NO_BUTTON)
+    assert run(flow.on_group_currency(upd, ctx)) == states.State.STAT_CONVERT_CURRENCY
+    return flow, ctx, upd
+
+
+def _tap(flow: stats.StatsFlow, ctx: Any, data: str) -> tuple[int, FakeQuery]:
+    query = FakeQuery(data)
+    return run(flow.on_convert_button(make_update(query=query), ctx)), query
+
+
+def test_target_question_shows_recent_currencies_and_other() -> None:
+    sheets = FakeSheetsClient()
+    sheets.users[111] = ["CNY", "дин", "€"]
+    _, _, upd = _asked_for_target(sheets)
+    markup = upd.message.replies[-1][1]["reply_markup"]
+    rows = [[b.text for b in row] for row in markup.inline_keyboard]
+    assert rows[0] == ["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"]
+    assert rows[1] == ["🌍 Другая"]
+    assert _labels(markup)["🇨🇳 CNY"] == "scur:pick:CNY"
+
+
+def test_other_page_then_pick_converts_into_any_currency() -> None:
+    sheets = FakeSheetsClient()
+    flow, ctx, _ = _asked_for_target(sheets)
+    state, query = _tap(flow, ctx, "scur:page:0")
+    assert state == states.State.STAT_CONVERT_CURRENCY
+    assert query.edits[-1].startswith("🌍 Все валюты")
+    gel = _labels(query.markups[-1])["🇬🇪 GEL"]
+    state, query = _tap(flow, ctx, gel)
+    assert state == states.State.STAT_SHOW_DETAILS
+    assert query.edits == ["💱 Пересчёт в: 🇬🇪 GEL"]
+    result = query.message.replies[0][0]
+    assert "(в GEL)" in result and "💰 Итого: 12 870 GEL" in result, result
+    assert ctx.user_data["recent_currencies"][0] == "GEL"
+    assert sheets.users[111][0] == "GEL"
+
+
+def test_typed_name_picks_the_target() -> None:
+    flow, ctx, _ = _asked_for_target()
+    upd = make_update("юань")
+    assert run(flow.on_convert_currency(upd, ctx)) == states.State.STAT_SHOW_DETAILS
+    assert "(в CNY)" in replies(upd)[0]
+
+
+def test_typed_text_with_several_matches_offers_buttons() -> None:
+    flow, ctx, _ = _asked_for_target()
+    upd = make_update("долл")
+    assert run(flow.on_convert_currency(upd, ctx)) == states.State.STAT_CONVERT_CURRENCY
+    labels = _labels(upd.message.replies[-1][1]["reply_markup"])
+    assert {"🇨🇦 CAD", "🇺🇸 $"} <= set(labels), labels
+
+
+def test_unknown_typed_currency_asks_again() -> None:
+    flow, ctx, _ = _asked_for_target()
+    upd = make_update("xyz")
+    assert run(flow.on_convert_currency(upd, ctx)) == states.State.STAT_CONVERT_CURRENCY
+    text, kw = upd.message.replies[-1]
+    assert text.startswith("❌") and "🌍 Другая" in _labels(kw["reply_markup"])
+
+
+def test_missing_rate_is_said_plainly() -> None:
+    flow, ctx, _ = _asked_for_target(get_rate=lambda src, dst: 1.0 if src == dst else None)
+    state, query = _tap(flow, ctx, "scur:pick:RSD")
+    assert state == states.State.CHOOSE_ACTION
+    result = query.message.replies[0][0]
+    assert "Нет курса для пересчёта в дин: €" in result, result
+    assert "Итого" not in result
+
+
+def test_picker_buttons_have_a_handler_in_target_state() -> None:
+    patterns = [h.pattern for h in make_flow().states()[states.State.STAT_CONVERT_CURRENCY]
+                if isinstance(h, CallbackQueryHandler)]
+    assert any(p.match("scur:pick:RSD") for p in patterns)
+    assert any(p.match("scur:page:2") for p in patterns)
