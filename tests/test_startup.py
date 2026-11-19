@@ -92,6 +92,14 @@ def test_reloadcats_rereads_categories() -> None:
     assert replies(upd)[0].startswith("🔄")
 
 
+def test_reloadcats_shows_problems_to_the_user() -> None:
+    ctx = bot_context(sheets=FakeSheetsClient(categories=[]))
+    upd = make_update("/reloadcats")
+    run(bot.reload_cats(upd, ctx))
+    text = replies(upd)[0]
+    assert "Config sheet has no categories" in text
+
+
 def test_main_without_bot_token_is_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BOT_TOKEN", raising=False)
     monkeypatch.setattr(bot.config, "load_env_file", lambda: None)

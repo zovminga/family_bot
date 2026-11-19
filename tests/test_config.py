@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import gspread
 import pytest
 
 import config
+import sheets
 from tests.conftest import ROOT, FakeSheetsClient
 
 REGULAR = [
@@ -124,7 +124,7 @@ def test_key_file_that_is_not_a_service_account_key(tmp_path: Path) -> None:
 
 def test_spreadsheet_not_shared_names_client_email(key_file: Path) -> None:
     cfg = config.load(env(key_file),
-                      open_sheets=opener(gspread.SpreadsheetNotFound("404")))
+                      open_sheets=opener(sheets.SpreadsheetNotFound("Family")))
     assert cfg.sheets is None
     assert_one_line_each(cfg.problems)
     assert "Family" in cfg.problems[0]
@@ -147,6 +147,23 @@ def test_empty_config_sheet_falls_back_with_a_problem(key_file: Path) -> None:
     assert cfg.categories == config.FALLBACK_CATEGORIES
     assert_one_line_each(cfg.problems)
     assert "Config" in cfg.problems[0]
+
+
+def test_unknown_time_zone_is_one_line(key_file: Path) -> None:
+    cfg = config.load(env(key_file, TZ_NAME="Europe/Belgrad"),
+                      open_sheets=opener(FakeSheetsClient(categories=["Food"])))
+    assert_one_line_each(cfg.problems)
+    assert "Europe/Belgrad" in cfg.problems[0]
+
+
+def test_reload_reports_unreadable_config_sheet(key_file: Path) -> None:
+    class Broken(FakeSheetsClient):
+        def read_categories(self) -> list[str]:
+            raise RuntimeError("APIError: [503]")
+
+    cfg = config.load(env(key_file), open_sheets=opener(Broken()))
+    assert cfg.categories == config.FALLBACK_CATEGORIES
+    assert_one_line_each(config.reload(cfg))
 
 
 # ---------- ALLOWED_USERS ----------

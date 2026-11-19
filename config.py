@@ -12,15 +12,16 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import gspread
 from dotenv import load_dotenv
 
 import auth
+import clock
 import currency
 import errors
 import regular
-from sheets import SheetsClient, open_client, resolve_creds_path
+from sheets import SheetsClient, SpreadsheetNotFound, open_client, resolve_creds_path
 
 KEY = "config"  # bot_data key
 ENV_FILE = Path(__file__).resolve().parent / ".env"
@@ -43,7 +44,21 @@ class Config:
 
 
 def problem(what: str, fix: str) -> str:
-    """One setup problem as a single line: what is wrong — what to do."""
+    """
+    Format one setup problem as a single line.
+
+    Parameters
+    ----------
+    what : str
+        What is wrong.
+    fix : str
+        What the owner should do.
+
+    Returns
+    -------
+    str
+        ``⚠️ <what> — <fix>``, no line breaks.
+    """
     return f"⚠️ {what} — {fix}"
 
 
@@ -63,11 +78,13 @@ def _clean_categories(raw: list[str]) -> list[str]:
 
 
 def _first_line(exc: BaseException) -> str:
+    """Exception type and the first line of its text, secrets masked."""
     text = errors.mask_secrets(str(exc)).strip().splitlines()
     return f"{type(exc).__name__}: {text[0]}" if text else type(exc).__name__
 
 
 def _allowed_users(raw: Optional[str], problems: list[str]) -> dict[int, str]:
+    """Parse ALLOWED_USERS; a bad or empty value adds a problem line."""
     try:
         users = auth.parse_allowed_users(raw)
     except ValueError as e:
@@ -102,8 +119,21 @@ def _client_email(creds: Path, problems: list[str]) -> Optional[str]:
     return str(key["client_email"])
 
 
+def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
+    """Add a problem line when TZ_NAME is set but is not an IANA zone name."""
+    if not name:
+        return
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        problems.append(problem(
+            f"{clock.TZ_ENV}={name!r} is not a known time zone",
+            f"use an IANA name such as {clock.DEFAULT_TZ} or remove the line from .env"))
+
+
 def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
                  problems: list[str]) -> Optional[SheetsClient]:
+    """Open the spreadsheet from GOOGLE_CREDS_PATH / SHEET_NAME, or add problem lines."""
     creds_raw, sheet_name = env.get("GOOGLE_CREDS_PATH"), env.get("SHEET_NAME")
     if not creds_raw:
         problems.append(problem(
@@ -121,7 +151,7 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
         return None
     try:
         return open_sheets(str(creds), sheet_name)
-    except gspread.SpreadsheetNotFound:
+    except SpreadsheetNotFound:
         problems.append(problem(
             f"spreadsheet {sheet_name!r} not found",
             f"check SHEET_NAME and share the spreadsheet with {email} as Editor"))
@@ -134,7 +164,19 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
 
 
 def reload(cfg: Config) -> list[str]:
-    """Re-read categories and presets from the spreadsheet into ``cfg``; return problems."""
+    """
+    Re-read categories and Presets from the spreadsheet into ``cfg``.
+
+    Parameters
+    ----------
+    cfg : Config
+        Settings to update in place; nothing happens when ``cfg.sheets`` is None.
+
+    Returns
+    -------
+    list[str]
+        Problem lines from this read (empty when all is well).
+    """
     problems: list[str] = []
     if cfg.sheets is None:
         return problems
@@ -180,6 +222,7 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
     problems: list[str] = []
     cfg = Config(allowed_users=_allowed_users(env.get("ALLOWED_USERS"), problems),
                  problems=problems)
+    _check_time_zone(env.get(clock.TZ_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))
     return cfg

@@ -115,3 +115,24 @@ def test_gspread_append_data_rows_is_one_raw_request():
     ]
     GspreadSheetsClient(FakeSpreadsheet()).append_data_rows(rows)
     assert calls == [(rows, {"value_input_option": "RAW"})]
+
+
+def test_missing_spreadsheet_raises_domain_error(monkeypatch, tmp_path):
+    import gspread
+
+    import sheets
+
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+
+    class _Client:
+        def open(self, name):
+            raise gspread.SpreadsheetNotFound("404")
+
+    monkeypatch.setattr(gspread, "service_account", lambda **kw: _Client())
+    try:
+        sheets._authorize_spreadsheet(creds_path=str(creds), sheet_name="Family")
+    except sheets.SpreadsheetNotFound as e:
+        assert "Family" in str(e)
+    else:
+        raise AssertionError("no SpreadsheetNotFound")
