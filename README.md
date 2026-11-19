@@ -202,8 +202,11 @@ Keep `-e` (editable install): `.env`, `models/` and a relative
 family-bot
 ```
 
-**Python version:** Render takes it from `.python-version` (3.12) unless the
-service sets a `PYTHON_VERSION` env var. Do not set `PYTHON_VERSION`.
+**Python version (required, before the first deploy):** add the env var
+`PYTHON_VERSION` = `3.12.12` (row in the table below). Render may not read
+`.python-version`, for example on a service created earlier, and builds with
+an older Python. Then `pip install --no-deps -e .` fails with
+`Package 'family-bot' requires a different Python`. The env var always wins.
 
 **Secret File** (the Google key): service → **Environment → Secret Files →
 Add Secret File** → file name `creds.json` → paste the whole contents of your
@@ -213,6 +216,7 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 
 | Variable | Value |
 |----------|-------|
+| `PYTHON_VERSION` | `3.12.12` |
 | `BOT_TOKEN` | token from @BotFather |
 | `GOOGLE_CREDS_PATH` | `/etc/secrets/creds.json` |
 | `SHEET_NAME` | exact spreadsheet title, as in `.env` |
