@@ -408,7 +408,8 @@ function renderKpis(rows) {
   const lastRows = last ? scopedRows().filter(r => r.month === last) : [];
   const topCatRows = topCat ? rows.filter(r => r.category === topCat[0]) : [];
 
-  const avgSplit = nativeBreakdown(rows).map(([sym, e]) => `${fmt(e.sum / e.n)} ${esc(sym)}`).join("<br>");
+  const avgSplit = splitCur
+    ? nativeBreakdown(rows).map(([sym, e]) => `${fmt(e.sum / e.n)} ${esc(sym)}`).join("<br>") : "";
   const cards = [
     { t: `Всего (${esc(sumLabel())})`, v: splitCur ? sumText(rows, { sep: "<br>" }) : fmt(total), split: splitCur,
       d: `${n} операций`, rows: rows,
@@ -785,9 +786,9 @@ function renderMonthlyMonitor(rows) {
       if (d > 0) tr = `<span class="trend-up">▲ ${pct}%</span>`;
       else if (d < 0) tr = `<span class="trend-down">▼ ${Math.abs(pct)}%</span>`;
     }
-    const gRows = splitCur ? valid.filter(r => r[monitorDim] === g) : [];
-    const tot = splitCur ? sumText(gRows, { sep: "<br>" }) : fmt(gtot.get(g));
-    const per = splitCur ? sumText(gRows, { div: months.length, sep: "<br>" }) : fmt(gtot.get(g) / months.length);
+    const gRows = valid.filter(r => r[monitorDim] === g);
+    const tot = sumText(gRows, { sep: "<br>", unit: false });
+    const per = sumText(gRows, { div: months.length, sep: "<br>", unit: false });
     return `<tr><td class="name" data-drill="${encodeURIComponent(g)}" style="cursor:pointer">${esc(g)}</td>${cells}<td class="num"><b>${tot}</b></td><td class="num">${per}</td><td class="num">${tr}</td></tr>`;
   }).join("");
 
@@ -851,7 +852,7 @@ function renderTable(rows) {
     const attr = (mode === "base" && r.currency !== BASE) ? ` data-bd="${encodeURIComponent(orig)}"` : "";
     return `<tr>
     <td>${esc(r.date)}</td><td>${esc(r.category)}</td>
-    <td class="num${attr ? " bd" : ""}"${attr}>${fmt(mode === "base" ? r.amount_base || 0 : r.amount)}</td>
+    <td class="num${attr ? " bd" : ""}"${attr}>${fmt(mode === "base" ? val(r) : r.amount)}</td>
     <td>${esc(mode === "base" ? BASE_SYM : (r.currency_symbol || r.currency))}</td>
     <td>${esc(r.who)}</td><td><span class="tag">${esc(r.theme)}</span></td><td>${esc(r.comment)}</td>
   </tr>`; }).join("");
@@ -1009,6 +1010,9 @@ function init() {
   document.addEventListener("mouseout", (e) => {
     if (e.target.closest("[data-bd]") || e.target.closest("[data-tip]")) tip.style.display = "none";
   });
+
+  // Doughnut legends move below the chart on a phone: redraw on rotation.
+  globalThis.matchMedia?.("(max-width: 599px)").addEventListener("change", () => renderCharts(filteredRows()));
 
   document.querySelectorAll("#txTable th").forEach(th => th.addEventListener("click", () => {
     const k = th.dataset.k;
