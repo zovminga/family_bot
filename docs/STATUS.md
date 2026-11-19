@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #33 Currency picker)  
-**Product code tip:** `f5d781c` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
+**Product code tip:** `5a34d7b` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -25,7 +25,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   several matches come back as buttons). A new Currency is written to Data as
   its ISO code. Recent currencies are per Telegram account in the new `Users`
   sheet (bot creates it; `scripts/bootstrap_sheet.py` too); a new User gets
-  the three most frequent in Data, empty Data → `дин`, `€`, `₽`. Code:
+  the three most frequent in Data, empty Data → `дин`, `€`, `₽`. Manual input updates them on save, the Draft card on pick. Code:
   `currency_picker.py` (Telegram-free, for #34 Conversion in statistics).
   Render needs the new `requirements.txt` (Babel) — the usual Build Command
   installs it. If the rate service is down, «🌍 Другая» lists only the seven
