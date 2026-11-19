@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from telegram.error import NetworkError
 from telegram.ext import ApplicationHandlerStop, CommandHandler, ConversationHandler
 
 from family_bot import bot
@@ -113,8 +114,6 @@ def test_post_init_fills_command_menu_in_russian() -> None:
 
 
 def test_post_init_survives_command_menu_failure(capsys: pytest.CaptureFixture[str]) -> None:
-    from telegram.error import NetworkError
-
     app = SimpleNamespace(bot_data={}, bot=FakeBot(error=NetworkError("down")))
     run(bot.post_init(app))  # type: ignore[arg-type]
     assert config.KEY in app.bot_data

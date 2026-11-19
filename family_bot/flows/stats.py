@@ -33,7 +33,7 @@ LAST_RECORDS_SHOWN = 3
 # Button texts; the handlers below match on them.
 ALL_BUTTON = "Все категории"
 ONE_BUTTON = "Одна категория"
-LAST_BUTTON = "📜 Последние 3 записи"
+LAST_BUTTON = f"📜 Последние {LAST_RECORDS_SHOWN} записи"
 PERIOD_BUTTON = "📅 Свой период"
 MONTHS_BUTTON = "📆 По месяцам"
 YES_BUTTON = "Да"
@@ -337,7 +337,19 @@ class StatsFlow:
 
 
 def _category_label(category: str) -> str:
-    """«все категории» or «категория «Еда»» for prompts and result headers."""
+    """
+    Category scope as shown in prompts and result headers.
+
+    Parameters
+    ----------
+    category : str
+        Category name, or ``ALL_CATEGORIES``.
+
+    Returns
+    -------
+    str
+        «все категории» or «категория «Еда»».
+    """
     return "все категории" if category == ALL_CATEGORIES else f"категория «{category}»"
 
 

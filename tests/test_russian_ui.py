@@ -20,8 +20,10 @@ from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from family_bot import analytics
 from family_bot import bot
 from family_bot import draft_expense as draft
+from family_bot import errors
 from family_bot import flow_preset
 from family_bot import navigation as nav
+from family_bot import text_input
 from family_bot.flows import stats as flow_stats
 from tests.conftest import FakeSheetsClient, bot_context
 from tests.known_bugs.fakes import FakeQuery, make_update
@@ -50,10 +52,12 @@ def run(coro: Any) -> Any:
 
 
 def english_words(text: str) -> list[str]:
+    """Latin words in text, after removing the allowed technical names."""
     return LATIN_WORD.findall(ALLOWED_LATIN.sub("", text))
 
 
 def markup_labels(markup: Any) -> list[str]:
+    """Button labels of a reply or inline keyboard; empty for anything else."""
     if isinstance(markup, ReplyKeyboardMarkup):
         return [b.text for row in markup.keyboard for b in row]
     if isinstance(markup, InlineKeyboardMarkup):
@@ -113,7 +117,9 @@ def test_main_menu_and_commands(seen: Seen, ctx: SimpleNamespace) -> None:
     run(bot.whoami(seen.update("/whoami", user_id=999), ctx))
     with pytest.raises(bot.ApplicationHandlerStop):
         run(bot.enforce_allowlist(seen.update("hi", user_id=999), ctx))
+    run(bot.choose_action(seen.update("привет"), ctx))  # typed text without a number
     seen.texts += [c.description for c in bot.COMMANDS]
+    seen.texts += [text_input.HINT, errors.SAVE_FAILED, errors.NOT_PARSED]
     assert_russian(seen.collect())
 
 
