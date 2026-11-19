@@ -308,6 +308,20 @@ class StatsFlow:
             errors.log_exception("Last records", e)
             return "❌ Не удалось загрузить записи. Попробуйте ещё раз"
 
+    def _aggregate(self, context: ContextTypes.DEFAULT_TYPE,
+                   query: StatQuery) -> tuple[str, dict]:
+        """Load rows and compute the statistics text (blocking: Sheets + FX)."""
+        return analytics.aggregate(
+            self._load_rows(context),
+            category=query.category,
+            month=query.month,
+            date_from=query.date_from,
+            date_to=query.date_to,
+            group_by_currency=query.group_by_currency,
+            convert_to_currency=query.convert_to,
+            get_rate=self._get_rate,
+        )
+
     async def _reply_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                             query: StatQuery) -> None:
         """Send the statistics text and store conversion details in the query."""
@@ -322,17 +336,7 @@ class StatsFlow:
 
         # Sheets read and FX requests block, so they run in a worker thread.
         stats, query.conversion_details = await asyncio.to_thread(
-            lambda: analytics.aggregate(
-                self._load_rows(context),
-                category=query.category,
-                month=query.month,
-                date_from=query.date_from,
-                date_to=query.date_to,
-                group_by_currency=query.group_by_currency,
-                convert_to_currency=query.convert_to,
-                get_rate=self._get_rate,
-            )
-        )
+            self._aggregate, context, query)
         suffix = f" (in {query.convert_to})" if query.convert_to else ""
         await _message(update).reply_text(
             f"📊 Statistics {period_text}, category '{query.category}'{suffix}:\n{stats}")
