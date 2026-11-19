@@ -186,6 +186,92 @@ def _run_classify_selftest() -> None:
         )
 
 
+# Category repairs pick a name that already exists in the sheet (Config list or
+# Data), so the dashboard never shows a Category the household did not create.
+RENT_CATEGORY_RE = re.compile(r"^(rent|аренд)", re.IGNORECASE)
+BILLS_CATEGORY_RE = re.compile(r"^(bills|коммунал|счета)", re.IGNORECASE)
+NO_CATEGORY = "Без категории"
+RENT_COMMENT_WORD = "аренд"       # comment says the row is rent
+BILLS_COMMENT_WORD = "коммунал"   # comment says the row is utility bills
+
+
+def category_order(config: list[str], seen: list[str]) -> list[str]:
+    """
+    Category names for the page: Config sheet order, then the rest by name.
+
+    Parameters
+    ----------
+    config : list[str]
+        Names from column A of the Config sheet (may hold blanks and repeats).
+    seen : list[str]
+        Category names found in Data rows.
+
+    Returns
+    -------
+    list[str]
+        Each name once: Config names first in sheet order, then names that
+        appear only in Data, sorted.
+    """
+    order: list[str] = []
+    for name in config:
+        name = name.strip()
+        if name and name not in order:
+            order.append(name)
+    order += sorted({s for s in seen if s and s not in order})
+    return order
+
+
+def _known(known: list[str], pattern: re.Pattern[str]) -> Optional[str]:
+    """
+    First name in ``known`` that matches ``pattern``.
+
+    Parameters
+    ----------
+    known : list[str]
+        Category names of this sheet.
+    pattern : re.Pattern[str]
+        Name prefix to look for.
+
+    Returns
+    -------
+    Optional[str]
+        The matching name, or None.
+    """
+    return next((name for name in known if pattern.match(name)), None)
+
+
+def repair_category(category: str, comment: str, known: list[str]) -> str:
+    """
+    Fix a Category cell that was left empty, overwritten, or used for rent.
+
+    Parameters
+    ----------
+    category : str
+        Category cell from Data.
+    comment : str
+        Comment cell from Data.
+    known : list[str]
+        Category names of this sheet (Config and Data).
+
+    Returns
+    -------
+    str
+        The cell as is, or a name from ``known``: the rent Category when the
+        comment says «аренд», the bills Category for an empty or numeric cell
+        with «коммунал». An empty or numeric cell with no match gets
+        ``NO_CATEGORY``.
+    """
+    comment_l = comment.lower()
+    if RENT_COMMENT_WORD in comment_l:
+        rent = _known(known, RENT_CATEGORY_RE)
+        if rent:
+            return rent
+    if not category or category.replace(".", "").replace(",", "").isdigit():
+        bills = _known(known, BILLS_CATEGORY_RE) if BILLS_COMMENT_WORD in comment_l else None
+        return bills or NO_CATEGORY
+    return category
+
+
 def normalize_spender(name: str) -> str:
     if not name:
         return "—"
@@ -430,6 +516,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     load_dotenv(BOT_DIR / ".env")
 
     spreadsheet_url = None
+    config_categories: list[str] = []
     if csv_path:
         print(f"→ Reading data from CSV: {csv_path}")
         headers, raw_rows = read_csv(Path(csv_path))
@@ -441,6 +528,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         if len(values) < 2:
             raise RuntimeError("Sheet 'Data' has no rows to analyze.")
         headers, raw_rows = values[0], values[1:]
+        config_categories = client.read_categories()
     cols = resolve_columns(headers)
     for required in ("amount", "currency", "category"):
         if required not in cols:
@@ -491,18 +579,10 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         amount_base = to_base(amount, iso, base_iso, rates)
         comments.append(comment)
         date = cell(row, "date")
-        # Repair rows where the category cell got overwritten with a number.
-        category = cell(row, "category")
-        comment_l = comment.lower()
-        if not category or category.replace(".", "").replace(",", "").isdigit():
-            category = "Bills" if "коммунал" in comment_l else "Без категории"
-        # Rent occasionally logged under the wrong category (e.g. Bills) — normalize.
-        if "аренд" in comment_l:
-            category = "Rent"
         rows.append({
             "date": date,
             "month": normalize_month(date, cell(row, "month")),
-            "category": category,
+            "category": cell(row, "category"),
             "amount": round(amount, 2),
             "currency": iso,
             "currency_symbol": ISO_TO_SYMBOL.get(iso, symbol or iso),
@@ -510,6 +590,11 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
             "who": normalize_spender(cell(row, "who")),
             "comment": comment,
         })
+
+    # Repair empty / numeric / rent-mislogged Category cells with this sheet's own names.
+    known = category_order(config_categories, [r["category"] for r in rows])
+    for r in rows:
+        r["category"] = repair_category(r["category"], r["comment"], known)
 
     print(f"→ Kept {len(rows)} rows, skipped {skipped} unparseable, "
           f"excluded {excluded} cash withdrawal(s).")
@@ -565,6 +650,9 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         "theme_rules": ({} if use_llm else {t: kws for t, kws in THEME_RULES}),
         "grouping_mode": (provider if use_llm else "rules"),
         "from_month": from_month,
+        # colour order: Config sheet first, so a Category keeps its colour.
+        # Taken after the repair, so repaired names and NO_CATEGORY are listed too.
+        "categories": category_order(config_categories, [r["category"] for r in rows]),
         "rows": rows,
     }
 
