@@ -32,12 +32,7 @@ from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_fai
 from family_bot.fx import fetch_rates
 from family_bot.llm import extract_json_object, reply_text
 from family_bot.sheets import open_client
-from family_bot.sheet_data import (
-    ISO_TO_SYMBOL,
-    SYMBOL_TO_ISO,
-    parse_rows,
-    resolve_columns,
-)
+from family_bot.sheet_data import ISO_TO_SYMBOL, parse_rows, resolve_columns
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -705,7 +700,7 @@ def main() -> None:
     stage = "самопроверка классификатора"
     try:
         _run_classify_selftest()
-        base = SYMBOL_TO_ISO.get(args.base, args.base.upper())
+        base = to_iso(args.base)
         model = args.model or DEFAULT_LLM_MODELS[args.provider]
         stage = "сборка"
         out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
