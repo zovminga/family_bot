@@ -2,6 +2,8 @@
 """Preset expense flow: pick a ⚡ template and save immediately."""
 from __future__ import annotations
 
+import asyncio
+
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -58,7 +60,7 @@ async def choose_preset(
 
     who = preset.get("who") or resolve_who(update)
     date_str = clock.now().strftime(date_fmt)
-    append_expense(sheets, ExpenseRecord(
+    await asyncio.to_thread(append_expense, sheets, ExpenseRecord(
         date=date_str,
         category=preset["category"],
         amount=preset["amount"],
