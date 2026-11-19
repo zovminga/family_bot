@@ -354,10 +354,10 @@ dashboard/          импортирует общие модули как пак
 
 ### Этап 5 — первая установка
 
-- [ ] 5.1 README: Python 3.12. Шаги Google Cloud: вкладка Keys, поле `client_email`. Загрузка модели Vosk. Что работает только с ключом Claude. *(I1, I6)*
+- [x] 5.1 README: Python 3.12. Шаги Google Cloud: вкладка Keys, поле `client_email`. Загрузка модели Vosk. Что работает только с ключом Claude. *(I1, I6)*
 - [x] 5.2 При запуске бот проверяет настройку. На каждую проблему — одна строка: что не так и что сделать. *(I3)*
 - [x] 5.3 `/whoami` работает без таблицы. Разбор `ALLOWED_USERS` не падает на запятой. *(I4, I7)*
-- [ ] 5.4 Render в README: `GOOGLE_CREDS_PATH=/etc/secrets/creds.json`, закреплённый Python,
+- [x] 5.4 Render в README: `GOOGLE_CREDS_PATH=/etc/secrets/creds.json`, закреплённый Python,
   новые Build Command и Start Command из 2.7. *(I2)*
 - [x] 5.5 `test_google_sheets.py` читает `.env`. *(I5)*
 - [ ] 5.6 Данные семьи — в настройки: базовая валюта, начальный месяц, имена, имя агента launchd. *(I8)*
