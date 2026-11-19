@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-# "123456:Azat,789012:Lisa" — commas or semicolons between pairs; : or = between id and name.
+# "123456:Ann,789012:Bob" — commas or semicolons between pairs; : or = between id and name.
 # A separator splits only before the next "<id>:" so a name may hold a comma ("111:Иван, Петров").
 _PAIR = re.compile(
     r"^\s*(?P<uid>\d+)\s*[:=]\s*(?P<name>.+?)[\s,;]*$"
@@ -30,7 +30,7 @@ def parse_allowed_users(raw: Optional[str]) -> dict[int, str]:
         if not match:
             raise ValueError(
                 f"Invalid ALLOWED_USERS entry {chunk!r}. "
-                'Expected form: 123456:Name (e.g. "111:Azat,222:Lisa")'
+                'Expected form: 123456:Name (e.g. "111:Ann,222:Bob")'
             )
         users[int(match.group("uid"))] = match.group("name").strip()
     return users

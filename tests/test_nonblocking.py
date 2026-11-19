@@ -21,7 +21,7 @@ SLOW_SEC = 0.5
 TICK_SEC = 0.1
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=10.0,
-    currency="€", who="Azat", comment=""),
+    currency="€", who="Ann", comment=""),
 ]
 
 
@@ -125,9 +125,10 @@ class RecordingAnthropic:
 
 
 @pytest.mark.parametrize("call", [
-    lambda: voice_input.extract_expenses("кофе 350", ["Food"], ["дин"], "01.11.2026", "A"),
+    lambda: voice_input.extract_expenses("кофе 350", ["Food"], ["дин"], "01.11.2026", "A",
+                                           "дин"),
     lambda: photo_input.extract_receipt(b"img", "image/jpeg", ["Food"], ["дин"],
-                                        "01.11.2026", "A"),
+                                        "01.11.2026", "A", "дин"),
 ], ids=["voice_and_text", "receipt_photo"])
 def test_claude_has_short_timeout_and_one_retry(monkeypatch: pytest.MonkeyPatch,
                                                 call: Callable[[], dict]) -> None:

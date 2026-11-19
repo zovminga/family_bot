@@ -29,7 +29,7 @@ def key_file(tmp_path: Path) -> Path:
 
 
 def env(key_file: Path | None = None, **extra: str) -> dict[str, str]:
-    values = {"ALLOWED_USERS": "111:Azat"}
+    values = {"ALLOWED_USERS": "111:Ann"}
     if key_file is not None:
         values.update(GOOGLE_CREDS_PATH=str(key_file), SHEET_NAME="Family")
     values.update(extra)
@@ -80,7 +80,7 @@ def test_load_reads_categories_presets_allowlist(key_file: Path) -> None:
     assert cfg.sheets is fake
     assert cfg.categories == ["Food", "Transport"]
     assert [p["name"] for p in cfg.presets] == ["Rent"]
-    assert cfg.allowed_users == {111: "Azat"}
+    assert cfg.allowed_users == {111: "Ann"}
     assert "$" in cfg.currencies
 
 
@@ -102,7 +102,7 @@ def test_no_google_settings_gives_one_line_per_problem() -> None:
 
     cfg = config.load(env(), open_sheets=never)
     assert cfg.sheets is None
-    assert cfg.allowed_users == {111: "Azat"}
+    assert cfg.allowed_users == {111: "Ann"}
     assert_one_line_each(cfg.problems)
     text = " ".join(cfg.problems)
     assert "GOOGLE_CREDS_PATH" in text and "SHEET_NAME" in text
@@ -171,14 +171,14 @@ def test_reload_reports_unreadable_config_sheet(key_file: Path) -> None:
 # ---------- ALLOWED_USERS ----------
 
 def test_comma_inside_name_does_not_crash(key_file: Path) -> None:
-    cfg = config.load(env(key_file, ALLOWED_USERS="111:Иван, Петров,222:Lisa"),
+    cfg = config.load(env(key_file, ALLOWED_USERS="111:Иван, Петров,222:Bob"),
                       open_sheets=opener(FakeSheetsClient(categories=["Food"])))
-    assert cfg.allowed_users == {111: "Иван, Петров", 222: "Lisa"}
+    assert cfg.allowed_users == {111: "Иван, Петров", 222: "Bob"}
     assert cfg.problems == []
 
 
 def test_bad_allowlist_is_a_problem_not_a_crash(key_file: Path) -> None:
-    cfg = config.load(env(key_file, ALLOWED_USERS="Azat:111"),
+    cfg = config.load(env(key_file, ALLOWED_USERS="Ann:111"),
                       open_sheets=opener(FakeSheetsClient(categories=["Food"])))
     assert cfg.allowed_users == {}
     assert_one_line_each(cfg.problems)

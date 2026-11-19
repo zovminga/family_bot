@@ -26,7 +26,7 @@ def test_append_respects_header_order():
     headers = ["Date", "Category", "Month", "Amount", "Currency", "Who", "Comment"]
     sheets = FakeSheets(headers=headers)
     append_expense(sheets, ExpenseRecord(date="01.11.2026", category="Food",
-                                         amount=250.0, currency="дин", who="Azat"))
+                                         amount=250.0, currency="дин", who="Ann"))
     rec = parse_rows(headers, sheets.rows)[0]
     assert rec.category == "Food" and rec.month == "2026-11", rec
 
@@ -86,9 +86,9 @@ def test_unknown_currency_stops_build(tmp_path, monkeypatch):
     csv_path = tmp_path / "data.csv"
     csv_path.write_text(
         "Date,Category,Amount,Currency,Who,Comment\n"
-        "01.11.2026,Food,100,дин,Azat,ok\n"
-        "02.11.2026,Food,1000,руб,Azat,Пятёрочка\n"
-        "03.11.2026,Food,7,XYZ,Lisa,mystery\n",
+        "01.11.2026,Food,100,дин,Ann,ok\n"
+        "02.11.2026,Food,1000,руб,Ann,Пятёрочка\n"
+        "03.11.2026,Food,7,XYZ,Bob,mystery\n",
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError) as exc:

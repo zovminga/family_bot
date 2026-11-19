@@ -220,7 +220,7 @@ def _snap_amount(value) -> Optional[float]:
 
 def extract_expenses(transcript: str, categories: list[str], currencies: list[str],
                      today: str, who: str,
-                     default_currency: str = "дин",
+                     default_currency: str,
                      model: str = DEFAULT_LLM_MODEL) -> dict:
     """Turn a transcript into {'expenses': [...], 'note': str} via Claude.
 

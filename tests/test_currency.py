@@ -67,14 +67,14 @@ def test_snap_currency_normalises_to_stored_symbol(value: Any, expected: str) ->
 
 def test_voice_prompt_maps_spoken_words_from_registry() -> None:
     prompt = vx._build_prompt("сто юаней", ["Food"], currency.symbols(),
-                              "01.11.2026", "Azat", "дин")
+                              "01.11.2026", "Ann", "дин")
     assert "юань/юаней→CNY" in prompt
     assert "доллар/долларов→$" in prompt
     assert "иена/йен→¥" in prompt
 
 
 def test_receipt_prompt_lists_codes_from_registry() -> None:
-    prompt = px._build_prompt(["Food"], currency.symbols(), "01.11.2026", "Azat", "дин")
+    prompt = px._build_prompt(["Food"], currency.symbols(), "01.11.2026", "Ann", "дин")
     assert "USD→$" in prompt
     assert "JPY→¥" in prompt
     assert "CNY→CNY" in prompt
@@ -108,7 +108,7 @@ def test_voice_extract_keeps_currency(fake_claude: type[_FakeAnthropic],
     fake_claude.reply = {"expenses": [{"comment": "x", "amount": 10, "currency": claude_currency,
                                        "date": "01.11.2026", "category": "Food"}]}
     out = vx.extract_expenses("десять", ["Food", "Other"], currency.symbols(),
-                              "01.11.2026", "Azat", "дин")
+                              "01.11.2026", "Ann", "дин")
     assert out["expenses"][0]["currency"] == stored
 
 
@@ -117,7 +117,7 @@ def test_receipt_extract_keeps_dollars(fake_claude: type[_FakeAnthropic]) -> Non
                          "items": [{"name": "milk", "amount": 10, "category": "Food",
                                     "group": "Продукты"}]}
     out = px.extract_receipt(b"img", "image/jpeg", ["Food", "Other"], currency.symbols(),
-                             "01.11.2026", "Azat", "дин")
+                             "01.11.2026", "Ann", "дин")
     assert out["expenses"][0]["currency"] == "$"
 
 
@@ -126,8 +126,8 @@ def test_regular_currency_columns_come_from_registry() -> None:
         ["название", "динары", "евро", "доллары", "рубли", "юани", "категория", "кто"],
         ["ежемесячные траты", "", "", "", "", "", "", ""],
         ["Rent", "", "500", "", "", "", "Rent", "Both"],
-        ["VPN", "", "", "5", "", "", "Other", "Azat"],
-        ["Tea", "", "", "", "", "30", "Food", "Lisa"],
+        ["VPN", "", "", "5", "", "", "Other", "Ann"],
+        ["Tea", "", "", "", "", "30", "Food", "Bob"],
     ]
     items = regular.parse_regular(grid)["monthly"]
     assert [i["currency"] for i in items] == ["€", "$", "CNY"]

@@ -31,13 +31,13 @@ if str(ROOT) not in sys.path:
 def bot_context(**fields: Any) -> SimpleNamespace:
     """Handler context holding a Config in bot_data, as after post_init.
 
-    Defaults: Allowlist 111:Azat, 222:Lisa, fallback categories, no Sheets.
+    Defaults: Allowlist 111:Ann, 222:Bob, fallback categories, no Sheets.
     Pass any Config field to override (``sheets=FakeSheets()``).
     """
     from family_bot import config
 
     settings = config.Config(**{
-        "allowed_users": {111: "Azat", 222: "Lisa"},
+        "allowed_users": {111: "Ann", 222: "Bob"},
         "categories": list(config.FALLBACK_CATEGORIES),
         **fields,
     })

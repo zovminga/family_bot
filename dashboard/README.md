@@ -3,7 +3,7 @@
 Автономный HTML-дашборд по данным из той же Google-таблицы (`FamilyExpenses`),
 куда пишет Telegram-бот. Сборка (`python -m family_bot.dashboard`, код —
 `family_bot/dashboard/build_dashboard.py`) тянет данные через
-`gspread` (или из CSV), конвертирует валюты в базовую (по умолчанию RSD),
+`gspread` (или из CSV), конвертирует валюты в базовую (`BASE_CURRENCY` из `.env`, без неё — EUR),
 группирует комментарии в темы (по умолчанию — правила, опционально LLM:
 Claude или OpenAI) и собирает один самодостаточный HTML-файл с вшитыми данными.
 
@@ -44,7 +44,15 @@ ANTHROPIC_API_KEY=sk-ant-...           # для группировки комм�
 OPENAI_API_KEY=sk-...                  # опционально, если используешь --provider openai
 BOT_TOKEN=...                          # для --publish (отправка дашборда в Telegram)
 DASHBOARD_CHAT_ID=<your_telegram_id>   # чат, куда слать дашборд после сборки
+BASE_CURRENCY=EUR                      # базовая валюта (ISO), её же бот ставит по умолчанию
+DASHBOARD_FROM_MONTH=2024-01           # необязательно: скрыть месяцы раньше этого
+DASHBOARD_SPENDER_ALIASES=ann=Анна,annie=Анна   # необязательно: одно имя в разных написаниях
 ```
+
+Свои магазины, кафе и места для группировки по темам — в
+`dashboard/theme_keywords.json` (файл в `.gitignore`). Формат:
+`{"Кофе": ["corner cafe"], "Супермаркет и продукты": ["мой магазин"]}`. Темы —
+только из `THEME_RULES` в `build_dashboard.py`; слова дописываются к словам темы.
 
 1. Положи service-account JSON в `secrets/creds.json` в корне репозитория
    (папка `secrets/` в `.gitignore`, в публичный репозиторий не попадёт).
@@ -52,12 +60,12 @@ DASHBOARD_CHAT_ID=<your_telegram_id>   # чат, куда слать дашбо�
 3. Собери дашборд:
 
 ```bash
-python -m family_bot.dashboard                    # база RSD, данные с 2025-10, темы по правилам
+python -m family_bot.dashboard                    # база и первый месяц из .env, темы по правилам
 python -m family_bot.dashboard --base EUR         # другая базовая валюта
 python -m family_bot.dashboard --llm              # темы через Claude (провайдер по умолчанию)
 python -m family_bot.dashboard --llm --provider openai   # темы через OpenAI
 python -m family_bot.dashboard --from ""          # показать ВСЕ периоды
-python -m family_bot.dashboard --from 2025-07     # с конкретного месяца
+python -m family_bot.dashboard --from 2024-07     # с конкретного месяца
 ```
 
 ### Провайдеры классификации комментариев
@@ -124,6 +132,10 @@ cd family_bot/dashboard
 RUN_DAY=1 RUN_HOUR=8 RUN_MINUTE=30 ./schedule.sh install
 ```
 
+Имя агента — `local.family-bot.dashboard`. Другое имя задаёт строка
+`LAUNCHD_LABEL=...` в `.env` (без кавычек) или переменная окружения при запуске
+`schedule.sh`. Сменил имя — сначала `./schedule.sh uninstall` со старым именем.
+
 Логи сборки: `output/build.log` (ручной запуск) и `output/launchd.log`
 (по расписанию). Если сборка без `--trial` упала, в тот же чат
 `DASHBOARD_CHAT_ID` приходит короткое сообщение: на каком этапе и тип ошибки.
@@ -131,7 +143,7 @@ RUN_DAY=1 RUN_HOUR=8 RUN_MINUTE=30 ./schedule.sh install
 Сгенерированный plist лежит в `~/Library/LaunchAgents/` и в репозиторий не
 попадает.
 
-По умолчанию скрыты данные раньше `2025-10` (см. `--from`). Ручные доначисления
+Месяцы раньше `DASHBOARD_FROM_MONTH` скрыты (флаг `--from` её переопределяет). Ручные доначисления
 (например, забытая аренда) лежат в `dashboard/manual_adjustments.csv` и
 автоматически подмешиваются при сборке.
 

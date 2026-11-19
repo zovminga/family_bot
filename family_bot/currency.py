@@ -37,6 +37,14 @@ CURRENCIES: tuple[Currency, ...] = (
 )
 
 
+# Setting that names the household's base Currency (ISO code): the bot uses it
+# when a voice/receipt/typed expense names no Currency, the dashboard converts
+# every amount into it. Must be one of CURRENCIES for the bot.
+BASE_CURRENCY_ENV = "BASE_CURRENCY"
+# Base Currency of a household that has not set BASE_CURRENCY.
+DEFAULT_BASE = next(c for c in CURRENCIES if c.code == "EUR")
+
+
 def symbols() -> list[str]:
     """Stored values of all registered Currencies, in button order."""
     return [c.symbol for c in CURRENCIES]
