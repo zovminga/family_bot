@@ -39,15 +39,15 @@ def replies(update: Any) -> list[str]:
 
 
 def test_states_cover_every_stat_state() -> None:
-    expected = {v for k, v in vars(states).items() if k.startswith("STAT_")}
+    expected = {s for s in states.State if s.name.startswith("STAT_")}
     assert set(make_flow().states()) == expected
 
 
 def test_specific_category_starts_fresh_query() -> None:
     flow, ctx = make_flow(), SimpleNamespace(user_data={})
     ctx.user_data[stats.QUERY_KEY] = stats.StatQuery(month="2026-09", convert_to="€")
-    assert run(flow.on_category(make_update("Specific category"), ctx)) == states.STAT_CAT
-    assert run(flow.on_category(make_update("Food"), ctx)) == states.STAT_TYPE
+    assert run(flow.on_category(make_update("Specific category"), ctx)) == states.State.STAT_CAT
+    assert run(flow.on_category(make_update("Food"), ctx)) == states.State.STAT_TYPE
     assert ctx.user_data[stats.QUERY_KEY] == stats.StatQuery(category="Food")
 
 
@@ -56,12 +56,12 @@ def test_conversion_details_then_home() -> None:
     run(flow.begin(make_update("📊 Show statistics"), ctx))
     run(flow.on_category(make_update("All categories"), ctx))
     run(flow.on_month(make_update("2026-10"), ctx))
-    assert run(flow.on_group_currency(make_update("No"), ctx)) == states.STAT_CONVERT_CURRENCY
+    assert run(flow.on_group_currency(make_update("No"), ctx)) == states.State.STAT_CONVERT_CURRENCY
     upd = make_update("дин")
-    assert run(flow.on_convert_currency(upd, ctx)) == states.STAT_SHOW_DETAILS
+    assert run(flow.on_convert_currency(upd, ctx)) == states.State.STAT_SHOW_DETAILS
     assert "for 2026-10" in replies(upd)[0] and "(in дин)" in replies(upd)[0]
     upd = make_update("Show details")
-    assert run(flow.on_show_details(upd, ctx)) == states.CHOOSE_ACTION
+    assert run(flow.on_show_details(upd, ctx)) == states.State.CHOOSE_ACTION
     assert "€ → дин" in replies(upd)[0], replies(upd)
     assert stats.QUERY_KEY not in ctx.user_data
 

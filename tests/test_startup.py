@@ -117,3 +117,47 @@ def test_main_registers_post_init(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bot.Application, "run_polling", lambda self, **kw: apps.append(self))
     bot.main()
     assert apps[0].post_init is bot.post_init
+
+
+def run_main_in_webhook_mode(monkeypatch: pytest.MonkeyPatch,
+                             secret: str | None) -> dict[str, Any]:
+    """Start main() with RENDER_EXTERNAL_URL set and return run_webhook's kwargs."""
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setenv("BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://bot.example.com")
+    if secret is None:
+        monkeypatch.delenv(config.WEBHOOK_SECRET_ENV, raising=False)
+    else:
+        monkeypatch.setenv(config.WEBHOOK_SECRET_ENV, secret)
+    monkeypatch.setattr(bot.config, "load_env_file", lambda: None)
+    monkeypatch.setattr(bot.Application, "run_webhook", lambda self, **kw: calls.append(kw))
+    bot.main()
+    return calls[0]
+
+
+def test_webhook_url_has_no_bot_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    kw = run_main_in_webhook_mode(monkeypatch, "s3cret_value-1")
+    assert "123:abc" not in kw["url_path"]
+    assert "123:abc" not in kw["webhook_url"]
+    assert kw["webhook_url"] == f"https://bot.example.com/{kw['url_path']}"
+
+
+def test_webhook_passes_secret_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    kw = run_main_in_webhook_mode(monkeypatch, "s3cret_value-1")
+    assert kw["secret_token"] == "s3cret_value-1"
+
+
+def test_webhook_without_secret_env_generates_one(monkeypatch: pytest.MonkeyPatch,
+                                                  capsys: pytest.CaptureFixture[str]) -> None:
+    kw = run_main_in_webhook_mode(monkeypatch, None)
+    assert config.is_valid_webhook_secret(kw["secret_token"])
+    assert len(kw["secret_token"]) >= config.WEBHOOK_SECRET_BYTES
+    assert config.WEBHOOK_SECRET_ENV in capsys.readouterr().out
+
+
+def test_webhook_with_bad_secret_is_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run_main_in_webhook_mode(monkeypatch, "has spaces!")
+    message = str(exc.value)
+    assert config.WEBHOOK_SECRET_ENV in message and " — " in message and "\n" not in message
+    assert "has spaces!" not in message  # the value is a secret, do not echo it
