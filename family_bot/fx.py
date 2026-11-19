@@ -4,11 +4,14 @@ Blocking HTTP: bot callers run it in ``asyncio.to_thread``.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import requests
 
 from family_bot.currency import to_iso
+
+logger = logging.getLogger(__name__)
 
 RATES_URL = "https://api.exchangerate-api.com/v4/latest/{base}"
 # Dashboard build reads the whole table once.
@@ -66,7 +69,7 @@ def rate(from_currency: str, to_currency: str) -> Optional[float]:
     try:
         rates = fetch_rates(to_iso(from_currency), timeout=RATE_TIMEOUT_SEC)
     except (requests.RequestException, ValueError) as e:
-        print(f"Error getting exchange rate: {e}")
+        logger.warning("Error getting exchange rate: %s", e)
         return None
     value = rates.get(to_iso(to_currency))
     return float(value) if value else None

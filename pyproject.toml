@@ -61,8 +61,9 @@ target-version = "py312"
 extend-exclude = ["dashboard/output"]
 
 [tool.ruff.lint]
-# Ruff's default set. Wider rules (I, UP, B) are open work in docs/STATUS.md.
-select = ["E4", "E7", "E9", "F"]
+# Ruff's default set plus T20 (no print: messages go through logging, family_bot/logs.py).
+# Wider rules (I, UP, B) are open work in docs/STATUS.md.
+select = ["E4", "E7", "E9", "F", "T20"]
 
 [tool.ruff.lint.per-file-ignores]
 # Existing findings left in place so CI is green without touching product code.
@@ -70,7 +71,9 @@ select = ["E4", "E7", "E9", "F"]
 "family_bot/bot.py" = ["F401"]
 "family_bot/voice_input.py" = ["F401"]
 "tests/known_bugs/test_bot_flows.py" = ["F401"]
-"scripts/test_google_sheets.py" = ["E402"]
+"scripts/test_google_sheets.py" = ["E402", "T20"]
+# Manual CLI scripts: print() is their report to the person running them.
+"scripts/bootstrap_sheet.py" = ["T20"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -92,6 +95,7 @@ files = [
     "family_bot/flows",
     "family_bot/fx.py",
     "family_bot/llm.py",
+    "family_bot/logs.py",
     "family_bot/monthly_summary.py",
     "family_bot/navigation.py",
     "family_bot/per_user.py",

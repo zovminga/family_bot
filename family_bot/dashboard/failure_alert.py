@@ -5,20 +5,26 @@ Sends one short message to the Dashboard chat (DASHBOARD_CHAT_ID via BOT_TOKEN,
 the same pair `--publish` uses). The reason is a stage name plus an exception
 type, never the exception text: build errors can quote sheet rows.
 
-Standard library only, and Python 3.9 syntax: run.sh also calls this file with
-the system python3 when the venv could not be built.
+Standard library only (family_bot.logs and family_bot.errors too), and Python
+3.9 syntax: run.sh also calls this file with the system python3 when the venv
+could not be built.
 
 CLI (used by run.sh):  python3 -m family_bot.dashboard.failure_alert "<reason>"
 """
 from __future__ import annotations
 
 import http.client
+import logging
 import os
 import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
+
+from family_bot import logs
+
+logger = logging.getLogger(__name__)
 
 # .env sits in the repo root: family_bot/dashboard/ is two levels below it.
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
@@ -131,17 +137,15 @@ def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
     token = os.getenv("BOT_TOKEN") or file_values.get("BOT_TOKEN", "")
     chat_id = os.getenv("DASHBOARD_CHAT_ID") or file_values.get("DASHBOARD_CHAT_ID", "")
     if not token or not chat_id:
-        print("⚠️  BOT_TOKEN/DASHBOARD_CHAT_ID not set — failure alert not sent.",
-              file=sys.stderr)
+        logger.warning("⚠️  BOT_TOKEN/DASHBOARD_CHAT_ID not set — failure alert not sent.")
         return False
     try:
         (send or post_message)(token, chat_id, failure_text(reason, token))
     except (OSError, ValueError, http.client.HTTPException) as exc:
         # urllib errors quote the request URL, which holds the token.
-        print("⚠️  Failure alert not sent: " + str(exc).replace(token, TOKEN_MASK),
-              file=sys.stderr)
+        logger.warning("⚠️  Failure alert not sent: %s", str(exc).replace(token, TOKEN_MASK))
         return False
-    print("→ Failure alert sent to Telegram.", file=sys.stderr)
+    logger.info("→ Failure alert sent to Telegram.")
     return True
 
 
@@ -159,6 +163,7 @@ def main(argv: list[str]) -> int:
     int
         Always 0: a failed alert must not change the build's exit code.
     """
+    logs.setup()
     reason = " ".join(argv).strip() or UNKNOWN_REASON
     send_failure_alert(reason)
     return 0

@@ -24,10 +24,14 @@ BOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BOT_DIR))
 load_dotenv(BOT_DIR / ".env")
 
+from family_bot import logs  # noqa: E402
 from family_bot.sheets import open_client  # noqa: E402
 
 
 def main() -> int:
+    # print() below is this script's report to the person running it; library
+    # messages (e.g. a failed Sheets call) go through logging.
+    logs.setup()
     creds = os.getenv("GOOGLE_CREDS_PATH")
     sheet = os.getenv("SHEET_NAME")
     if not creds or not sheet:
