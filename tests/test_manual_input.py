@@ -1,7 +1,6 @@
 """Manual add-expense steps: amount, Category and Currency checks (R6, R13, U3, R12)."""
 import asyncio
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import pytest
 from telegram import Chat, Message, Update, User
@@ -9,6 +8,7 @@ from telegram.ext import ApplicationHandlerStop
 
 import bot
 from conversation_states import CHOOSE_CAT, CHOOSE_CUR, TYPING_AMT, TYPING_CMNT
+from tests.conftest import bot_context
 from tests.known_bugs.fakes import make_update
 
 
@@ -22,14 +22,8 @@ def run(coro):
 
 @pytest.fixture
 def ctx():
-    return SimpleNamespace(user_data={}, args=[])
-
-
-@pytest.fixture(autouse=True)
-def _lists(monkeypatch):
-    monkeypatch.setattr(bot, "CATS", ["Food", "Transport"])
-    monkeypatch.setattr(bot, "CURS", ["₽", "дин", "€", "$"])
-    monkeypatch.setattr(bot, "ALLOWED_USERS", {111: "Azat"})
+    return bot_context(categories=["Food", "Transport"], currencies=["₽", "дин", "€", "$"],
+                       allowed_users={111: "Azat"})
 
 
 def replies(update):
@@ -112,8 +106,7 @@ def test_main_registers_edit_drop_before_allowlist(monkeypatch):
     apps = []
     monkeypatch.setenv("BOT_TOKEN", "123:abc")
     monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
-    monkeypatch.setattr(bot, "sheets", bot.sheets)  # main() rebinds it, restore after
-    monkeypatch.setattr(bot, "open_client", lambda: None)
+    monkeypatch.setattr(bot.config, "load_env_file", lambda: None)
     monkeypatch.setattr(bot.Application, "run_polling", lambda self, **kw: apps.append(self))
     bot.main()
     groups = apps[0].handlers

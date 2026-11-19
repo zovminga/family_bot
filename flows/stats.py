@@ -9,7 +9,7 @@ CHOOSE_ACTION and drops the query.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any, Callable, Coroutine, Optional, TypeVar
 
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
@@ -30,6 +30,8 @@ QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
 MONTHS_SHOWN = 12
 LAST_RECORDS_SHOWN = 3
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -79,17 +81,22 @@ def _parse_date(text: str) -> str:
     return dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
 
 
+Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
+
+
 class StatsFlow:
     """Statistics handlers with their data sources injected.
 
     Parameters
     ----------
-    categories : Callable[[], list[str]]
+    categories : Source[list[str]]
         Current category list (re-read on every call so /reloadcats applies).
-    load_rows : Callable[[], list[dict]]
+    load_rows : Source[list[dict]]
         Normalized Data-sheet rows.
-    fallback_currencies : Callable[[], list[str]]
+    fallback_currencies : Source[list[str]]
         Currencies offered when the sheet has none.
+
+    Each source takes the handler's context, so it can read the bot's Config.
     get_rate : analytics.GetRate
         FX rate source for conversion.
     """
@@ -97,9 +104,9 @@ class StatsFlow:
     def __init__(
         self,
         *,
-        categories: Callable[[], list[str]],
-        load_rows: Callable[[], list[dict]],
-        fallback_currencies: Callable[[], list[str]],
+        categories: Source[list[str]],
+        load_rows: Source[list[dict]],
+        fallback_currencies: Source[list[str]],
         get_rate: analytics.GetRate = analytics.http_exchange_rate,
     ) -> None:
         self._categories = categories
@@ -141,7 +148,7 @@ class StatsFlow:
         if text == "Specific category":
             await _message(update).reply_text(
                 "📂 Choose category:",
-                reply_markup=_keyboard([[c] for c in self._categories()]),
+                reply_markup=_keyboard([[c] for c in self._categories(context)]),
             )
             return STAT_CAT
 
@@ -161,7 +168,7 @@ class StatsFlow:
 
         if text == "📜 Last 3 records":
             category = load_query(_user_data(context)).category
-            await _message(update).reply_text(self._last_records(category))
+            await _message(update).reply_text(self._last_records(context, category))
             return await nav.go_home(update, context)
 
         if text == "📅 Custom period":
@@ -230,12 +237,12 @@ class StatsFlow:
         query.group_by_currency = text == "Yes"
         if query.group_by_currency:
             query.convert_to = None
-            await self._reply_result(update, query)
+            await self._reply_result(update, context, query)
             return await self._finish(update, context)
 
         await _message(update).reply_text(
             "💱 Convert all expenses to which currency?",
-            reply_markup=_keyboard([[c] for c in self._currencies()]),
+            reply_markup=_keyboard([[c] for c in self._currencies(context)]),
         )
         return STAT_CONVERT_CURRENCY
 
@@ -247,7 +254,7 @@ class StatsFlow:
 
         query = load_query(_user_data(context))
         query.convert_to = text
-        await self._reply_result(update, query)
+        await self._reply_result(update, context, query)
         if not query.conversion_details:
             return await self._finish(update, context)
 
@@ -281,24 +288,25 @@ class StatsFlow:
         await nav.show_main_menu(update, context)
         return CHOOSE_ACTION
 
-    def _currencies(self) -> list[str]:
+    def _currencies(self, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
         try:
             return analytics.unique_currencies(
-                self._load_rows(), fallback=self._fallback_currencies())
+                self._load_rows(context), fallback=self._fallback_currencies(context))
         except Exception as e:  # noqa: BLE001 - offer fallback currencies
             print(f"Error getting currencies: {e}")
-            return self._fallback_currencies()
+            return self._fallback_currencies(context)
 
-    def _last_records(self, category: str) -> str:
+    def _last_records(self, context: ContextTypes.DEFAULT_TYPE, category: str) -> str:
         try:
             return analytics.format_last_n(
-                self._load_rows(), n=LAST_RECORDS_SHOWN,
+                self._load_rows(context), n=LAST_RECORDS_SHOWN,
                 category=None if category == ALL_CATEGORIES else category)
         except Exception as e:  # noqa: BLE001 - details go to the log
             errors.log_exception("Last records", e)
             return "❌ Не удалось загрузить записи. Попробуйте ещё раз"
 
-    async def _reply_result(self, update: Update, query: StatQuery) -> None:
+    async def _reply_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                            query: StatQuery) -> None:
         """Send the statistics text and store conversion details in the query."""
         if query.month:
             period_text = f"for {query.month}"
@@ -310,7 +318,7 @@ class StatsFlow:
             return
 
         stats, query.conversion_details = analytics.aggregate(
-            self._load_rows(),
+            self._load_rows(context),
             category=query.category,
             month=query.month,
             date_from=query.date_from,

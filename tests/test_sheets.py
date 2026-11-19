@@ -29,7 +29,7 @@ def test_fake_dashboard_file_id():
     assert client.get_dashboard_file_id() == "AgADBAAD..."
 
 
-def test_regular_load_defaults_uses_client(monkeypatch):
+def test_regular_load_presets_uses_client(monkeypatch):
     import regular
 
     fake = FakeSheetsClient(regular_values=[
@@ -40,7 +40,7 @@ def test_regular_load_defaults_uses_client(monkeypatch):
         ["баня", "3850", "", "", "", "Beauty", "Both"],
     ])
 
-    items = regular.load_defaults(fake)
+    items = regular.load_presets(fake)
     assert len(items) == 2
     assert items[0]["name"] == "Rent"
     assert items[0]["section"] == "monthly"
@@ -115,3 +115,24 @@ def test_gspread_append_data_rows_is_one_raw_request():
     ]
     GspreadSheetsClient(FakeSpreadsheet()).append_data_rows(rows)
     assert calls == [(rows, {"value_input_option": "RAW"})]
+
+
+def test_missing_spreadsheet_raises_domain_error(monkeypatch, tmp_path):
+    import gspread
+
+    import sheets
+
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+
+    class _Client:
+        def open(self, name):
+            raise gspread.SpreadsheetNotFound("404")
+
+    monkeypatch.setattr(gspread, "service_account", lambda **kw: _Client())
+    try:
+        sheets._authorize_spreadsheet(creds_path=str(creds), sheet_name="Family")
+    except sheets.SpreadsheetNotFound as e:
+        assert "Family" in str(e)
+    else:
+        raise AssertionError("no SpreadsheetNotFound")

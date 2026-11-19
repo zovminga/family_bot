@@ -14,7 +14,7 @@ import draft_expense as draft
 import errors
 import text_input
 from conversation_states import CHOOSE_ACTION
-from tests.conftest import FakeSheetsClient
+from tests.conftest import FakeSheetsClient, bot_context
 from tests.known_bugs.fakes import FakeMessage, make_update
 
 CATS = ["Food", "Transport", "Other"]
@@ -127,14 +127,11 @@ class StatusMessage(FakeMessage):
 
 
 @pytest.fixture
-def menu(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], tuple]:
-    monkeypatch.setattr(bot, "CATS", CATS)
-    monkeypatch.setattr(bot, "CURS", CURS)
-
+def menu() -> Callable[[str], tuple]:
     def send(text: str) -> tuple:
         upd = make_update(text)
         upd.message = upd.effective_message = StatusMessage(text)
-        ctx = SimpleNamespace(user_data={}, args=[])
+        ctx = bot_context(categories=list(CATS), currencies=list(CURS))
         state = run(bot.choose_action(upd, ctx))
         return state, upd.message, ctx
     return send

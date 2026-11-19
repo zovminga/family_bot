@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #30 typed text → Draft)  
+**Updated by:** agent session (issue #30 typed text → Draft, merged after issues #22, #38)  
 **Product code tip:** `7495d06` (2026-11-19) — typed text «кофе 350» in the main menu → Draft card (issue #30)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -60,6 +60,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   venv is recreated when `dashboard/requirements.txt` changes (stamp file
   `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
   and Telegram.
+- Settings load at startup (issue #22): importing `bot` reads no `.env` and
+  opens no spreadsheet. `bot.post_init` calls `config.load(os.environ)` and
+  keeps the `Config` (Allowlist, `SheetsClient`, categories, Presets, Currency
+  buttons) in `bot_data["config"]`; handlers read it via `bot.cfg(context)`.
+  Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) prints as one line «what — what to do», no traceback; `/reloadcats` shows its problems in the reply.
+  Without Google Sheets the bot still starts: `/whoami` answers, any other
+  message from an allowed User lists the problems. Missing `BOT_TOKEN` stops
+  `main()` with one line. `ALLOWED_USERS` accepts a comma inside a name;
+  a broken value is a problem line, not a crash. `scripts/test_google_sheets.py`
+  reads `.env`. Preset code names follow `CONTEXT.md` (`Config.presets`,
+  `regular.load_presets`).
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …);
   `FakeSheetsClient` lives in `tests/conftest.py`.
 - CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
@@ -86,7 +97,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
   inside their card. «По каждой» with no Currency chosen shows sums per
   Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
-  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
+  charts then use the base currency.
+- Dashboard first screen (issue #38): above the filters, «Этот месяц: X,
+  обычно Y, прогноз Z» and the top Categories against their 3-month average
+  for the same days. The build stamps `as_of` (build date). An unfinished
+  month is compared with the same days of the previous month in the card,
+  insights, monitor trend and optimization takeaway. Formulas:
+  `dashboard/SPEC.md` §4.0. Plan 4.3 done.
 
 ## Settled (do not re-open as unknowns)
 
@@ -126,10 +143,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
   before the move still import it. Drop the re-export once no branch imports
   the fake from `tests.test_sheets`.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
   recorded as open: the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`) and Preset code names (`DEFAULTS`, `load_defaults`,
-  see `CONTEXT.md`).
+  `docs/ARCHITECTURE.md`).
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the
   write into `asyncio.to_thread`, mark the Draft as saving before the await.

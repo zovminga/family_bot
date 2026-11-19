@@ -52,9 +52,10 @@ def test_sheet_data_maps_come_from_registry() -> None:
 
 
 def test_bot_buttons_are_the_registry() -> None:
-    import bot
-    assert bot.CURS == currency.symbols()
-    assert "$" in bot.CURS and "CNY" in bot.CURS
+    import config
+    buttons = config.Config().currencies
+    assert buttons == currency.symbols()
+    assert "$" in buttons and "CNY" in buttons
 
 
 @pytest.mark.parametrize("value, expected", [

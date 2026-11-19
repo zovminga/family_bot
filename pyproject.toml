@@ -70,6 +70,7 @@ files = [
     "analytics.py",
     "auth.py",
     "clock.py",
+    "config.py",
     "conversation_states.py",
     "dashboard/failure_alert.py",
     "draft_expense.py",

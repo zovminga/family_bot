@@ -6,14 +6,15 @@ Family members on one deploy share one sheet; strangers who find the bot are den
 """
 from __future__ import annotations
 
-import os
 import re
 from typing import Optional
 
-# "123456:Azat,789012:Lisa" — commas or whitespace between pairs; : or = between id and name.
+# "123456:Azat,789012:Lisa" — commas or semicolons between pairs; : or = between id and name.
+# A separator splits only before the next "<id>:" so a name may hold a comma ("111:Иван, Петров").
 _PAIR = re.compile(
-    r"^\s*(?P<uid>\d+)\s*[:=]\s*(?P<name>[^,;]+?)\s*$"
+    r"^\s*(?P<uid>\d+)\s*[:=]\s*(?P<name>.+?)[\s,;]*$"
 )
+_SEPARATOR = re.compile(r"[,;]+(?=\s*\d+\s*[:=])")
 
 
 def parse_allowed_users(raw: Optional[str]) -> dict[int, str]:
@@ -21,8 +22,8 @@ def parse_allowed_users(raw: Optional[str]) -> dict[int, str]:
     if not raw or not raw.strip():
         return {}
     users: dict[int, str] = {}
-    for chunk in re.split(r"[,;]+", raw):
-        chunk = chunk.strip()
+    for chunk in _SEPARATOR.split(raw):
+        chunk = chunk.strip(" \t,;")
         if not chunk:
             continue
         match = _PAIR.match(chunk)
@@ -33,11 +34,6 @@ def parse_allowed_users(raw: Optional[str]) -> dict[int, str]:
             )
         users[int(match.group("uid"))] = match.group("name").strip()
     return users
-
-
-def load_allowed_users() -> dict[int, str]:
-    """Load allowlist from ALLOWED_USERS in the environment."""
-    return parse_allowed_users(os.getenv("ALLOWED_USERS"))
 
 
 def is_allowed(user_id: Optional[int], allowed: dict[int, str]) -> bool:
