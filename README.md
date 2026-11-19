@@ -13,6 +13,7 @@ own allowlist). Your finances never mix with someone else's install.
 - Add expenses by category (manual, typed text like «кофе 350», voice, receipt photo)
 - Multi-currency (дин, €, ₽, ¥, £, $, CNY; list in `currency.py`)
 - Statistics and optional HTML dashboard
+- Last month's summary on the 1st of each month, sent to `DASHBOARD_CHAT_ID`
 - Categories and presets loaded from Google Sheets
 - Allowlist so only your family can use *your* bot
 
@@ -225,6 +226,8 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
 | `BASE_CURRENCY` | optional, ISO code of the currency used when an expense names none (default `EUR`), as in `.env` |
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
+| `DASHBOARD_CHAT_ID` | optional, the chat for last month's summary on the 1st (same id as for the dashboard). Unset → no summary, and the log has one `⚠️ DASHBOARD_CHAT_ID` line |
+| `MONTHLY_SUMMARY_HOUR` | optional, hour 0–23 in `TZ_NAME` when the summary is sent on the 1st (default `9`) |
 | `WEBHOOK_SECRET` | recommended: a random string of 1–256 characters `A–Z a–z 0–9 _ -` (command below) |
 
 Render sets `RENDER_EXTERNAL_URL` (the service address) by itself. When it is
@@ -246,6 +249,10 @@ Telegram sends it with every update; the bot answers 403 to requests without
 it. If it is unset, the bot makes a random secret at each start and registers
 it with Telegram, so it still works; a fixed value avoids rejected updates
 while an old and a new instance overlap during a deploy.
+
+The monthly summary is scheduled inside the bot process. If the process is
+not running at that hour on the 1st (a deploy, a restart, or an instance that
+sleeps when idle), that month's summary is skipped, not sent later.
 
 ## Commands
 
