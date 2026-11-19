@@ -3,10 +3,10 @@
 #
 # Pulls fresh data straight from Google Sheets and classifies expense comments
 # into themes with Claude (Anthropic). Designed to be safe to run both by hand
-# and from launchd: it keeps an isolated Python 3.12 virtualenv in venv/ so the
+# and from launchd: it keeps an isolated virtualenv in venv/ on the pinned Python so the
 # scheduled monthly build is reproducible and does not touch the system Python.
 # The venv is rebuilt from scratch whenever requirements.txt (an export of
-# uv.lock) or the Python version below changes.
+# uv.lock) or the version in .python-version changes.
 #
 # Usage:
 #   ./run.sh                 # default monthly build (Sheets + Claude + Telegram)
@@ -22,8 +22,8 @@ VENV_DIR="$DASHBOARD_DIR/venv"
 REQUIREMENTS="$DASHBOARD_DIR/requirements.txt"
 OUTPUT_DIR="$DASHBOARD_DIR/output"
 LOG_FILE="$OUTPUT_DIR/build.log"
-# Must match .python-version and requires-python in pyproject.toml.
-PYTHON_VERSION="3.12"
+# The repo pins one Python version for the bot and the dashboard.
+PYTHON_VERSION="$(tr -d '[:space:]' < "$DASHBOARD_DIR/../.python-version")"
 # Written into the venv after a successful install; a mismatch means rebuild.
 STAMP_FILE="$VENV_DIR/.deps-stamp"
 
@@ -33,7 +33,7 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 
 # launchd starts jobs with PATH=/usr/bin:/bin:/usr/sbin:/sbin, where uv's
 # default install locations are missing.
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 if ! command -v uv >/dev/null 2>&1; then
   log "uv not found. Install it: https://docs.astral.sh/uv/getting-started/installation/"
   exit 1
