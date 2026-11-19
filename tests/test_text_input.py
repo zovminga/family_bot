@@ -5,7 +5,7 @@ import asyncio
 import json
 import sys
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable, Coroutine, Optional
 
 import pytest
 
@@ -22,7 +22,7 @@ CURS = ["₽", "дин", "€", "$"]
 TODAY = "19.11.2026"
 
 
-def run(coro):
+def run(coro: Coroutine[Any, Any, Any]) -> Any:
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(coro)
@@ -46,7 +46,7 @@ class FakeAnthropic:
 
 
 @pytest.fixture
-def claude(monkeypatch):
+def claude(monkeypatch: pytest.MonkeyPatch) -> type[FakeAnthropic]:
     """Stub Claude: set FakeAnthropic.reply in the test."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
@@ -62,7 +62,7 @@ def _coffee(**overrides: Any) -> dict:
     return {"expenses": [item], "note": ""}
 
 
-def _parse(text: str):
+def _parse(text: str) -> Optional[draft.DraftSession]:
     return text_input.draft_from_text(
         text, categories=CATS, currencies=CURS, today=TODAY, who="Azat",
         default_currency="дин")
@@ -127,11 +127,11 @@ class StatusMessage(FakeMessage):
 
 
 @pytest.fixture
-def menu(monkeypatch):
+def menu(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], tuple]:
     monkeypatch.setattr(bot, "CATS", CATS)
     monkeypatch.setattr(bot, "CURS", CURS)
 
-    def send(text: str):
+    def send(text: str) -> tuple:
         upd = make_update(text)
         upd.message = upd.effective_message = StatusMessage(text)
         ctx = SimpleNamespace(user_data={}, args=[])
