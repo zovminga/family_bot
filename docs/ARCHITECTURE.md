@@ -71,8 +71,9 @@ Prefer extracting a library module over adding another hundred lines to `bot.py`
 
 **Known gap until issue #25 closes (finding C3, plan 2.3):** `family_bot/dashboard/build_dashboard.py`
 imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
-maps from `sheet_data`, but runs its own row loop: its own `cell()`, category
-repair, symbol → ISO fallback, and its own FX fetch (`fetch_rates`). It does not
+maps from `sheet_data`, but runs its own row loop: its own `cell()`, symbol → ISO
+fallback, and its own FX fetch (`fetch_rates`). Category repair runs after the
+loop (`repair_category()`, names from the Config sheet and Data). It does not
 use `sheet_data.normalize_rows`.
 
 ## Conversation flows

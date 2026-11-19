@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #23 package `family_bot/`, `family-bot` command)  
-**Product code tip:** `7495d06` (2026-11-19) — typed text «кофе 350» in the main menu → Draft card (issue #30)  
+**Updated by:** agent session (issue #23 package `family_bot/`, merged after issue #39)  
+**Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -111,6 +111,14 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   month is compared with the same days of the previous month in the card,
   insights, monitor trend and optimization takeaway. Formulas:
   `dashboard/SPEC.md` §4.0. Plan 4.3 done.
+- Dashboard look (issue #39): light or dark theme follows the system; each
+  Category has its own colour (`categoryColor()`, Config sheet order, never
+  repeats past 12); monitor brightness is scaled per row; «Динамика», «Состав
+  по месяцам», «Средний чек», «Дни недели» and the comment grouping are folded
+  in `<details>` at the bottom; hints open and close on tap; hint texts name
+  the `--base` currency. The build keeps Category names as in the sheet:
+  rent / bills repairs pick an existing name (`repair_category()`), no forced
+  `Rent` / `Bills`. Details: `dashboard/SPEC.md` §3.6, §4. Plan 4.4 done.
 
 ## Settled (do not re-open as unknowns)
 
