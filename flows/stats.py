@@ -9,7 +9,6 @@ CHOOSE_ACTION and drops the query.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Callable, Coroutine, Optional
 
 from dateutil import parser as dparser
@@ -18,6 +17,7 @@ from telegram import Message, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, ContextTypes, MessageHandler, filters
 
 import analytics
+import clock
 import navigation as nav
 from conversation_states import (
     CHOOSE_ACTION, STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
@@ -171,7 +171,7 @@ class StatsFlow:
             return STAT_DATE_FROM
 
         if text == "📆 By months":
-            first_of_month = datetime.now().replace(day=1)
+            first_of_month = clock.now().replace(day=1)
             months = [(first_of_month - relativedelta(months=i)).strftime(MONTH_FMT)
                       for i in range(MONTHS_SHOWN)]
             await _message(update).reply_text(

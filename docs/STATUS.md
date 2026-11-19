@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #16 stats flow module)  
+**Updated by:** agent session (issue #16 stats flow module, merged after issues #19, #20)  
 **Product code tip:** `75fe288` (2026-11-19) — statistics flow in `flows/stats.py`, R7 and R8 fixed  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -33,6 +33,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- "Today" follows the family time zone (issue #19): `clock.now()` reads
+  `TZ_NAME` (default `Europe/Belgrade`). The date buttons, presets, the Draft
+  card, voice/receipt prompts, the month list in stats and the Meta
+  `updated_at` stamp all use it. The dashboard `generated_at` stays on the
+  build Mac's local clock.
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
@@ -49,6 +54,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `StatQuery`, a new request never reuses the previous month or currency,
   `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
+  `template.html`) and data JSON is embedded with `json_for_script()`, so a
+  comment with HTML or `</script>` stays text. A Telegram publish error masks
+  `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
+  A failed Claude batch is not cached, the next run retries it.
 
 ## Settled (do not re-open as unknowns)
 
