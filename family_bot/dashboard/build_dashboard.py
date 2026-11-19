@@ -63,6 +63,9 @@ def cache_path(provider: str) -> Path:
     """Cache file is provider-specific so switching provider re-classifies."""
     return OUTPUT_DIR / f"llm_cache_{provider}.json"
 
+# Ordered (theme, keywords) pairs; the first theme with a matching keyword wins.
+ThemeRules = list[tuple[str, list[str]]]
+
 # Household settings read from .env (see .env.example).
 # Hide months before this one (YYYY-MM); empty shows all history.
 FROM_MONTH_ENV = "DASHBOARD_FROM_MONTH"
@@ -84,10 +87,10 @@ EXCLUDE_COMMENT_RE = re.compile(
 
 # Ordered keyword → theme rules (first match wins). Encodes the semantic
 # grouping of free-text comments without calling an external LLM.
-THEME_RULES: list[tuple[str, list[str]]] = [
+THEME_RULES: ThemeRules = [
     ("Подписки и сервисы", ["chatgpt", "cursor", "ps store", "psn", "ps5", "linkedin",
                             "линкедин", "spotify", "спотифай", "airalo", "sim", "internet",
-                            "интернет", "plasticity", "migaku", "мигаку",
+                            "интернет", "yettel", "plasticity", "migaku", "мигаку",
                             "games", "game", "скин"]),
     ("Жильё и коммуналка", ["аренд", "коммунал", "копия ключей"]),
     ("Такси", ["такси", "taxi", "так си"]),
@@ -159,7 +162,8 @@ CLASSIFY_SELFTEST = {
 }
 
 
-def _run_classify_selftest(rules: list[tuple[str, list[str]]]) -> None:
+def _run_classify_selftest(rules: ThemeRules) -> None:
+    """Raise AssertionError when ``rules`` break a CLASSIFY_SELFTEST pair."""
     failures = [
         f"{comment!r}: expected {expected!r}, got {classify_theme(comment, rules)!r}"
         for comment, expected in CLASSIFY_SELFTEST.items()
@@ -288,13 +292,27 @@ def parse_spender_aliases(raw: Optional[str]) -> dict[str, str]:
 
 
 def normalize_spender(name: str, aliases: dict[str, str]) -> str:
-    """Spender name to show: the alias target, or the cell as is; «—» when empty."""
+    """
+    Spender name to show on the dashboard.
+
+    Parameters
+    ----------
+    name : str
+        Spender cell as stored.
+    aliases : dict[str, str]
+        Lower-case alias → name, from ``parse_spender_aliases``.
+
+    Returns
+    -------
+    str
+        The alias target, else the cell without edge spaces; «—» when empty.
+    """
     if not name or not name.strip():
         return "—"
     return aliases.get(name.strip().lower(), name.strip())
 
 
-def load_theme_rules(path: Path) -> list[tuple[str, list[str]]]:
+def load_theme_rules(path: Path) -> ThemeRules:
     """
     THEME_RULES plus the household's own keywords from a JSON file.
 
@@ -305,7 +323,7 @@ def load_theme_rules(path: Path) -> list[tuple[str, list[str]]]:
 
     Returns
     -------
-    list[tuple[str, list[str]]]
+    ThemeRules
         Rules in THEME_RULES order, extra keywords after the built-in ones.
 
     Raises
@@ -328,8 +346,22 @@ def load_theme_rules(path: Path) -> list[tuple[str, list[str]]]:
             for theme, keywords in THEME_RULES]
 
 
-def classify_theme(comment: str, rules: list[tuple[str, list[str]]]) -> Optional[str]:
-    """Return a semantic theme for a comment, or None if no rule matches."""
+def classify_theme(comment: str, rules: ThemeRules) -> Optional[str]:
+    """
+    Theme of a comment by keyword substring.
+
+    Parameters
+    ----------
+    comment : str
+        Free-text comment of a row.
+    rules : ThemeRules
+        Rules to apply in order (THEME_RULES or ``load_theme_rules`` output).
+
+    Returns
+    -------
+    Optional[str]
+        First theme with a keyword in the lower-cased comment, or None.
+    """
     if not comment or not comment.strip():
         return None
     text = comment.lower()
@@ -538,10 +570,11 @@ def read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
 def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
           csv_path: Optional[str] = None, from_month: Optional[str] = None,
           as_of: Optional[date] = None,
-          theme_rules: Optional[list[tuple[str, list[str]]]] = None) -> Path:
+          theme_rules: Optional[ThemeRules] = None,
+          spender_aliases: Optional[dict[str, str]] = None) -> Path:
     load_dotenv(BOT_DIR / ".env")
     rules = theme_rules if theme_rules is not None else THEME_RULES
-    aliases = parse_spender_aliases(os.getenv(SPENDER_ALIASES_ENV))
+    aliases = spender_aliases or {}
 
     spreadsheet_url = None
     config_categories: list[str] = []
@@ -766,12 +799,13 @@ def main() -> None:
     try:
         rules = load_theme_rules(THEME_KEYWORDS_PATH)
         _run_classify_selftest(rules)
+        aliases = parse_spender_aliases(os.getenv(SPENDER_ALIASES_ENV))
         base = to_iso(args.base)
         model = args.model or DEFAULT_LLM_MODELS[args.provider]
         stage = "сборка"
         out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
                          csv_path=args.csv, from_month=args.from_month or None,
-                         theme_rules=rules)
+                         theme_rules=rules, spender_aliases=aliases)
         if args.publish:
             stage = "публикация в Telegram"
             publish_to_telegram(out_path)

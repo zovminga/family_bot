@@ -22,8 +22,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
   all history), `DASHBOARD_SPENDER_ALIASES`, own shops/places for themes in
   git-ignored `dashboard/theme_keywords.json`, launchd label `LAUNCHD_LABEL`
-  (default `local.family-bot.dashboard`). Owner must set `BASE_CURRENCY` in
-  `.env` and on Render, and reinstall the launchd agent (see PR). Open: a few
+  (env or `.env`, default `local.family-bot.dashboard`). Owner must set
+  `BASE_CURRENCY` in `.env` and on Render, and keep the old label in `.env`
+  or reinstall the agent (see PR). Open: a few
   test files still use real first names (edited in parallel by #32/#35);
   `clock.DEFAULT_TZ` stays `Europe/Belgrade`.
 - Russian UI (issue #29, plan 3.1 and 3.5): messages, buttons, errors, hints

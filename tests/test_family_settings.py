@@ -82,7 +82,7 @@ def test_theme_keywords_bad_file_fails(tmp_path: Path, content: str) -> None:
 
 @pytest.fixture
 def run_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
-    for name in ("BASE_CURRENCY", "DASHBOARD_FROM_MONTH"):
+    for name in ("BASE_CURRENCY", "DASHBOARD_FROM_MONTH", "DASHBOARD_SPENDER_ALIASES"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(bd, "THEME_KEYWORDS_PATH", tmp_path / "none.json")
     calls: list[dict[str, Any]] = []
@@ -99,6 +99,7 @@ def test_main_defaults_are_neutral(run_main: Any) -> None:
     kw = run_main()
     assert kw["base_iso"] == "EUR"
     assert kw["from_month"] is None
+    assert kw["spender_aliases"] == {}
 
 
 def test_main_reads_base_and_first_month_from_env(
@@ -115,4 +116,16 @@ def test_main_reads_base_and_first_month_from_env(
 def test_main_rejects_bad_first_month(run_main: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_FROM_MONTH", "2024/03")
     with pytest.raises(SystemExit):
+        run_main()
+
+
+def test_main_passes_spender_aliases(run_main: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASHBOARD_SPENDER_ALIASES", "annie=Анна")
+    assert run_main()["spender_aliases"] == {"annie": "Анна"}
+
+
+def test_main_bad_spender_aliases_fail_before_build(
+        run_main: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASHBOARD_SPENDER_ALIASES", "annie")
+    with pytest.raises(ValueError, match="DASHBOARD_SPENDER_ALIASES"):
         run_main()

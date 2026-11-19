@@ -194,7 +194,21 @@ def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
 
 
 def _default_currency(code: Optional[str], problems: list[str]) -> str:
-    """Stored symbol of the BASE_CURRENCY Currency; an unknown code adds a problem line."""
+    """
+    Stored symbol of the BASE_CURRENCY Currency.
+
+    Parameters
+    ----------
+    code : str or None
+        Value of BASE_CURRENCY (ISO code); empty means the default.
+    problems : list[str]
+        Problem lines; an unknown code appends one.
+
+    Returns
+    -------
+    str
+        Symbol written to Data when an expense names no Currency.
+    """
     fallback = currency.DEFAULT_BASE
     if not code:
         return fallback.symbol
