@@ -134,7 +134,11 @@ UI language: every text, button and error is Russian (plan 3.1);
 `tests/test_russian_ui.py` walks the flows and fails on an English word.
 Category and Spender names are shown as in the sheet.
 
-Fallbacks: home button, `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
+Entry points: `/start`, main-menu buttons (`navigation.MENU_TEXT`, old English
+labels included) and the home button. They serve a User with no conversation
+state, which is everyone right after a restart (memory is wiped on deploy).
+`allow_reentry=False`: inside a flow its states read the text.
+Fallbacks: home button, `/cancel`, `/stop`, `/start`.
 Home: state handlers never see it — their filters exclude the home text
 (`navigation.INPUT_TEXT`) and the `to_start` callback. `navigation.home_fallbacks()`
 catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
@@ -169,7 +173,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
-**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` first.
+**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` or a menu button first.
 
 **Photo** (`photo_input.py`): image bytes → Claude Vision line items + semantic buckets → Python grouping/sums → `session_from_receipt`. No fiscal QR / zbar (Render-friendly).
 
@@ -206,8 +210,9 @@ would push callback data past Telegram's 64 bytes is carried as an 8-char
 hash of the name (`setcathash:<i>:<hash>`), matched against current categories. Save or cancel marks the Draft `closed`; later taps on
 that card do nothing, so a double tap keeps «✅ Сохранено». Up to 20 closed
 Drafts are kept per user, open ones are never pruned. An unknown id (card from
-before a restart) gets «Черновик уже не активен.». Drafts are not persisted:
-a restart drops them.
+before a restart) gets the alert `draft_expense.STALE_TEXT` «Черновик устарел
+после обновления бота, отправьте ещё раз»; the card keeps its text and loses
+its buttons. Drafts are not persisted (Q15): a restart drops them.
 
 **Errors:** `bot.build_application()` registers `errors.on_error` with
 `add_error_handler`. An exception a handler does not catch is logged (traceback,
