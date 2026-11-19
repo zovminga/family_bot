@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #25 shared Row/fx/llm, merged after issue #29)  
-**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
+**Updated by:** agent session (issue #35 «📅 Этот месяц»)  
+**Product code tip:** `46fc1a0` (2026-11-19) — «📅 Этот месяц» one-tap month summary (issue #35)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -36,6 +36,14 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
+- «📅 Этот месяц» (issue #35, plan 4.1): one main-menu tap shows the current
+  month (`clock.now()`): total, top 3 Categories and the sum per Spender.
+  Each Currency gets its own block; Currencies are never added together.
+  `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
+  `analytics.format_month_summary` writes the text, so the monthly summary on
+  the 1st (issue #36) can call them for the previous month. Phones get the
+  new button with the next menu (`/start` or 🏠 after the deploy). Like every
+  menu button, it gets no answer after a bot restart until `/start` (see Open).
 - Voice: Vosk STT + Claude → Draft confirmation card
 - Receipt photo: Claude Vision → same Draft card
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,

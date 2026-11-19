@@ -166,6 +166,7 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(s.on_group_currency(seen.update(flow_stats.NO_BUTTON), ctx))
     run(s.on_convert_currency(seen.update("дин"), ctx))
     run(s.on_show_details(seen.update(flow_stats.DETAILS_BUTTON), ctx))
+    run(s.this_month(seen.update(nav.THIS_MONTH), ctx))
     seen.texts.append(analytics.format_last_n([], category="Еда"))
     texts = seen.collect()
     assert any(t.endswith("💰 Итого: 2 404,50 дин") for t in texts), texts

@@ -420,6 +420,9 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in (nav.SHOW_STATS, "📊 Show statistics", "Show statistics"):
         return await STATS.begin(update, context)
 
+    if text == nav.THIS_MONTH:
+        return await STATS.this_month(update, context)
+
     return await text_expense(update, context)
 
 
