@@ -18,7 +18,7 @@ own allowlist). Your finances never mix with someone else's install.
 
 ## Install from scratch
 
-You need: a computer with a terminal (macOS, Linux or Windows), a Telegram
+You need: a computer with a terminal (macOS or Linux; on Windows use WSL), a Telegram
 account, a Google account. Steps 1–4 run the bot on your computer. Step 6
 moves it to a server (Render) so it works when the computer is off.
 
@@ -32,7 +32,7 @@ not need to install Python yourself: `uv sync` downloads Python 3.12 if the
 computer does not have it.
 
 ```bash
-git clone https://github.com/zovminga/family_bot.git
+git clone https://github.com/zovminga/family_bot.git   # or your fork's URL
 cd family_bot
 uv sync                    # creates .venv with Python 3.12 and all groups,
                            # installs the family_bot package (family-bot command)
@@ -42,7 +42,6 @@ cp .env.example .env
 
 After `source .venv/bin/activate` the commands `python`, `family-bot` and
 `pytest` come from `.venv`. Run it again in every new terminal window.
-(On macOS there is no plain `python` outside `.venv`.)
 
 **Without uv** (bot only, no test tools): install Python 3.12 yourself, then
 
@@ -179,7 +178,8 @@ about 90 MB unpacked) in `models/` (gitignored):
   ```
 
 - **On Render** the Build Command downloads it (step 6).
-- To use another model, set `VOSK_MODEL_PATH` to its folder.
+- To use another model, set `VOSK_MODEL_PATH` to its folder. Do not set it
+  on Render: when it is set, the Build Command skips the download.
 
 ### 6. Deploy (optional, e.g. Render)
 
@@ -220,11 +220,11 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
 
-Render sets `RENDER_EXTERNAL_URL` (the service address) by itself; when it is
-set, the bot runs in webhook mode (the log says `Running in webhook mode`;
-if it says `polling mode`, add `RENDER_EXTERNAL_URL` = the service address
-`https://<name>.onrender.com` to the table above). Do not put `RENDER_EXTERNAL_URL` in your
-local `.env`: without it the bot uses polling. Stop the local bot once the
+Render sets `RENDER_EXTERNAL_URL` (the service address) by itself. When it is
+set, the bot runs in webhook mode, and the log says `Running in webhook mode`.
+If the log says `polling mode`, add the variable `RENDER_EXTERNAL_URL` with
+the service address `https://<name>.onrender.com`.
+Do not put `RENDER_EXTERNAL_URL` in your local `.env`: without it the bot uses polling. Stop the local bot once the
 Render one runs — two copies with one token interfere.
 
 ## Commands
