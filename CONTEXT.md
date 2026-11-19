@@ -18,6 +18,18 @@ _Avoid_: Tag, type, label
 The person who paid (Lisa, Azat, or Both for shared presets).
 _Avoid_: User (prefer Spender for sheet identity; User is the Telegram account)
 
+**Currency**:
+The money unit of an Expense, written as a symbol for the long-standing ones (дин, €, ₽, ¥, £, $) or as an ISO 4217 code for any other (CNY, GEL). `¥` always means Japanese yen; Chinese yuan is `CNY`.
+_Avoid_: `¥` for yuan, "base currency" (when meaning the Currency of one Expense)
+
+**Recent currencies**:
+The three Currencies a User entered most recently, offered first when choosing a Currency.
+_Avoid_: Default currency, favourite currencies
+
+**Conversion**:
+Restating Expense amounts in another Currency at the rate of the day the statistics are requested, not the day the Expense happened.
+_Avoid_: Historical rate, exchange (as a noun)
+
 **Draft**:
 An Expense proposed from voice or receipt photo, shown for review before it is saved.
 _Avoid_: Pending expense, suggestion
@@ -27,7 +39,7 @@ A reusable Expense template from the Regular_expenses sheet (monthly or one-off)
 _Avoid_: Default expense, regular (as a noun), template
 
 **Sheets**:
-The Google Spreadsheet that stores Data, Config, Meta, and Regular_expenses worksheets.
+The Google Spreadsheet that stores Data, Config, Meta, Regular_expenses, and Users worksheets.
 _Avoid_: Database, workbook (when meaning this spreadsheet)
 
 **Dashboard**:
