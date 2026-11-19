@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #25 shared Row/fx/llm, merged after issue #29)  
-**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
+**Updated by:** agent session (issue #32 «✅ Сегодня, без комментария»)  
+**Product code tip:** `3ffb331` (2026-11-19) — manual add saves today with no comment in one tap (issue #32)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
