@@ -11,10 +11,11 @@ from typing import Any, Callable, Coroutine
 import pytest
 
 from family_bot import photo_input, voice_input
-from family_bot.flows import stats
+from family_bot.expense import ExpenseRecord
+from family_bot.flows import manual, stats
 from family_bot.per_user import PerUserUpdateProcessor
 from family_bot.sheet_data import Row
-from tests.known_bugs.fakes import make_update
+from tests.known_bugs.fakes import FakeQuery, make_update
 
 SLOW_SEC = 0.5
 TICK_SEC = 0.1
@@ -68,6 +69,24 @@ def test_stats_result_does_not_block_on_rows_and_fx() -> None:
     ticks = run(ticks_during(lambda: flow.on_convert_currency(upd, ctx)))
     assert ticks >= 5, "event loop frozen while loading rows / FX rate"
     assert "(в дин)" in upd.message.replies[0][0]
+
+
+def test_manual_today_no_comment_save_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved: list[ExpenseRecord] = []
+
+    def slow_append(_sheets: object, record: ExpenseRecord) -> None:
+        time.sleep(SLOW_SEC)
+        saved.append(record)
+
+    monkeypatch.setattr(manual, "append_expense", slow_append)
+    flow = manual.ManualFlow(categories=lambda _ctx: ["Food"], currencies=lambda _ctx: ["дин"],
+                             sheets=lambda _ctx: object(), who=lambda _u, _c: "Azat")
+    ctx = SimpleNamespace(user_data={"cat": "Food", "amt": 350.0, "cur": "дин",
+                                     "spender": "Azat"})
+    upd = make_update(query=FakeQuery(manual.TODAY_NO_COMMENT))
+    ticks = run(ticks_during(lambda: flow.today_no_comment(upd, ctx)))
+    assert ticks >= 3, "event loop frozen while saving the Expense"
+    assert [(r.category, r.amount, r.comment) for r in saved] == [("Food", 350.0, "")]
 
 
 def test_updates_of_different_users_run_together_same_user_in_order() -> None:

@@ -17,6 +17,7 @@ from family_bot.draft_expense import (
     parse_callback,
     session_from_receipt,
     session_from_voice,
+    set_amount,
 )
 from tests.conftest import FakeSheetsClient
 
@@ -186,3 +187,75 @@ def test_add_draft_prunes_old_closed_drafts_only():
     drafts = user_data["drafts"]
     assert first_open.id in drafts
     assert sum(d.closed for d in drafts.values()) == MAX_CLOSED_DRAFTS
+
+
+# --- ✏️ Сумма and 👤 Кто (issue #31) ---
+
+def _labels(rows):
+    return [label for row in rows for label, _ in row]
+
+
+def test_single_card_has_amount_and_spender_buttons():
+    session = DraftSession(id="ab12", items=[_item()])
+    rows = main_buttons(session)
+    assert "✏️ Сумма" in _labels(rows) and "👤 Кто" in _labels(rows)
+    assert ("✏️ Сумма", "vx:ab12:amt:0") in [b for row in rows for b in row]
+
+
+def test_item_edit_of_multi_card_has_amount_and_spender_buttons():
+    session = DraftSession(id="ab12", items=[_item(), _item(comment="tea")])
+    outcome = apply_callback("ed:1", session, ["Food"], ["дин"], FakeSheetsClient())
+    cbs = [cb for row in outcome.buttons for _, cb in row]
+    assert "vx:ab12:amt:1" in cbs and "vx:ab12:who:1" in cbs
+
+
+def test_amount_button_asks_for_amount_and_waits():
+    session = DraftSession(id="ab12", items=[_item()])
+    outcome = apply_callback("amt:0", session, ["Food"], ["дин"], FakeSheetsClient())
+    assert outcome.await_amount == 0
+    assert "Введите новую сумму" in outcome.text
+    assert _labels(outcome.buttons) == ["⬅️ Назад"]
+
+
+def test_set_amount_goes_through_amount_checks():
+    session = DraftSession(id="ab12", items=[_item(amount=12.5, currency="дин")])
+    for bad in ["0", "-5", "abc", "1.234", "nan"]:
+        assert set_amount(session, 0, bad, ["дин", "€"]) is False
+    assert session.items[0]["amount"] == 12.5
+    assert set_amount(session, 0, "1 200", ["дин", "€"]) is True
+    assert session.items[0]["amount"] == 1200.0
+    assert session.items[0]["currency"] == "дин"
+
+
+def test_set_amount_with_currency_changes_currency_too():
+    session = DraftSession(id="ab12", items=[_item(currency="дин")])
+    assert set_amount(session, 0, "12,5 €", ["дин", "€"]) is True
+    assert (session.items[0]["amount"], session.items[0]["currency"]) == (12.5, "€")
+
+
+def test_spender_buttons_come_from_allowlist_names():
+    session = DraftSession(id="ab12", items=[_item(who="Azat")])
+    outcome = apply_callback("who:0", session, ["Food"], ["дин"], FakeSheetsClient(),
+                             spenders=["Azat", "Lisa"])
+    assert outcome.markup_only
+    assert _labels(outcome.buttons) == ["Azat", "Lisa", "⬅️ Назад"]
+    lisa = next(cb for row in outcome.buttons for label, cb in row if label == "Lisa")
+    assert lisa == "vx:ab12:setwho:0:1"
+
+    outcome = apply_callback("setwho:0:1", session, ["Food"], ["дин"],
+                             FakeSheetsClient(), spenders=["Azat", "Lisa"])
+    assert session.items[0]["who"] == "Lisa"
+    assert "Кто: Lisa" in outcome.text
+
+
+def test_spender_index_out_of_range_is_ignored():
+    session = DraftSession(id="ab12", items=[_item(who="Azat")])
+    apply_callback("setwho:0:5", session, ["Food"], ["дин"], FakeSheetsClient(),
+                   spenders=["Azat", "Lisa"])
+    assert session.items[0]["who"] == "Azat"
+
+
+def test_save_outcome_carries_written_records():
+    session = DraftSession(id="ab12", items=[_item()])
+    outcome = apply_callback("save", session, ["Food"], ["дин"], FakeSheetsClient())
+    assert [r.amount for r in outcome.saved] == [12.5]

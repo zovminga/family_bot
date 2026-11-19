@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -189,3 +190,9 @@ def test_empty_allowlist_is_a_problem(key_file: Path) -> None:
                       open_sheets=opener(FakeSheetsClient(categories=["Food"])))
     assert_one_line_each(cfg.problems)
     assert "/whoami" in cfg.problems[0]
+
+
+def test_fallback_categories_are_russian() -> None:
+    # The bot UI is Russian, and a fallback Category is written to Data as is.
+    for name in config.FALLBACK_CATEGORIES:
+        assert re.fullmatch(r"[А-Яа-яЁё ]+", name), name
