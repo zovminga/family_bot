@@ -15,16 +15,13 @@ from typing import Any, Callable, Coroutine, Optional, TypeVar
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
 from telegram import Message, ReplyKeyboardMarkup, Update
-from telegram.ext import BaseHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import BaseHandler, ContextTypes, MessageHandler
 
 from family_bot import analytics
 from family_bot import clock
 from family_bot import errors
 from family_bot import navigation as nav
-from family_bot.conversation_states import (
-    CHOOSE_ACTION, STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
-    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
-)
+from family_bot.conversation_states import State
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT
 
 QUERY_KEY = "stat_query"
@@ -118,17 +115,17 @@ class StatsFlow:
     def states(self) -> dict[object, list[BaseHandler]]:
         """ConversationHandler states for this flow."""
         def text(callback: Callable[[Update, Any], Coroutine[Any, Any, int]]) -> list[BaseHandler]:
-            return [MessageHandler(filters.TEXT & ~filters.COMMAND, callback)]
+            return [MessageHandler(nav.INPUT_TEXT, callback)]
 
         return {
-            STAT_CAT: text(self.on_category),
-            STAT_TYPE: text(self.on_type),
-            STAT_DATE_FROM: text(self.on_date_from),
-            STAT_DATE_TO: text(self.on_date_to),
-            STAT_MONTH: text(self.on_month),
-            STAT_GROUP_CURRENCY: text(self.on_group_currency),
-            STAT_CONVERT_CURRENCY: text(self.on_convert_currency),
-            STAT_SHOW_DETAILS: text(self.on_show_details),
+            State.STAT_CAT: text(self.on_category),
+            State.STAT_TYPE: text(self.on_type),
+            State.STAT_DATE_FROM: text(self.on_date_from),
+            State.STAT_DATE_TO: text(self.on_date_to),
+            State.STAT_MONTH: text(self.on_month),
+            State.STAT_GROUP_CURRENCY: text(self.on_group_currency),
+            State.STAT_CONVERT_CURRENCY: text(self.on_convert_currency),
+            State.STAT_SHOW_DETAILS: text(self.on_show_details),
         }
 
     async def begin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -138,20 +135,18 @@ class StatsFlow:
             "📊 Statistics for all categories or specific?",
             reply_markup=_keyboard([["All categories", "Specific category"]]),
         )
-        return STAT_CAT
+        return State.STAT_CAT
 
     async def on_category(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_CAT: all categories, the category list, or a chosen category (starts a new query)."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
 
         if text == "Specific category":
             await _message(update).reply_text(
                 "📂 Choose category:",
                 reply_markup=_keyboard([[c] for c in self._categories(context)]),
             )
-            return STAT_CAT
+            return State.STAT_CAT
 
         category = ALL_CATEGORIES if text == "All categories" else text
         _user_data(context)[QUERY_KEY] = StatQuery(category=category)
@@ -159,13 +154,11 @@ class StatsFlow:
             f"📊 Statistics type for category '{category}':",
             reply_markup=_keyboard([["📜 Last 3 records", "📅 Custom period", "📆 By months"]]),
         )
-        return STAT_TYPE
+        return State.STAT_TYPE
 
     async def on_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_TYPE: last records, custom period, or month list."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
 
         if text == "📜 Last 3 records":
             category = load_query(_user_data(context)).category
@@ -178,7 +171,7 @@ class StatsFlow:
                 "📅 Enter start date (DD.MM.YYYY):",
                 reply_markup=_keyboard([], one_time=False),
             )
-            return STAT_DATE_FROM
+            return State.STAT_DATE_FROM
 
         if text == "📆 By months":
             first_of_month = clock.now().replace(day=1)
@@ -186,45 +179,39 @@ class StatsFlow:
                       for i in range(MONTHS_SHOWN)]
             await _message(update).reply_text(
                 "📆 Choose month:", reply_markup=_keyboard([[m] for m in months]))
-            return STAT_MONTH
+            return State.STAT_MONTH
 
         await _message(update).reply_text("Please choose a valid option")
-        return STAT_TYPE
+        return State.STAT_TYPE
 
     async def on_date_from(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_DATE_FROM: parse the period start."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
         try:
             date_from = _parse_date(text)
         except (ValueError, OverflowError):
             await _message(update).reply_text("❌ Cannot parse date, try 13.07.2025")
-            return STAT_DATE_FROM
+            return State.STAT_DATE_FROM
         query = load_query(_user_data(context))
         query.month, query.date_from = None, date_from
         await _message(update).reply_text(
             "📅 Enter end date (DD.MM.YYYY):", reply_markup=_keyboard([], one_time=False))
-        return STAT_DATE_TO
+        return State.STAT_DATE_TO
 
     async def on_date_to(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_DATE_TO: parse the period end, then ask about grouping."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
         try:
             date_to = _parse_date(text)
         except (ValueError, OverflowError):
             await _message(update).reply_text("❌ Cannot parse date, try 13.07.2025")
-            return STAT_DATE_TO
+            return State.STAT_DATE_TO
         load_query(_user_data(context)).date_to = date_to
         return await self._ask_grouping(update)
 
     async def on_month(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_MONTH: store the month, then ask about grouping."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
         query = load_query(_user_data(context))
         query.month, query.date_from, query.date_to = text, None, None
         return await self._ask_grouping(update)
@@ -232,8 +219,6 @@ class StatsFlow:
     async def on_group_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_GROUP_CURRENCY: show grouped result, or ask for a conversion currency."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
 
         query = load_query(_user_data(context))
         query.group_by_currency = text == "Yes"
@@ -247,13 +232,11 @@ class StatsFlow:
             reply_markup=_keyboard(
                 [[c] for c in await asyncio.to_thread(self._currencies, context)]),
         )
-        return STAT_CONVERT_CURRENCY
+        return State.STAT_CONVERT_CURRENCY
 
     async def on_convert_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_CONVERT_CURRENCY: show converted result; offer details only if there are any."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
 
         query = load_query(_user_data(context))
         query.convert_to = text
@@ -265,13 +248,11 @@ class StatsFlow:
             "Would you like to see conversion details?",
             reply_markup=_keyboard([["Show details", "Done (thanks)"]]),
         )
-        return STAT_SHOW_DETAILS
+        return State.STAT_SHOW_DETAILS
 
     async def on_show_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_SHOW_DETAILS: optionally show conversion details, then go home."""
         text = _message(update).text or ""
-        if nav.is_home_text(text):
-            return await nav.go_home(update, context)
 
         if text == "Show details":
             query = load_query(_user_data(context))
@@ -284,12 +265,12 @@ class StatsFlow:
     async def _ask_grouping(self, update: Update) -> int:
         await _message(update).reply_text(
             "💱 Group by currencies?", reply_markup=_keyboard([["Yes", "No"]]))
-        return STAT_GROUP_CURRENCY
+        return State.STAT_GROUP_CURRENCY
 
     async def _finish(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         reset(_user_data(context))
         await nav.show_main_menu(update, context)
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
 
     def _currencies(self, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
         try:

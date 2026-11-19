@@ -112,6 +112,10 @@ module = ["family_bot.flow_preset"]
 disable_error_code = ["union-attr"]
 
 [[tool.mypy.overrides]]
+module = ["family_bot.flows.manual"]  # bodies moved unchanged from unchecked bot.py
+disable_error_code = ["union-attr", "index", "arg-type"]
+
+[[tool.mypy.overrides]]
 module = ["family_bot.navigation"]
 disable_error_code = ["assignment", "union-attr"]
 
