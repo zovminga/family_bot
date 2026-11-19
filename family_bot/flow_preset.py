@@ -8,6 +8,7 @@ from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from family_bot import clock
+from family_bot.currency import format_amount
 from family_bot.conversation_states import State
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot import navigation as nav
@@ -45,7 +46,7 @@ async def choose_preset(
     """Save a tapped preset or go home. Unknown labels prompt retry."""
     text = update.message.text
     if not text.startswith("⚡"):
-        await update.message.reply_text("Выбери заготовку с кнопки ⚡ или «To start».")
+        await update.message.reply_text(f"Выбери заготовку с кнопки ⚡ или «{nav.HOME_BUTTON}».")
         return State.CHOOSE_PRESET
 
     name = text.replace("⚡", "", 1).strip()
@@ -66,6 +67,6 @@ async def choose_preset(
         comment=preset["name"],
     ))
     await update.message.reply_text(
-        f"✅ Сохранено: {preset['name']} — {preset['amount']:,.2f} "
-        f"{preset['currency']} · {date_str}")
+        f"✅ Сохранено: {preset['name']} — "
+        f"{format_amount(preset['amount'], preset['currency'])} · {date_str}")
     return await nav.go_home(update, context)

@@ -11,10 +11,11 @@ from typing import Callable, Optional
 
 import requests
 
-from family_bot.currency import to_iso
+from family_bot.currency import format_amount, to_iso
 from family_bot.sheet_data import DATE_FMT
 
 GetRate = Callable[[str, str], Optional[float]]
+NO_DATA = "Нет данных 🤷"
 
 
 def http_exchange_rate(from_currency: str, to_currency: str) -> Optional[float]:
@@ -67,17 +68,17 @@ def format_last_n(
     records = last_n(rows, n=n, category=category)
     if not records:
         if category and category != "All":
-            return f"📭 No records for category: {category}"
-        return "📭 No records"
+            return f"📭 Нет записей в категории «{category}»"
+        return "📭 Записей нет"
 
-    lines = [f"📋 Last {n} records:\n"]
+    lines = [f"📋 Последние записи ({len(records)}):\n"]
     for i, record in enumerate(records, 1):
         amount = record["amount"]
         comment = record.get("comment") or ""
         comment_text = f" ({comment})" if comment else ""
         lines.append(
             f"{i}. 📅 {record.get('date') or '?'} | {record.get('category') or '?'} | "
-            f"{amount:,.2f} {record.get('currency') or '?'} | "
+            f"{format_amount(amount, record.get('currency') or '?')} | "
             f"👤 {record.get('who') or '?'}{comment_text}"
         )
     return "\n".join(lines)
@@ -144,7 +145,7 @@ def aggregate(
         date_to=date_to,
     )
     if not filtered:
-        return "No data 🤷", {}
+        return NO_DATA, {}
 
     # Working copy of amounts/currencies for optional conversion.
     working = [
@@ -160,7 +161,7 @@ def aggregate(
             rate = get_rate(currency, convert_to_currency)
             if rate is None:
                 return (
-                    f"❌ Failed to get exchange rate for {currency} → {convert_to_currency}",
+                    f"❌ Не удалось получить курс {currency} → {convert_to_currency}",
                     {},
                 )
             original_amount = sum(w["amount"] for w in working if w["currency"] == currency)
@@ -178,8 +179,8 @@ def aggregate(
         totals: dict[str, float] = {}
         for w in working:
             totals[w["currency"]] = totals.get(w["currency"], 0.0) + w["amount"]
-        lines = [f"{cur}: {amt:,.2f}" for cur, amt in totals.items()]
-        return ("\n".join(lines) if lines else "No data 🤷"), conversion_details
+        lines = [format_amount(amt, cur) for cur, amt in totals.items()]
+        return ("\n".join(lines) if lines else NO_DATA), conversion_details
 
     total = sum(w["amount"] for w in working)
     currency = (
@@ -187,4 +188,4 @@ def aggregate(
         if convert_to_currency
         else (working[0]["currency"] if working else "?")
     )
-    return f"💰 Total: {total:,.2f} {currency}", conversion_details
+    return f"💰 Итого: {format_amount(total, currency)}", conversion_details

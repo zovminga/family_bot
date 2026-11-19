@@ -19,6 +19,7 @@ from telegram.ext import BaseHandler, ContextTypes, MessageHandler
 
 from family_bot import analytics
 from family_bot import clock
+from family_bot import currency
 from family_bot import errors
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
@@ -28,6 +29,18 @@ QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
 MONTHS_SHOWN = 12
 LAST_RECORDS_SHOWN = 3
+
+# Button texts; the handlers below match on them.
+ALL_BUTTON = "Все категории"
+ONE_BUTTON = "Одна категория"
+LAST_BUTTON = "📜 Последние 3 записи"
+PERIOD_BUTTON = "📅 Свой период"
+MONTHS_BUTTON = "📆 По месяцам"
+YES_BUTTON = "Да"
+NO_BUTTON = "Нет"
+DETAILS_BUTTON = "Показать детали"
+DONE_BUTTON = "Готово"
+BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
 
 T = TypeVar("T")
 
@@ -132,8 +145,8 @@ class StatsFlow:
         """Main-menu entry: start a fresh query and ask for the category scope."""
         _user_data(context)[QUERY_KEY] = StatQuery()
         await _message(update).reply_text(
-            "📊 Statistics for all categories or specific?",
-            reply_markup=_keyboard([["All categories", "Specific category"]]),
+            "📊 Статистика по всем категориям или по одной?",
+            reply_markup=_keyboard([[ALL_BUTTON, ONE_BUTTON]]),
         )
         return State.STAT_CAT
 
@@ -141,18 +154,18 @@ class StatsFlow:
         """STAT_CAT: all categories, the category list, or a chosen category (starts a new query)."""
         text = _message(update).text or ""
 
-        if text == "Specific category":
+        if text == ONE_BUTTON:
             await _message(update).reply_text(
-                "📂 Choose category:",
+                "📂 Выберите категорию:",
                 reply_markup=_keyboard([[c] for c in self._categories(context)]),
             )
             return State.STAT_CAT
 
-        category = ALL_CATEGORIES if text == "All categories" else text
+        category = ALL_CATEGORIES if text == ALL_BUTTON else text
         _user_data(context)[QUERY_KEY] = StatQuery(category=category)
         await _message(update).reply_text(
-            f"📊 Statistics type for category '{category}':",
-            reply_markup=_keyboard([["📜 Last 3 records", "📅 Custom period", "📆 By months"]]),
+            f"📊 Что показать: {_category_label(category)}?",
+            reply_markup=_keyboard([[LAST_BUTTON, PERIOD_BUTTON, MONTHS_BUTTON]]),
         )
         return State.STAT_TYPE
 
@@ -160,28 +173,28 @@ class StatsFlow:
         """STAT_TYPE: last records, custom period, or month list."""
         text = _message(update).text or ""
 
-        if text == "📜 Last 3 records":
+        if text == LAST_BUTTON:
             category = load_query(_user_data(context)).category
             await _message(update).reply_text(
                 await asyncio.to_thread(self._last_records, context, category))
             return await nav.go_home(update, context)
 
-        if text == "📅 Custom period":
+        if text == PERIOD_BUTTON:
             await _message(update).reply_text(
-                "📅 Enter start date (DD.MM.YYYY):",
+                "📅 Дата начала (ДД.ММ.ГГГГ):",
                 reply_markup=_keyboard([], one_time=False),
             )
             return State.STAT_DATE_FROM
 
-        if text == "📆 By months":
+        if text == MONTHS_BUTTON:
             first_of_month = clock.now().replace(day=1)
             months = [(first_of_month - relativedelta(months=i)).strftime(MONTH_FMT)
                       for i in range(MONTHS_SHOWN)]
             await _message(update).reply_text(
-                "📆 Choose month:", reply_markup=_keyboard([[m] for m in months]))
+                "📆 Выберите месяц:", reply_markup=_keyboard([[m] for m in months]))
             return State.STAT_MONTH
 
-        await _message(update).reply_text("Please choose a valid option")
+        await _message(update).reply_text("Выберите вариант с кнопки")
         return State.STAT_TYPE
 
     async def on_date_from(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -190,12 +203,12 @@ class StatsFlow:
         try:
             date_from = _parse_date(text)
         except (ValueError, OverflowError):
-            await _message(update).reply_text("❌ Cannot parse date, try 13.07.2025")
+            await _message(update).reply_text(BAD_DATE)
             return State.STAT_DATE_FROM
         query = load_query(_user_data(context))
         query.month, query.date_from = None, date_from
         await _message(update).reply_text(
-            "📅 Enter end date (DD.MM.YYYY):", reply_markup=_keyboard([], one_time=False))
+            "📅 Дата конца (ДД.ММ.ГГГГ):", reply_markup=_keyboard([], one_time=False))
         return State.STAT_DATE_TO
 
     async def on_date_to(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -204,7 +217,7 @@ class StatsFlow:
         try:
             date_to = _parse_date(text)
         except (ValueError, OverflowError):
-            await _message(update).reply_text("❌ Cannot parse date, try 13.07.2025")
+            await _message(update).reply_text(BAD_DATE)
             return State.STAT_DATE_TO
         load_query(_user_data(context)).date_to = date_to
         return await self._ask_grouping(update)
@@ -221,14 +234,14 @@ class StatsFlow:
         text = _message(update).text or ""
 
         query = load_query(_user_data(context))
-        query.group_by_currency = text == "Yes"
+        query.group_by_currency = text == YES_BUTTON
         if query.group_by_currency:
             query.convert_to = None
             await self._reply_result(update, context, query)
             return await self._finish(update, context)
 
         await _message(update).reply_text(
-            "💱 Convert all expenses to which currency?",
+            "💱 В какую валюту пересчитать все траты?",
             reply_markup=_keyboard(
                 [[c] for c in await asyncio.to_thread(self._currencies, context)]),
         )
@@ -245,8 +258,8 @@ class StatsFlow:
             return await self._finish(update, context)
 
         await _message(update).reply_text(
-            "Would you like to see conversion details?",
-            reply_markup=_keyboard([["Show details", "Done (thanks)"]]),
+            "Показать детали пересчёта?",
+            reply_markup=_keyboard([[DETAILS_BUTTON, DONE_BUTTON]]),
         )
         return State.STAT_SHOW_DETAILS
 
@@ -254,17 +267,17 @@ class StatsFlow:
         """STAT_SHOW_DETAILS: optionally show conversion details, then go home."""
         text = _message(update).text or ""
 
-        if text == "Show details":
+        if text == DETAILS_BUTTON:
             query = load_query(_user_data(context))
             if query.conversion_details:
                 await _message(update).reply_text(_details_text(query))
             else:
-                await _message(update).reply_text("No conversion details available")
+                await _message(update).reply_text("Деталей пересчёта нет")
         return await nav.go_home(update, context)
 
     async def _ask_grouping(self, update: Update) -> int:
         await _message(update).reply_text(
-            "💱 Group by currencies?", reply_markup=_keyboard([["Yes", "No"]]))
+            "💱 Разбить по валютам?", reply_markup=_keyboard([[YES_BUTTON, NO_BUTTON]]))
         return State.STAT_GROUP_CURRENCY
 
     async def _finish(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -307,29 +320,35 @@ class StatsFlow:
                             query: StatQuery) -> None:
         """Send the statistics text and store conversion details in the query."""
         if query.month:
-            period_text = f"for {query.month}"
+            period_text = f"за {query.month}"
         elif query.date_from and query.date_to:
-            period_text = f"from {query.date_from} to {query.date_to}"
+            period_text = f"с {query.date_from} по {query.date_to}"
         else:
             await _message(update).reply_text(
-                f"📊 Statistics , category '{query.category}':\n❌ Error: period not specified")
+                f"📊 Статистика, {_category_label(query.category)}:\n❌ Не задан период")
             return
 
         # Sheets read and FX requests block, so they run in a worker thread.
         stats, query.conversion_details = await asyncio.to_thread(
             self._aggregate, context, query)
-        suffix = f" (in {query.convert_to})" if query.convert_to else ""
+        suffix = f" (в {query.convert_to})" if query.convert_to else ""
         await _message(update).reply_text(
-            f"📊 Statistics {period_text}, category '{query.category}'{suffix}:\n{stats}")
+            f"📊 Статистика {period_text}, {_category_label(query.category)}{suffix}:\n{stats}")
+
+
+def _category_label(category: str) -> str:
+    """«все категории» or «категория «Еда»» for prompts and result headers."""
+    return "все категории" if category == ALL_CATEGORIES else f"категория «{category}»"
 
 
 def _details_text(query: StatQuery) -> str:
-    lines = ["💱 Conversion details:\n"]
+    lines = ["💱 Детали пересчёта:\n"]
     for from_cur, details in query.conversion_details.items():
+        rate = f"{details['rate']:.4f}".replace(".", ",")
         lines.append(
             f"{from_cur} → {query.convert_to}:\n"
-            f"  Rate: {details['rate']:.4f}\n"
-            f"  Original: {details['original_amount']:,.2f} {from_cur}\n"
-            f"  Converted: {details['converted_amount']:,.2f} {query.convert_to}\n"
+            f"  Курс: {rate}\n"
+            f"  Было: {currency.format_amount(details['original_amount'], from_cur)}\n"
+            f"  Стало: {currency.format_amount(details['converted_amount'], query.convert_to)}\n"
         )
     return "\n".join(lines)
