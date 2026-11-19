@@ -2,8 +2,8 @@
 """Tests for navigation helpers and conversation state layout."""
 from __future__ import annotations
 
-import conversation_states as states
-import navigation as nav
+from family_bot import conversation_states as states
+from family_bot import navigation as nav
 
 
 def test_is_home_text():
@@ -61,7 +61,7 @@ def test_begin_preset_empty_stays_on_menu():
     import asyncio
     from types import SimpleNamespace
 
-    import flow_preset
+    from family_bot import flow_preset
 
     class Msg:
         async def reply_text(self, *a, **k):
@@ -80,7 +80,7 @@ def test_begin_preset_with_items_enters_preset_state():
     import asyncio
     from types import SimpleNamespace
 
-    import flow_preset
+    from family_bot import flow_preset
 
     class Msg:
         def __init__(self):

@@ -25,10 +25,10 @@ import base64
 import os
 from typing import Optional
 
-import currency
+from family_bot import currency
 
 # Reuse the JSON/snap helpers from voice_input to avoid duplicating logic.
-from voice_input import (
+from family_bot.voice_input import (
     _extract_json_object,
     _snap_amount,
     _snap_category,

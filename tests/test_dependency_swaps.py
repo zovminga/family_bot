@@ -10,9 +10,9 @@ from typing import Any
 import gspread
 import pytest
 
-import bot
-import sheets
-from flows import stats as flow_stats
+from family_bot import bot
+from family_bot import sheets
+from family_bot.flows import stats as flow_stats
 from tests.known_bugs.fakes import make_update
 
 

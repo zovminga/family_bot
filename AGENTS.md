@@ -61,27 +61,31 @@ Skip the STATUS bump only for pure typo/format edits that change no facts about 
 ## Quick orientation
 
 ```
-bot.py              Telegram wiring (handlers, ConversationHandler, webhook/polling)
-config.py           Config loaded in post_init, kept in bot_data; setup problems
-auth.py             ALLOWED_USERS parse + gate
-expense.py          ExpenseRecord + append
-draft_expense.py    Draft card (voice, photo, text)
-sheets.py           SheetsClient seam
-sheet_data.py       Headers, dates, currency maps
-clock.py            clock.now() in the family time zone (TZ_NAME)
-errors.py           Error handler: short user text, masked log
-analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
-voice_input.py      Vosk STT + Claude extract
-photo_input.py      Claude Vision receipt → drafts
-text_input.py       Typed «кофе 350» → Draft via voice_input.extract_expenses
-regular.py          Regular_expenses → presets
-flow_preset.py      ⚡ preset conversation steps
-flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
-navigation.py       go_home / home button
-conversation_states.py  ConversationHandler state ints
-dashboard/          Offline HTML build + SPEC
-scripts/            bootstrap_sheet.py, connectivity check
-tests/              pytest (no live Sheets/Telegram)
+family_bot/           Python package (`family-bot` command, `python -m family_bot.dashboard`)
+  bot.py              Telegram wiring (handlers, ConversationHandler, webhook/polling); main()
+  config.py           Config loaded in post_init, kept in bot_data; setup problems
+  auth.py             ALLOWED_USERS parse + gate
+  expense.py          ExpenseRecord + append
+  draft_expense.py    Draft card (voice, photo, text)
+  sheets.py           SheetsClient seam
+  sheet_data.py       Headers, dates, currency maps
+  currency.py         Currency registry (symbol, ISO, Russian words)
+  amount_input.py     Amount checks for typed/spoken input
+  clock.py            clock.now() in the family time zone (TZ_NAME)
+  errors.py           Error handler: short user text, masked log
+  analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
+  voice_input.py      Vosk STT + Claude extract (model in <repo>/models/)
+  photo_input.py      Claude Vision receipt → drafts
+  text_input.py       Typed «кофе 350» → Draft via voice_input.extract_expenses
+  regular.py          Regular_expenses → presets
+  flow_preset.py      ⚡ preset conversation steps
+  flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
+  navigation.py       go_home / home button
+  conversation_states.py  ConversationHandler state ints
+  dashboard/          build_dashboard.py, failure_alert.py, __main__.py
+dashboard/            run.sh, schedule.sh (launchd), template.html, SPEC, output/ (gitignored)
+scripts/              bootstrap_sheet.py, connectivity check
+tests/                pytest (no live Sheets/Telegram)
 ```
 
 Default branch: `main` @ `origin` → `https://github.com/zovminga/family_bot.git`.

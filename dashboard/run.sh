@@ -14,20 +14,23 @@
 #   ./run.sh --provider openai
 #   ./run.sh --trial --csv sample.csv   # same venv, no Claude, no Telegram
 #
-# Any extra arguments are forwarded to build_dashboard.py.
+# Any extra arguments are forwarded to `python -m family_bot.dashboard`.
 #
 # A failed build without --trial sends a short alert to the Dashboard chat
-# (failure_alert.py): build_dashboard.py alerts for its own errors, the trap
+# (family_bot/dashboard/failure_alert.py): the build alerts for its own errors, the trap
 # below covers the steps before it (uv missing, venv install, crash on start).
 set -euo pipefail
 
 DASHBOARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$DASHBOARD_DIR/.." && pwd)"
+# The venv holds only dependencies; the family_bot package is imported from the repo.
+export PYTHONPATH="$REPO_DIR${PYTHONPATH:+:$PYTHONPATH}"
 VENV_DIR="$DASHBOARD_DIR/venv"
 REQUIREMENTS="$DASHBOARD_DIR/requirements.txt"
 OUTPUT_DIR="$DASHBOARD_DIR/output"
 LOG_FILE="$OUTPUT_DIR/build.log"
 # The repo pins one Python version for the bot and the dashboard.
-PYTHON_VERSION="$(tr -d '[:space:]' < "$DASHBOARD_DIR/../.python-version")"
+PYTHON_VERSION="$(tr -d '[:space:]' < "$REPO_DIR/.python-version")"
 # Written into the venv after a successful install; a mismatch means rebuild.
 STAMP_FILE="$VENV_DIR/.deps-stamp"
 
@@ -35,8 +38,8 @@ mkdir -p "$OUTPUT_DIR"
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 
-# Must match ALERT_HANDLED_EXIT_CODE in failure_alert.py: build_dashboard.py
-# has already tried to send the alert.
+# Must match ALERT_HANDLED_EXIT_CODE in failure_alert.py: the build has
+# already tried to send the alert.
 ALERT_HANDLED_EXIT_CODE=3
 alert_on_failure=1
 [ "${1:-}" = "--trial" ] && alert_on_failure=0
@@ -47,14 +50,14 @@ on_exit() {
   if [ "$code" -eq 0 ] || [ "$code" -eq "$ALERT_HANDLED_EXIT_CODE" ] || [ "$alert_on_failure" -eq 0 ]; then
     return
   fi
-  # The venv may be the thing that broke; failure_alert.py needs only the stdlib.
+  # The venv may be the thing that broke; failure_alert needs only the stdlib.
   local py="$VENV_DIR/bin/python"
   [ -x "$py" ] || py="$(command -v python3 || true)"
   if [ -z "$py" ]; then
     log "No python3 found — failure alert not sent."
     return
   fi
-  "$py" "$DASHBOARD_DIR/failure_alert.py" "$stage (код $code)" 2>&1 | tee -a "$LOG_FILE" || true
+  "$py" -m family_bot.dashboard.failure_alert "$stage (код $code)" 2>&1 | tee -a "$LOG_FILE" || true
 }
 trap on_exit EXIT
 
@@ -90,13 +93,13 @@ else
   # --llm --provider anthropic: classify comments into themes with Claude.
   # --publish: after building, upload to Telegram + store file_id so the bot can
   #            re-send the latest dashboard on demand.
-  # Data source defaults to Google Sheets (needs family_bot/secrets/creds.json).
+  # Data source defaults to Google Sheets (needs secrets/creds.json in the repo root).
   build_flags=(--llm --provider anthropic --publish)
   log "Building dashboard (Google Sheets + Claude classification)…"
 fi
 
-stage="запуск build_dashboard.py"
-"$VENV_DIR/bin/python" "$DASHBOARD_DIR/build_dashboard.py" \
+stage="запуск python -m family_bot.dashboard"
+"$VENV_DIR/bin/python" -m family_bot.dashboard \
   ${build_flags[@]+"${build_flags[@]}"} "$@" 2>&1 | tee -a "$LOG_FILE"
 
 log "Done. Output: $OUTPUT_DIR/expenses_dashboard.html"

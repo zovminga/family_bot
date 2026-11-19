@@ -6,8 +6,8 @@ import pytest
 from telegram import Chat, Message, Update, User
 from telegram.ext import ApplicationHandlerStop
 
-import bot
-from conversation_states import CHOOSE_CAT, CHOOSE_CUR, TYPING_AMT, TYPING_CMNT
+from family_bot import bot
+from family_bot.conversation_states import CHOOSE_CAT, CHOOSE_CUR, TYPING_AMT, TYPING_CMNT
 from tests.conftest import bot_context
 from tests.known_bugs.fakes import make_update
 

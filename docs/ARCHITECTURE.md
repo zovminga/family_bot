@@ -6,6 +6,14 @@ boundary.
 
 ## System shape
 
+All Python code is the `family_bot/` package; module names below are relative
+to it (`bot.py` = `family_bot/bot.py`). Inside the package, modules import each
+other as `from family_bot import …`. Entry points: the `family-bot` command
+(`[project.scripts]` → `family_bot.bot:main`) and `python -m family_bot.dashboard`.
+Paths the code resolves at run time stay relative to the repo root: `.env`,
+a relative `GOOGLE_CREDS_PATH`, `models/` (Vosk), and `dashboard/` (template,
+`output/`, `vendor/`).
+
 ```
 Telegram user
     │
@@ -33,8 +41,8 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
                                               Google Spreadsheet
                                               Data | Config | Regular_expenses | Meta
                                                           ▲
-dashboard/build_dashboard.py  (laptop) ───────────────────┘
-         → standalone HTML (gitignored output/)
+dashboard/build_dashboard.py  (laptop, python -m family_bot.dashboard) ──┘
+         → standalone HTML (gitignored dashboard/output/)
 ```
 
 Isolation model: one deploy = one bot token = one spreadsheet = one allowlist.
@@ -61,7 +69,7 @@ Finances never share across installs.
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
-**Known gap until issue #25 closes (finding C3, plan 2.3):** `dashboard/build_dashboard.py`
+**Known gap until issue #25 closes (finding C3, plan 2.3):** `family_bot/dashboard/build_dashboard.py`
 imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
 maps from `sheet_data`, but runs its own row loop: its own `cell()`, symbol → ISO
 fallback, and its own FX fetch (`fetch_rates`). Category repair runs after the
@@ -170,7 +178,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 
 ## Dashboard boundary
 
-Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or `run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. A failed publishing build sends a short alert to the same chat (`dashboard/failure_alert.py`). Full pipeline/formulas: `dashboard/SPEC.md`.
+Bot does **not** build the HTML. Laptop runs `python -m family_bot.dashboard` (code in `family_bot/dashboard/build_dashboard.py`; usually through `dashboard/run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. A failed publishing build sends a short alert to the same chat (`family_bot/dashboard/failure_alert.py`). Full pipeline/formulas: `dashboard/SPEC.md`.
 
 ## Tests
 

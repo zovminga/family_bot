@@ -16,15 +16,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
-import auth
-import clock
-import currency
-import errors
-import regular
-from sheets import SheetsClient, SpreadsheetNotFound, open_client, resolve_creds_path
+from family_bot import auth
+from family_bot import clock
+from family_bot import currency
+from family_bot import errors
+from family_bot import regular
+from family_bot.sheets import SheetsClient, SpreadsheetNotFound, open_client, resolve_creds_path
 
 KEY = "config"  # bot_data key
-ENV_FILE = Path(__file__).resolve().parent / ".env"
+# .env sits in the repo root, one level above the family_bot/ package.
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 # Used when the Config sheet is empty or unreadable, so the add-expense flow still has buttons.
 FALLBACK_CATEGORIES = ["Food", "Transport", "Entertainment", "Other"]
 

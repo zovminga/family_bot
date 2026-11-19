@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sheet_data import (
+from family_bot.sheet_data import (
     normalize_month,
     normalize_rows,
     parse_amount,

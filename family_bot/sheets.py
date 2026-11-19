@@ -11,9 +11,11 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Protocol, runtime_checkable
 
-import clock
+from family_bot import clock
 
-BOT_DIR = Path(__file__).resolve().parent
+# Repo root (family_bot/ lives one level below): relative GOOGLE_CREDS_PATH
+# such as secrets/creds.json resolves from here.
+BOT_DIR = Path(__file__).resolve().parent.parent
 
 SCOPE = [
     "https://www.googleapis.com/auth/drive",

@@ -11,18 +11,13 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
 import pytest
 
-DASHBOARD_DIR = Path(__file__).resolve().parents[1] / "dashboard"
-if str(DASHBOARD_DIR) not in sys.path:
-    sys.path.insert(0, str(DASHBOARD_DIR))
-
-import build_dashboard as bd  # noqa: E402
+from family_bot.dashboard import build_dashboard as bd
 
 XSS = '"><img src=x onerror=alert(1)>'
 SCRIPT_CLOSE = "</script><script>alert(2)</script>"

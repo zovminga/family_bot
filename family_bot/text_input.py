@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-import draft_expense as draft
-import voice_input
+from family_bot import draft_expense as draft
+from family_bot import voice_input
 
 HINT = (
     "✍️ Чтобы записать трату, напишите товар и сумму, например: «кофе 350» "

@@ -27,13 +27,9 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
-# Allow importing shared modules from family_bot/ (SheetsClient, etc.).
-if str(Path(__file__).resolve().parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
-from sheets import open_client
-from sheet_data import (
+from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
+from family_bot.sheets import open_client
+from family_bot.sheet_data import (
     ISO_TO_SYMBOL,
     SYMBOL_TO_ISO,
     normalize_month,
@@ -44,8 +40,10 @@ from sheet_data import (
 # ---------------------------------------------------------------------------
 # Paths & configuration
 # ---------------------------------------------------------------------------
-DASHBOARD_DIR = Path(__file__).resolve().parent
-BOT_DIR = DASHBOARD_DIR.parent          # family_bot/
+# Code lives in family_bot/dashboard/; the template, output/ and vendor/ stay
+# in the repo-root dashboard/ folder next to run.sh.
+BOT_DIR = Path(__file__).resolve().parents[2]  # repo root (.env)
+DASHBOARD_DIR = BOT_DIR / "dashboard"
 OUTPUT_DIR = DASHBOARD_DIR / "output"
 TEMPLATE_PATH = DASHBOARD_DIR / "template.html"
 DATA_PLACEHOLDER = "__DASHBOARD_DATA__"

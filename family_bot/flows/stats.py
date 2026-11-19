@@ -16,15 +16,15 @@ from dateutil.relativedelta import relativedelta
 from telegram import Message, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, ContextTypes, MessageHandler, filters
 
-import analytics
-import clock
-import errors
-import navigation as nav
-from conversation_states import (
+from family_bot import analytics
+from family_bot import clock
+from family_bot import errors
+from family_bot import navigation as nav
+from family_bot.conversation_states import (
     CHOOSE_ACTION, STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
     STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
 )
-from sheet_data import DATE_FMT, MONTH_FMT
+from family_bot.sheet_data import DATE_FMT, MONTH_FMT
 
 QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
