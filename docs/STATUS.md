@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #14 currency registry, merged after issues #10, #11, #17)  
+**Updated by:** agent session (issue #13 Draft ids)  
 **Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -33,6 +33,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- Drafts have ids (issue #13): each voice/receipt card saves its own Draft,
+  all its items go in one `append_rows` call (a failed save can be retried
+  without duplicates), a double tap keeps «✅ Сохранено», the category button
+  carries the name, and `go_home` keeps open Drafts. Details:
+  `docs/ARCHITECTURE.md` → Input pipelines.
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
@@ -84,6 +89,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
   `docs/ARCHITECTURE.md`), and Preset code names (`DEFAULTS`, `load_defaults`,
   see `CONTEXT.md`).
+- Draft double-tap guard (issue #13) relies on save running with no `await`
+  between the `closed` check and the Sheets write. When issue #18 moves the
+  write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- Drafts live only in bot memory: a restart drops them and old cards answer
+  «Черновик уже не активен.» (issue #27 changes that text).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.

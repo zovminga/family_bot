@@ -54,7 +54,7 @@ Skip the STATUS bump only for pure typo/format edits that change no facts about 
 - Repo is **public**. Never commit `.env`, `secrets/`, `creds.json`, dashboard `output/`, real CSVs, or tokens.
 - Code comments and commit messages: **English**. Dashboard narrative docs may stay Russian.
 - Prefer deepening modules over growing `bot.py`. Telegram I/O stays in adapters; domain logic in libraries (`expense`, `draft_expense`, `sheets`, `analytics`, …).
-- All Data-sheet writes go through `ExpenseRecord` + `append_expense` (`expense.py`).
+- All Data-sheet writes go through `ExpenseRecord` + `append_expense` / `append_expenses` (`expense.py`).
 - Sheets access goes through `SheetsClient` (`sheets.py`), not raw gspread in callers.
 - Allowlist is required for use; `/whoami` stays public so new members can send their id.
 
