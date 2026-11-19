@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #15 input checks, merged after issues #12, #21, #37)  
-**Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
+**Updated by:** agent session (issue #22 Config in post_init, startup problems)  
+**Product code tip:** branch `claude/issue-22-config-post-init-7ac26b` (2026-11-19) — Config loaded in `post_init`, one-line setup problems (issue #22); set the hash after merge  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -56,6 +56,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   venv is recreated when `dashboard/requirements.txt` changes (stamp file
   `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
   and Telegram.
+- Settings load at startup (issue #22): importing `bot` reads no `.env` and
+  opens no spreadsheet. `bot.post_init` calls `config.load(os.environ)` and
+  keeps the `Config` (Allowlist, `SheetsClient`, categories, Presets, Currency
+  buttons) in `bot_data["config"]`; handlers read it via `bot.cfg(context)`.
+  Each setup mistake prints as one line «what — what to do», no traceback.
+  Without Google Sheets the bot still starts: `/whoami` answers, any other
+  message from an allowed User lists the problems. Missing `BOT_TOKEN` stops
+  `main()` with one line. `ALLOWED_USERS` accepts a comma inside a name;
+  a broken value is a problem line, not a crash. `scripts/test_google_sheets.py`
+  reads `.env`. Preset code names follow `CONTEXT.md` (`Config.presets`,
+  `regular.load_presets`).
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …);
   `FakeSheetsClient` lives in `tests/conftest.py`.
 - CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
@@ -116,10 +127,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
   before the move still import it. Drop the re-export once no branch imports
   the fake from `tests.test_sheets`.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
   recorded as open: the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`) and Preset code names (`DEFAULTS`, `load_defaults`,
-  see `CONTEXT.md`).
+  `docs/ARCHITECTURE.md`).
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the
   write into `asyncio.to_thread`, mark the Draft as saving before the await.

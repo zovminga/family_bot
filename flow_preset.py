@@ -14,14 +14,14 @@ import navigation as nav
 async def begin_preset_picker(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    defaults: list[dict],
+    presets: list[dict],
 ) -> int:
     """Show ⚡ preset buttons. Returns CHOOSE_PRESET or stays on menu if empty."""
-    if not defaults:
+    if not presets:
         await update.message.reply_text(
             "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
         return CHOOSE_ACTION
-    labels = [f"⚡ {t['name']}" for t in defaults]
+    labels = [f"⚡ {t['name']}" for t in presets]
     kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
     kb.append(nav.home_row())
     await update.message.reply_text(
@@ -35,7 +35,7 @@ async def choose_preset(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     *,
-    defaults: list[dict],
+    presets: list[dict],
     sheets,
     date_fmt: str,
     resolve_who,
@@ -50,7 +50,7 @@ async def choose_preset(
         return CHOOSE_PRESET
 
     name = text.replace("⚡", "", 1).strip()
-    preset = next((t for t in defaults if t["name"] == name), None)
+    preset = next((t for t in presets if t["name"] == name), None)
     if not preset:
         await update.message.reply_text(
             "Не нашёл такую заготовку (список мог обновиться). Выбери снова или /reloadcats.")

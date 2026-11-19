@@ -12,6 +12,7 @@ Telegram user
     ▼
 bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     │
+    ├── config.py               Config (Allowlist, Sheets, categories, Presets) — post_init
     ├── auth.py                 allowlist id → Spender name
     ├── navigation.py           go_home
     ├── flow_preset.py          ⚡ preset steps
@@ -44,16 +45,17 @@ Finances never share across installs.
 |--------|------|------------------|
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes | Call gspread directly |
 | `expense.py` | `ExpenseRecord`, row layout by Data headers, month derivation | Hand-build Data rows |
-| `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `bot.CURS`, voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps | List currencies anywhere else; adding one is one line in `CURRENCIES` |
+| `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `Config.currencies` (the buttons), voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps | List currencies anywhere else; adding one is one line in `CURRENCIES` |
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py` | Duplicate parse rules (known gap below) |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
-| `auth.py` | `ALLOWED_USERS` parse and checks | Scatter allowlist string parsing |
+| `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake is one line «what — what to do», never a traceback. `reload` backs `/reloadcats`. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
+| `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
 | `navigation.py` | «return home» labels/callbacks | Fork home behaviour per flow |
-| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
+| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
 | `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
@@ -89,7 +91,13 @@ details to show. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
 
 - Voice / audio → `voice_handler` → Draft card (`vx:` callbacks)
 - Photo / image doc → `photo_handler` → same Draft card
-- Allowlist: `TypeHandler` in group `-1` (`enforce_allowlist`); `/whoami` exempt
+- Allowlist: `TypeHandler` in group `-1` (`enforce_allowlist`); `/whoami` exempt.
+  When Google Sheets is not set up (`Config.sheets is None`) an allowed User
+  gets the setup problems instead of the flow; `/whoami` still answers.
+
+Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
+reads `.env` and stops with one line if `BOT_TOKEN` is missing;
+`post_init` loads `Config` and prints each setup problem as one line.
 
 Fallbacks: `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
 Home: `navigation.go_home` → `CHOOSE_ACTION`. Clears flow keys in `user_data`, keeps open Drafts.
@@ -117,7 +125,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`bot.py`): Category → amount → Currency → comment → date. Category must match `CATS` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`CURS`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`bot.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 

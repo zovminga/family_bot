@@ -6,7 +6,6 @@ from datetime import timedelta
 from dateutil import parser as dparser
 from typing import Optional
 
-from dotenv import load_dotenv
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -19,11 +18,11 @@ from telegram.ext import (
 import amount_input
 import auth
 import clock
+import config
 import currency
 import errors
 import voice_input as vx
 import photo_input as px
-import regular
 import draft_expense as draft
 import flow_preset
 import navigation as nav
@@ -34,111 +33,26 @@ from conversation_states import (
 )
 from expense import ExpenseRecord, append_expense
 from sheet_data import normalize_rows, DATE_FMT
-from sheets import SheetsClient, open_client
+from sheets import SheetsClient
 import analytics
 
-# Load family_bot/.env for local runs (on Render env vars come from the dashboard).
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+# ---------- Settings (Config in bot_data) ----------
+def cfg(context: ContextTypes.DEFAULT_TYPE) -> config.Config:
+    """Settings loaded in post_init (categories, presets, Allowlist, Sheets)."""
+    return context.bot_data[config.KEY]
 
 
-# ---------- Google Sheets (via SheetsClient) ----------
-# Process-wide client; set in main() and also used at import for categories/presets.
-sheets: Optional[SheetsClient] = None
-
-
-def get_sheets() -> SheetsClient:
-    """Return the process SheetsClient, opening one from env if needed."""
-    global sheets
-    if sheets is None:
-        sheets = open_client()
-    return sheets
-
-
-def test_google_sheets_connection() -> bool:
-    """Tests connection to Google Sheets."""
-    try:
-        ok = get_sheets().test_connection()
-        if ok:
-            print("✅ Google Sheets connection successful")
-        return ok
-    except Exception as e:
-        print(f"❌ Google Sheets connection error: {e}")
-        return False
-
-
-def validate_categories(categories: list[str]) -> list[str]:
-    """Validates and cleans category list."""
-    if not categories:
-        return []
-    
-    # Remove duplicates, preserving order
-    seen = set()
-    unique_categories = []
-    for cat in categories:
-        cat_clean = cat.strip()
-        if cat_clean and cat_clean not in seen:
-            seen.add(cat_clean)
-            unique_categories.append(cat_clean)
-    
-    return unique_categories
-
-
-def load_categories() -> list[str]:
-    """Reads category list from column A of Config sheet."""
-    try:
-        categories = validate_categories(get_sheets().read_categories())
-        
-        # Check that categories are not empty
-        if not categories:
-            print("⚠️  Warning: Config sheet is empty or contains no categories")
-            return []
-            
-        print(f"✅ Loaded {len(categories)} categories: {', '.join(categories)}")
-        return categories
-        
-    except Exception as e:
-        print(f"❌ Error loading categories: {e}")
-        # Return default categories in case of error
-        return ["Food", "Transport", "Entertainment", "Other"]
-
-
-# ---------- Bot constants ----------
-def initialize_categories():
-    """Initializes categories on bot startup."""
-    global CATS
-    
-    # Test Google Sheets connection
-    if not test_google_sheets_connection():
-        print("⚠️  Using default categories due to connection issues")
-        CATS = ["Food", "Transport", "Entertainment", "Other"]
-        return CATS
-    
-    CATS = load_categories()
-    if not CATS:
-        print("⚠️  Using default categories")
-        CATS = ["Food", "Transport", "Entertainment", "Other"]
-    return CATS
-
-CATS = initialize_categories()
-
-
-def load_defaults() -> list[dict]:
-    """Load all preset expenses (monthly + one-off) from Regular_expenses."""
-    try:
-        items = regular.load_defaults(get_sheets())
-        print(f"✅ Loaded {len(items)} presets")
-        return items
-    except Exception as e:  # noqa: BLE001 - degrade to no presets
-        print(f"⚠️  Could not load presets: {e}")
-        return []
-
-
-DEFAULTS = load_defaults()
-CURS = currency.symbols()
-
-# Allowlist: Telegram ID -> spender name on the Data sheet.
-# Loaded from ALLOWED_USERS in .env (see .env.example). Empty = nobody.
-ALLOWED_USERS: dict[int, str] = auth.load_allowed_users()
+async def post_init(app: Application) -> None:
+    """Load Config once the bot starts; print each setup problem as one line."""
+    settings = config.load(os.environ)
+    app.bot_data[config.KEY] = settings
+    for line in settings.problems:
+        print(line)
+    if settings.sheets is not None:
+        print(f"✅ Google Sheets: {len(settings.categories)} categories, "
+              f"{len(settings.presets)} presets")
+    print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
 
 
 # ---------- Dashboard delivery ----------
@@ -148,10 +62,10 @@ ALLOWED_USERS: dict[int, str] = auth.load_allowed_users()
 # so opening the dashboard from the phone is instant and needs no server-side work.
 
 
-def get_dashboard_file_id() -> Optional[str]:
+def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
     """Read the latest dashboard Telegram file_id from the Meta worksheet."""
     try:
-        return get_sheets().get_dashboard_file_id()
+        return sheets.get_dashboard_file_id()
     except Exception as e:
         print(f"Error reading dashboard file_id: {e}")
         return None
@@ -160,7 +74,7 @@ def get_dashboard_file_id() -> Optional[str]:
 async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the latest built dashboard to the chat by its stored file_id."""
     msg = update.effective_message
-    file_id = get_dashboard_file_id()
+    file_id = get_dashboard_file_id(cfg(context).sheets)
     if not file_id:
         await msg.reply_text(
             "📊 Дашборд ещё не собран. Собери его на компьютере "
@@ -188,11 +102,11 @@ def _telegram_display_name(user) -> str:
     return user.username or user.first_name or f"User{user.id}"
 
 
-def get_user_info(update: Update) -> tuple[str, str]:
+def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[str, str]:
     """Gets spender name + Telegram display name for the current user."""
     user = update.effective_user
     display = _telegram_display_name(user)
-    return auth.spender_name(user.id, display, ALLOWED_USERS), display
+    return auth.spender_name(user.id, display, cfg(context).allowed_users), display
 
 
 def _is_public_command(update: Update) -> bool:
@@ -215,9 +129,13 @@ EDITED_MESSAGES = MessageHandler(filters.UpdateType.EDITED, ignore_edited)
 async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Block strangers on this deploy; each family runs their own bot + sheet."""
     user = update.effective_user
-    if user and auth.is_allowed(user.id, ALLOWED_USERS):
-        return
     if _is_public_command(update):
+        return
+    settings = cfg(context)
+    if user and auth.is_allowed(user.id, settings.allowed_users):
+        if settings.sheets is None:
+            await _reply_not_set_up(update, settings)
+            raise ApplicationHandlerStop
         return
 
     uid = user.id if user else "?"
@@ -238,20 +156,33 @@ async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     raise ApplicationHandlerStop
 
 
-def load_expense_rows() -> list[dict]:
+async def _reply_not_set_up(update: Update, settings: config.Config) -> None:
+    """Tell an allowed User that Google Sheets is not set up yet and what to fix."""
+    text = "\n".join([
+        "⚙️ Бот ещё не подключён к Google Sheets. Что исправить в .env:",
+        *settings.problems,
+        "После правки перезапустите бота. /whoami работает и сейчас.",
+    ])
+    if update.callback_query:
+        await update.callback_query.answer()
+    if update.effective_message:
+        await update.effective_message.reply_text(text)
+
+
+def load_expense_rows(sheets: SheetsClient) -> list[dict]:
     """Read and normalize Data-sheet rows for analytics."""
-    all_values = get_sheets().read_data_values()
+    all_values = sheets.read_data_values()
     if not all_values or len(all_values) < 2:
         return []
     return normalize_rows(all_values[0], all_values[1:])
 
 
-# Statistics conversation; data sources are read lazily so /reloadcats and
-# test monkeypatching of load_expense_rows apply.
+# Statistics conversation; data sources are read per request from Config so
+# /reloadcats and test monkeypatching of load_expense_rows apply.
 STATS = flow_stats.StatsFlow(
-    categories=lambda: CATS,
-    load_rows=lambda: load_expense_rows(),
-    fallback_currencies=lambda: CURS,
+    categories=lambda context: cfg(context).categories,
+    load_rows=lambda context: load_expense_rows(cfg(context).sheets),
+    fallback_currencies=lambda context: cfg(context).currencies,
 )
 
 
@@ -282,7 +213,7 @@ async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Transcribe a voice/audio message and show an editable expense draft."""
     msg = update.effective_message
-    who, _ = get_user_info(update)
+    who, _ = get_user_info(update, context)
     status = await msg.reply_text("🎧 Распознаю…")
 
     voice = msg.voice or msg.audio
@@ -306,9 +237,11 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     today = clock.now().strftime(DATE_FMT)
+    settings = cfg(context)
     try:
         result = await asyncio.to_thread(
-            vx.extract_expenses, transcript, CATS, CURS, today, who, DEFAULT_CURRENCY)
+            vx.extract_expenses, transcript, settings.categories, settings.currencies,
+            today, who, DEFAULT_CURRENCY)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Voice extract", e)
         await status.edit_text(f"🎧 «{transcript}»\n\n{errors.NOT_PARSED}")
@@ -334,7 +267,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Read a receipt photo/image and show an editable, category-grouped draft."""
     msg = update.effective_message
-    who, _ = get_user_info(update)
+    who, _ = get_user_info(update, context)
     status = await msg.reply_text("🧾 Читаю чек…")
 
     # Photos come as a list of sizes (largest last); images can also arrive as a
@@ -359,10 +292,11 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     today = clock.now().strftime(DATE_FMT)
+    settings = cfg(context)
     try:
         result = await asyncio.to_thread(
-            px.extract_receipt, bytes(buf), media_type, CATS, CURS,
-            today, who, DEFAULT_CURRENCY)
+            px.extract_receipt, bytes(buf), media_type, settings.categories,
+            settings.currencies, today, who, DEFAULT_CURRENCY)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Receipt extract", e)
         await status.edit_text(errors.NOT_PARSED)
@@ -398,8 +332,9 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if session is None:
         await query.edit_message_text("Черновик уже не активен.")
         return
+    settings = cfg(context)
     outcome = draft.apply_callback(
-        data, session, CATS, CURS, get_sheets())
+        data, session, settings.categories, settings.currencies, settings.sheets)
     await _apply_draft_outcome(query, outcome)
 
 
@@ -421,7 +356,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        await _ask_from_list(update, "📂 Choose category:", CATS)
+        await _ask_from_list(update, "📂 Choose category:", cfg(context).categories)
         return CHOOSE_CAT
 
     if text in (
@@ -430,7 +365,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🧾 Add default expense",  # alias — old button label
         "Add default expense",
     ):
-        return await flow_preset.begin_preset_picker(update, context, DEFAULTS)
+        return await flow_preset.begin_preset_picker(update, context, cfg(context).presets)
 
     if text == "📊 Show statistics" or text == "Show statistics":
         return await STATS.begin(update, context)
@@ -444,10 +379,10 @@ async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await flow_preset.choose_preset(
         update,
         context,
-        defaults=DEFAULTS,
-        sheets=get_sheets(),
+        presets=cfg(context).presets,
+        sheets=cfg(context).sheets,
         date_fmt=DATE_FMT,
-        resolve_who=lambda u: get_user_info(u)[0],
+        resolve_who=lambda u: get_user_info(u, context)[0],
     )
 
 
@@ -462,15 +397,15 @@ async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> Non
     )
 
 
-def _known_category(text: str) -> Optional[str]:
-    """Category from CATS matching text (case and outer spaces ignored)."""
+def _known_category(text: str, categories: list[str]) -> Optional[str]:
+    """Category from the list matching text (case and outer spaces ignored)."""
     key = text.strip().casefold()
-    return next((c for c in CATS if c.casefold() == key), None)
+    return next((c for c in categories if c.casefold() == key), None)
 
 
-def _on_buttons(found: Optional[currency.Currency]) -> Optional[str]:
-    """Stored symbol of a registered Currency if this install offers it (CURS)."""
-    return found.symbol if found is not None and found.symbol in CURS else None
+def _on_buttons(found: Optional[currency.Currency], currencies: list[str]) -> Optional[str]:
+    """Stored symbol of a registered Currency if this install offers it."""
+    return found.symbol if found is not None and found.symbol in currencies else None
 
 
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -479,9 +414,10 @@ async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
 
-    cat = _known_category(text)
+    categories = cfg(context).categories
+    cat = _known_category(text, categories)
     if cat is None:
-        await _ask_from_list(update, "❌ No such category. Choose one from the list:", CATS)
+        await _ask_from_list(update, "❌ No such category. Choose one from the list:", categories)
         return CHOOSE_CAT
 
     context.user_data["cat"] = cat
@@ -507,10 +443,11 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return TYPING_AMT
     amt, typed_currency = parsed
     context.user_data["amt"] = amt
-    cur = _on_buttons(typed_currency)
+    currencies = cfg(context).currencies
+    cur = _on_buttons(typed_currency, currencies)
     if cur is not None:
         return await _set_currency_and_ask_comment(update, context, cur)
-    await _ask_from_list(update, "💱 Currency?", CURS)
+    await _ask_from_list(update, "💱 Currency?", currencies)
     return CHOOSE_CUR
 
 
@@ -521,9 +458,10 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
     
-    cur = _on_buttons(currency.find(text))
+    currencies = cfg(context).currencies
+    cur = _on_buttons(currency.find(text), currencies)
     if cur is None:
-        await _ask_from_list(update, "❌ No such currency. Choose one from the list:", CURS)
+        await _ask_from_list(update, "❌ No such currency. Choose one from the list:", currencies)
         return CHOOSE_CUR
     return await _set_currency_and_ask_comment(update, context, cur)
 
@@ -533,7 +471,7 @@ async def _set_currency_and_ask_comment(update: Update, context: ContextTypes.DE
     context.user_data["cur"] = cur
 
     # Automatically detect user
-    user_name, username = get_user_info(update)
+    user_name, username = get_user_info(update, context)
     context.user_data["spender"] = user_name
     
     # Go to comment
@@ -614,7 +552,7 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
     cur = context.user_data["cur"]
     who = context.user_data["spender"]
     cmnt = context.user_data.get("comment", "")
-    append_expense(get_sheets(), ExpenseRecord(
+    append_expense(cfg(context).sheets, ExpenseRecord(
         date=date_str,
         category=cat,
         amount=amt,
@@ -636,8 +574,9 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
 
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows current categories."""
-    if CATS:
-        text = f"📋 Current categories ({len(CATS)}):\n{', '.join(CATS)}"
+    categories = cfg(context).categories
+    if categories:
+        text = f"📋 Current categories ({len(categories)}):\n{', '.join(categories)}"
     else:
         text = "❌ Categories not loaded"
     
@@ -650,10 +589,11 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     display = _telegram_display_name(user)
 
-    if auth.is_allowed(user_id, ALLOWED_USERS):
+    allowed = cfg(context).allowed_users
+    if auth.is_allowed(user_id, allowed):
         text = (
             f"👤 Your profile:\nID: {user_id}\nName: {display}\n"
-            f"Allowed as: {ALLOWED_USERS[user_id]}"
+            f"Allowed as: {allowed[user_id]}"
         )
     else:
         text = (
@@ -670,7 +610,7 @@ async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     display = _telegram_display_name(user)
     name = context.args[0] if context.args else display
-    existing = ",".join(f"{uid}:{n}" for uid, n in ALLOWED_USERS.items())
+    existing = ",".join(f"{uid}:{n}" for uid, n in cfg(context).allowed_users.items())
     merged = f"{existing},{user_id}:{name}" if existing else f"{user_id}:{name}"
     text = (
         f"📝 Add this household member via .env (then restart the bot):\n\n"
@@ -682,11 +622,10 @@ async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Tests connection to Google Sheets."""
+    sheets = cfg(context).sheets
     try:
-        # Test connection
-        if test_google_sheets_connection():
-            # Try to load categories
-            test_cats = load_categories()
+        if sheets is not None and sheets.test_connection():
+            test_cats = sheets.read_categories()
             if test_cats:
                 text = f"✅ Connection successful!\n📋 Available categories: {len(test_cats)}\n{', '.join(test_cats)}"
             else:
@@ -696,25 +635,23 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:  # noqa: BLE001 - details go to the log
         errors.log_exception("Connection test", e)
         text = "❌ Google Sheets connection error"
-    
+
     await update.message.reply_text(text)
 
 
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reloads categories (and presets) from Google Sheets."""
-    global CATS, DEFAULTS
-    old_cats = CATS.copy()
-    CATS = load_categories()
-    DEFAULTS = load_defaults()
-    
-    if CATS:
-        if old_cats == CATS:
-            text = f"✅ Categories already up to date ({len(CATS)}):\n{', '.join(CATS)}"
-        else:
-            text = f"🔄 Categories updated ({len(CATS)}):\n{', '.join(CATS)}"
+    settings = cfg(context)
+    old_cats = settings.categories.copy()
+    for line in config.reload(settings):
+        print(line)
+    cats = settings.categories
+
+    if old_cats == cats:
+        text = f"✅ Categories already up to date ({len(cats)}):\n{', '.join(cats)}"
     else:
-        text = "❌ Failed to load categories. Check Config sheet in Google Sheets."
-    
+        text = f"🔄 Categories updated ({len(cats)}):\n{', '.join(cats)}"
+
     await update.message.reply_text(text)
 
 
@@ -731,7 +668,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Main ----------
 def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
-    app = Application.builder().token(bot_token).build()
+    app = Application.builder().token(bot_token).post_init(post_init).build()
 
     # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
     app.add_handler(EDITED_MESSAGES, group=-2)
@@ -779,24 +716,12 @@ def build_application(bot_token: str) -> Application:
 
 
 def main():
-    # Get token from environment variables
+    # Local runs read .env here, not at import; on Render env vars come from the dashboard.
+    config.load_env_file()
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
-        raise RuntimeError("Environment variable BOT_TOKEN not found.")
-
-    global ALLOWED_USERS
-    ALLOWED_USERS = auth.load_allowed_users()
-    if not ALLOWED_USERS:
-        print(
-            "⚠️  ALLOWED_USERS is empty — nobody can use the bot except /whoami. "
-            "Set ALLOWED_USERS in .env (see .env.example)."
-        )
-    else:
-        print(f"✅ Allowlist: {len(ALLOWED_USERS)} user(s)")
-
-    # Initialize Google Sheets connection
-    global sheets
-    sheets = open_client()
+        raise SystemExit(config.problem(
+            "BOT_TOKEN is not set", "get a token from @BotFather and put it in .env"))
 
     app = build_application(bot_token)
 
