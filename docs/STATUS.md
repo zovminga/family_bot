@@ -3,8 +3,8 @@
 > Living handoff. Agents update this at the end of every meaningful task
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
-**Last updated:** 2026-11-18  
-**Updated by:** agent session (close false unknowns from a cold read)  
+**Last updated:** 2026-11-19  
+**Updated by:** agent session (project review, design, staged plan)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -48,6 +48,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - **Dashboard spec is complete in-repo.** `dashboard/SPEC.md` covers the
   pipeline (§3), `template.html` (§4), decisions (§6), and a change map (§7).
   Unread sections are unread source, not missing knowledge.
+
+## Open
+
+- Full project review with findings, design, and a staged plan:
+  [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
+  there (section 2) until fixed; tick plan items as they land.
 
 ## Only a person knows
 
