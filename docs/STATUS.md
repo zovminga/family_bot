@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #18 slow calls do not freeze the bot)  
-**Product code tip:** `cbda600` (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
+**Product code tip:** `7226bcc` (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
