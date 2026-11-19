@@ -25,6 +25,7 @@ from family_bot import photo_input as px
 from family_bot import text_input
 from family_bot import draft_expense as draft
 from family_bot import flow_preset
+from family_bot import monthly_summary
 from family_bot import navigation as nav
 from family_bot import undo
 from family_bot.flows import manual as flow_manual
@@ -65,6 +66,13 @@ async def post_init(app: Application) -> None:
         print(f"✅ Google Sheets: {len(settings.categories)} categories, "
               f"{len(settings.presets)} presets")
     print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
+    # Without Sheets the job could only fail; the Sheets problem line is printed above.
+    if settings.summary_chat_id is not None and settings.sheets is not None:
+        # Rows are read through bot_data at send time, so /reloadcats changes apply.
+        monthly_summary.schedule(
+            app.job_queue, settings.summary_chat_id, settings.summary_hour,
+            lambda: load_expense_rows(app.bot_data[config.KEY].sheets))
+        print(f"✅ Monthly summary: 1st of each month, {settings.summary_hour}:00")
     try:
         await app.bot.set_my_commands(COMMANDS)
     except TelegramError as e:  # the menu is a convenience, the bot still works

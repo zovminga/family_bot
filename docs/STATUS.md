@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #27 menu and old cards after a deploy)  
+**Updated by:** agent session (issue #27 menu after deploy, merged after issue #36)  
 **Product code tip:** `4e8fcc4` (2026-11-19) — main-menu and home buttons are conversation entry points, old Draft cards say the Draft is stale after a restart (issue #27)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -26,6 +26,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   buttons. An old «↩️ Отменить» gets the alert «…пока бот не
   перезапускался…». Typed text («кофе 350») still needs `/start` or a menu
   tap after a restart. Tests: `tests/test_restart.py`.
+- Monthly summary (issue #36, plan 4.2, F4): on the 1st at
+  `MONTHLY_SUMMARY_HOUR` (default 9) in `TZ_NAME` the bot sends last month's
+  summary (same text as «📅 Этот месяц») to `DASHBOARD_CHAT_ID`
+  (`monthly_summary.py`, PTB `JobQueue.run_monthly`; the `job-queue` extra
+  adds APScheduler). Unset `DASHBOARD_CHAT_ID` → no job and one setup line at
+  start (the line also shows in the «not connected to Google Sheets» reply); no
+  Sheets → no job. A wrong `TZ_NAME` → the job uses `Europe/Belgrade`. The two
+  settings are parsed in `config.py`. A failure is logged, the bot keeps running. The job lives in memory:
+  if the bot is down at that hour (deploy, restart, sleeping instance), that
+  month is skipped, not sent late.
 - Household data in settings, not code (issue #41, plan 5.6, I8):
   `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
   unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
@@ -219,6 +229,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is
+  only in the owner's Mac `.env` (dashboard publish). If the Render instance
+  sleeps when idle (free plan), the job does not fire on the 1st unless the
+  bot is awake at that hour; nobody has checked which plan the service uses.
 - README «Install from scratch» (issue #40): a clean-clone walk with fake keys
   covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
   download. Not walked: the Google Cloud console steps, a real spreadsheet, and
