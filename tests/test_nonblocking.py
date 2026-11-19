@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import time
+from datetime import date
 from types import SimpleNamespace
 from typing import Any, Callable, Coroutine
 
@@ -12,13 +13,14 @@ import pytest
 from family_bot import photo_input, voice_input
 from family_bot.flows import stats
 from family_bot.per_user import PerUserUpdateProcessor
+from family_bot.sheet_data import Row
 from tests.known_bugs.fakes import make_update
 
 SLOW_SEC = 0.5
 TICK_SEC = 0.1
 ROWS = [
-    {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 10.0,
-     "currency": "€", "who": "Azat", "comment": ""},
+    Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=10.0,
+    currency="€", who="Azat", comment=""),
 ]
 
 
@@ -50,7 +52,7 @@ async def ticks_during(work: Callable[[], Coroutine[Any, Any, Any]]) -> int:
 
 
 def test_stats_result_does_not_block_on_rows_and_fx() -> None:
-    def slow_rows(_ctx: object) -> list[dict]:
+    def slow_rows(_ctx: object) -> list[Row]:
         time.sleep(SLOW_SEC)
         return list(ROWS)
 

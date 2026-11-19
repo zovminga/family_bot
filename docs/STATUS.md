@@ -108,9 +108,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   starts and reopened if the save fails, so a double tap still sees
   «✅ Сохранено». Claude clients for voice, text
   and receipt photo use a 30 s timeout and 1 retry
-  (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
+  (`llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
   client keeps the SDK defaults.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Shared code for bot and dashboard (issue #25): a Data row is the typed
+  `sheet_data.Row` (`date` as `datetime.date`, `amount` as `float`), read by
+  `sheet_data.parse_rows` in bot stats and in the dashboard build. Rates come
+  from `fx.py` (`fetch_rates` for the dashboard, `rate` for stats; `analytics`
+  has no I/O). JSON from Claude replies is parsed by `llm.extract_json_object`
+  (voice, photo, typed text, dashboard grouping). In the dashboard JSON a date
+  is always `ДД.ММ.ГГГГ` (an ISO-format cell is converted, an unknown format
+  becomes empty) and a Currency word such as «евро» maps to its ISO code.
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
   comment with HTML or `</script>` stays text. A Telegram publish error masks

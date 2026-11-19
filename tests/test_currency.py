@@ -42,7 +42,6 @@ def test_find_unknown_is_none(value: Any) -> None:
 ])
 def test_to_iso(value: str, iso: str) -> None:
     assert currency.to_iso(value) == iso
-    assert sheet_data.to_iso(value) == iso
 
 
 def test_sheet_data_maps_come_from_registry() -> None:

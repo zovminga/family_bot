@@ -68,12 +68,14 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   expense.py          ExpenseRecord + append
   draft_expense.py    Draft card (voice, photo, text)
   sheets.py           SheetsClient seam
-  sheet_data.py       Headers, dates, currency maps
+  sheet_data.py       Headers, dates, currency maps; Data rows → Row
+  fx.py               Exchange rates (bot stats + dashboard)
+  llm.py              Claude client limits, JSON from model replies
   currency.py         Currency registry (symbol, ISO, Russian words)
   amount_input.py     Amount checks for typed/spoken input
   clock.py            clock.now() in the family time zone (TZ_NAME)
   errors.py           Error handler: short user text, masked log
-  analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
+  analytics.py        Stats over Row lists (no I/O; rate function passed in)
   voice_input.py      Vosk STT + Claude extract (model in <repo>/models/)
   photo_input.py      Claude Vision receipt → drafts
   text_input.py       Typed «кофе 350» → Draft via voice_input.extract_expenses

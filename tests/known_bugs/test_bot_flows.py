@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 from telegram import Chat, Message, Update, User
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from family_bot import bot
 from family_bot import draft_expense as draft
@@ -20,14 +20,15 @@ from family_bot.flows import stats as flow_stats
 from tests.conftest import settings_of
 from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
 from family_bot.conversation_states import State
+from family_bot.sheet_data import Row
 
 CHOOSE_ACTION, STAT_SHOW_DETAILS = State.CHOOSE_ACTION, State.STAT_SHOW_DETAILS
 
 ROWS = [
-    {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
-     "currency": "дин", "who": "Azat", "comment": ""},
-    {"date": "05.11.2026", "month": "2026-11", "category": "Food", "amount": 7.0,
-     "currency": "дин", "who": "Azat", "comment": ""},
+    Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
+     currency="дин", who="Azat", comment=""),
+    Row(date=date(2026, 11, 5), month="2026-11", category="Food", amount=7.0,
+     currency="дин", who="Azat", comment=""),
 ]
 
 

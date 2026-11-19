@@ -2,6 +2,10 @@
 """Tests for analytics over fixture rows (no Sheets / no HTTP)."""
 from __future__ import annotations
 
+from datetime import date
+
+import pytest
+
 from family_bot.analytics import (
     aggregate,
     filter_rows,
@@ -9,21 +13,22 @@ from family_bot.analytics import (
     last_n,
     unique_currencies,
 )
+from family_bot.sheet_data import Row
 
 
 ROWS = [
-    {
-        "date": "01.08.2026", "month": "2026-08", "category": "Food",
-        "amount": 10.0, "currency": "дин", "who": "Azat", "comment": "a",
-    },
-    {
-        "date": "05.08.2026", "month": "2026-08", "category": "Food",
-        "amount": 20.0, "currency": "€", "who": "Lisa", "comment": "b",
-    },
-    {
-        "date": "10.07.2026", "month": "2026-07", "category": "Transport",
-        "amount": 5.0, "currency": "дин", "who": "Azat", "comment": "c",
-    },
+    Row(
+        date=date(2026, 8, 1), month="2026-08", category="Food",
+        amount=10.0, currency="дин", who="Azat", comment="a",
+    ),
+    Row(
+        date=date(2026, 8, 5), month="2026-08", category="Food",
+        amount=20.0, currency="€", who="Lisa", comment="b",
+    ),
+    Row(
+        date=date(2026, 7, 10), month="2026-07", category="Transport",
+        amount=5.0, currency="дин", who="Azat", comment="c",
+    ),
 ]
 
 
@@ -35,7 +40,7 @@ def test_unique_currencies():
 def test_last_n_sheet_order_newest_first():
     # last_n follows sheet row order (tail of the list), not calendar sort.
     got = last_n(ROWS, n=2)
-    assert [r["comment"] for r in got] == ["c", "b"]
+    assert [r.comment for r in got] == ["c", "b"]
 
 
 def test_format_last_n_filtered():
@@ -52,7 +57,7 @@ def test_filter_by_month_and_category():
 def test_filter_by_date_range():
     got = filter_rows(ROWS, date_from="01.08.2026", date_to="05.08.2026")
     assert len(got) == 2
-    assert {r["comment"] for r in got} == {"a", "b"}
+    assert {r.comment for r in got} == {"a", "b"}
 
 
 def test_aggregate_group_by_currency():
@@ -93,3 +98,13 @@ def test_aggregate_missing_rate():
     )
     assert text.startswith("❌ Failed to get exchange rate")
     assert details == {}
+
+
+def test_format_last_n_shows_date_text():
+    text = format_last_n(ROWS, n=1)
+    assert "📅 10.07.2026 | Transport" in text
+
+
+def test_aggregate_convert_needs_rate_source():
+    with pytest.raises(ValueError):
+        aggregate(ROWS, month="2026-08", convert_to_currency="дин")

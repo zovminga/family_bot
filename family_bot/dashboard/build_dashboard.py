@@ -27,13 +27,15 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
+from family_bot.currency import to_iso
 from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
+from family_bot.fx import fetch_rates
+from family_bot.llm import extract_json_object, reply_text
 from family_bot.sheets import open_client
 from family_bot.sheet_data import (
     ISO_TO_SYMBOL,
     SYMBOL_TO_ISO,
-    normalize_month,
-    parse_amount,
+    parse_rows,
     resolve_columns,
 )
 
@@ -287,18 +289,8 @@ def classify_theme(comment: str) -> Optional[str]:
     return None
 
 # ---------------------------------------------------------------------------
-# FX rates
+# FX conversion (rates come from fx.fetch_rates)
 # ---------------------------------------------------------------------------
-def fetch_rates(base_iso: str) -> dict[str, float]:
-    """Return {ISO: units_of_ISO_per_1_base} for converting into the base currency."""
-    url = f"https://api.exchangerate-api.com/v4/latest/{base_iso}"
-    resp = requests.get(url, timeout=10)
-    resp.raise_for_status()
-    rates = resp.json().get("rates", {})
-    rates[base_iso] = 1.0
-    return rates
-
-
 def get_chartjs() -> str:
     """Return the Chart.js UMD bundle to inline, caching it under vendor/.
 
@@ -394,19 +386,6 @@ def build_grouping_prompt(batch: list[str]) -> str:
     )
 
 
-def _extract_json_object(text: str) -> dict:
-    """Parse a JSON object from a model reply, tolerating ```json fences."""
-    text = text.strip()
-    if text.startswith("```"):
-        # Strip a leading ```json / ``` fence and the trailing ```.
-        text = text.split("\n", 1)[-1] if "\n" in text else text
-        text = text.rsplit("```", 1)[0].strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
-    return json.loads(text)
-
-
 def _classify_batch_openai(prompt: str, model: str) -> dict[str, str]:
     from openai import OpenAI
 
@@ -417,7 +396,7 @@ def _classify_batch_openai(prompt: str, model: str) -> dict[str, str]:
         temperature=0,
         response_format={"type": "json_object"},
     )
-    return _extract_json_object(resp.choices[0].message.content)
+    return extract_json_object(resp.choices[0].message.content)
 
 
 def _classify_batch_anthropic(prompt: str, model: str) -> dict[str, str]:
@@ -431,9 +410,7 @@ def _classify_batch_anthropic(prompt: str, model: str) -> dict[str, str]:
         max_tokens=8192,  # a full batch of comment→theme pairs can exceed 4k tokens
         messages=[{"role": "user", "content": prompt}],
     )
-    # content is a list of blocks; concatenate the text blocks.
-    text = "".join(block.text for block in resp.content if block.type == "text")
-    return _extract_json_object(text)
+    return extract_json_object(reply_text(resp))
 
 
 # provider -> (env var it needs, per-batch classifier).
@@ -532,12 +509,6 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         if required not in cols:
             raise RuntimeError(f"Required column '{required}' not found. Headers: {headers}")
 
-    def cell(row: list[str], field: str) -> str:
-        idx = cols.get(field)
-        if idx is None or idx >= len(row):
-            return ""
-        return str(row[idx]).strip()
-
     # Merge manual adjustments (e.g. rent entries the user forgot to log).
     # Rows are aligned to the main headers by field name, so column order is
     # irrelevant. The file is git-ignored and stays out of the public repo.
@@ -557,36 +528,30 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     print(f"→ Parsed {len(raw_rows)} raw rows. Fetching FX rates (base={base_iso})…")
     rates = fetch_rates(base_iso)
 
+    parsed = parse_rows(headers, raw_rows)
+    skipped = len(raw_rows) - len(parsed)
     rows: list[dict] = []
-    skipped = 0
     excluded = 0
     comments: list[str] = []
-    for row in raw_rows:
-        amount = parse_amount(cell(row, "amount"))
-        if amount is None:
-            skipped += 1
-            continue
-        comment = cell(row, "comment")
+    for r in parsed:
         # Cash withdrawals are transfers, not spending — drop them before they
         # reach the totals or the LLM classifier.
-        if EXCLUDE_COMMENT_RE.search(comment):
+        if EXCLUDE_COMMENT_RE.search(r.comment):
             excluded += 1
             continue
-        symbol = cell(row, "currency")
-        iso = SYMBOL_TO_ISO.get(symbol, symbol.upper() if symbol else base_iso)
-        amount_base = to_base(amount, iso, base_iso, rates)
-        comments.append(comment)
-        date = cell(row, "date")
+        iso = to_iso(r.currency) if r.currency else base_iso
+        amount_base = to_base(r.amount, iso, base_iso, rates)
+        comments.append(r.comment)
         rows.append({
-            "date": date,
-            "month": normalize_month(date, cell(row, "month")),
-            "category": cell(row, "category"),
-            "amount": round(amount, 2),
+            "date": r.date_text,
+            "month": r.month,
+            "category": r.category,
+            "amount": round(r.amount, 2),
             "currency": iso,
-            "currency_symbol": ISO_TO_SYMBOL.get(iso, symbol or iso),
+            "currency_symbol": ISO_TO_SYMBOL.get(iso, r.currency or iso),
             "amount_base": round(amount_base, 2) if amount_base is not None else None,
-            "who": normalize_spender(cell(row, "who")),
-            "comment": comment,
+            "who": normalize_spender(r.who),
+            "comment": r.comment,
         })
 
     # Repair empty / numeric / rent-mislogged Category cells with this sheet's own names.
