@@ -27,7 +27,7 @@ The three Currencies a User entered most recently, offered first when choosing a
 _Avoid_: Default currency, favourite currencies
 
 **Conversion**:
-Restating Expense amounts in another Currency at the rate of the day the statistics are requested, not the day the Expense happened.
+Restating Expense amounts in another Currency at the rate of the day the statistics are requested, not the day the Expense happened. The target is any Currency of the rate service, chosen with the same picker as manual input.
 _Avoid_: Historical rate, exchange (as a noun)
 
 **Draft**:

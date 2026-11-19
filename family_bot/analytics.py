@@ -23,14 +23,6 @@ MONTH_NAMES = ("Январь", "Февраль", "Март", "Апрель", "М
                "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
 
 
-def unique_currencies(rows: list[Row], fallback: Optional[list[str]] = None) -> list[str]:
-    """Sorted distinct currency symbols from parsed rows."""
-    currencies = sorted({r.currency for r in rows if r.currency})
-    if currencies:
-        return currencies
-    return list(fallback or [])
-
-
 def last_n(
     rows: list[Row],
     n: int = 3,
@@ -135,16 +127,18 @@ def aggregate(
     if convert_to_currency:
         if get_rate is None:
             raise ValueError("get_rate is required to convert currencies")
-        originals = {w["currency"] for w in working}
-        for currency in originals:
-            if currency == convert_to_currency:
-                continue
-            rate = get_rate(currency, convert_to_currency)
-            if rate is None:
-                return (
-                    f"❌ Не удалось получить курс {currency} → {convert_to_currency}",
-                    {},
-                )
+        originals = sorted({w["currency"] for w in working} - {convert_to_currency})
+        found = {c: get_rate(c, convert_to_currency) for c in originals}
+        missing = [c for c, rate in found.items() if rate is None]
+        if missing:
+            # Never sum without a rate: say which Currencies could not be converted.
+            return (
+                f"❌ Нет курса для пересчёта в {convert_to_currency}: "
+                f"{', '.join(missing)}. Попробуйте позже.",
+                {},
+            )
+        rates = {c: rate for c, rate in found.items() if rate is not None}
+        for currency, rate in rates.items():
             original_amount = sum(w["amount"] for w in working if w["currency"] == currency)
             for w in working:
                 if w["currency"] == currency:

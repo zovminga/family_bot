@@ -5,6 +5,11 @@ The whole request lives in one ``StatQuery`` under ``user_data[QUERY_KEY]``.
 A new query starts at the menu tap and again at the category step, so values
 from an earlier request never leak into the next one. Every exit path returns
 CHOOSE_ACTION and drops the query.
+
+The Conversion target is chosen with the shared Currency picker
+(``currency_picker``), like manual input: Recent currencies, «🌍 Другая» with
+every Currency of the rate service, or typed code / name. The chosen Currency
+goes to the User's Recent currencies.
 """
 from __future__ import annotations
 
@@ -14,16 +19,19 @@ from typing import Any, Callable, Coroutine, Optional, TypeVar
 
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
-from telegram import Message, ReplyKeyboardMarkup, Update
-from telegram.ext import BaseHandler, ContextTypes, MessageHandler
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Message,
+                      ReplyKeyboardMarkup, Update)
+from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler
 
 from family_bot import analytics
 from family_bot import clock
 from family_bot import currency
+from family_bot import currency_picker as picker
 from family_bot import errors
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
+from family_bot.sheets import SheetsClient
 
 QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
@@ -41,6 +49,9 @@ NO_BUTTON = "Нет"
 DETAILS_BUTTON = "Показать детали"
 DONE_BUTTON = "Готово"
 BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
+ASK_TARGET = "💱 В какую валюту пересчитать все траты?"
+# Callback data prefix of the Currency picker buttons in this flow.
+CURRENCY_CALLBACK = "scur:"
 
 T = TypeVar("T")
 
@@ -73,9 +84,9 @@ def reset(user_data: dict[str, Any]) -> None:
 
 
 def _message(update: Update) -> Message:
-    # Every handler here is a text MessageHandler, so the message is always set.
-    assert update.message is not None
-    return update.message
+    # A text message, or the message under a tapped picker button.
+    assert update.effective_message is not None
+    return update.effective_message
 
 
 def _user_data(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
@@ -92,7 +103,20 @@ def _parse_date(text: str) -> str:
     return dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
 
 
+def _picker_cb(payload: str) -> str:
+    return CURRENCY_CALLBACK + payload
+
+
+def _inline(grid: picker.Grid) -> InlineKeyboardMarkup:
+    """Picker grid plus the home button as an inline keyboard."""
+    rows = [[InlineKeyboardButton(label, callback_data=data) for label, data in row]
+            for row in grid]
+    rows.append([nav.home_inline_button()])
+    return InlineKeyboardMarkup(rows)
+
+
 Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
+Who = Callable[[Update, ContextTypes.DEFAULT_TYPE], str]
 
 
 class StatsFlow:
@@ -104,10 +128,14 @@ class StatsFlow:
         Current category list (re-read on every call so /reloadcats applies).
     load_rows : Source[list[Row]]
         Parsed Data-sheet rows.
-    fallback_currencies : Source[list[str]]
-        Currencies offered when the sheet has none.
+    sheets : Source[Optional[SheetsClient]]
+        Where Recent currencies are read and saved; None without Sheets.
 
     Each source takes the handler's context, so it can read the bot's Config.
+    who : Who
+        Spender name for the current User (written next to Recent currencies).
+    all_codes : Callable[[], list[str]]
+        Every ISO code that can be chosen (blocking: the rate service).
     get_rate : analytics.GetRate
         FX rate source for conversion (``fx.rate`` in the bot).
     """
@@ -117,12 +145,16 @@ class StatsFlow:
         *,
         categories: Source[list[str]],
         load_rows: Source[list[Row]],
-        fallback_currencies: Source[list[str]],
+        sheets: Source[Optional[SheetsClient]],
+        who: Who,
+        all_codes: Callable[[], list[str]],
         get_rate: analytics.GetRate,
     ) -> None:
         self._categories = categories
         self._load_rows = load_rows
-        self._fallback_currencies = fallback_currencies
+        self._sheets = sheets
+        self._who = who
+        self._all_codes = all_codes
         self._get_rate = get_rate
 
     def states(self) -> dict[object, list[BaseHandler]]:
@@ -137,7 +169,10 @@ class StatsFlow:
             State.STAT_DATE_TO: text(self.on_date_to),
             State.STAT_MONTH: text(self.on_month),
             State.STAT_GROUP_CURRENCY: text(self.on_group_currency),
-            State.STAT_CONVERT_CURRENCY: text(self.on_convert_currency),
+            State.STAT_CONVERT_CURRENCY: [
+                *text(self.on_convert_currency),
+                CallbackQueryHandler(self.on_convert_button, pattern=f"^{CURRENCY_CALLBACK}"),
+            ],
             State.STAT_SHOW_DETAILS: text(self.on_show_details),
         }
 
@@ -247,19 +282,62 @@ class StatsFlow:
             await self._reply_result(update, context, query)
             return await self._finish(update, context)
 
-        await _message(update).reply_text(
-            "💱 В какую валюту пересчитать все траты?",
-            reply_markup=_keyboard(
-                [[c] for c in await asyncio.to_thread(self._currencies, context)]),
-        )
+        await self._ask_target(update, context, ASK_TARGET)
         return State.STAT_CONVERT_CURRENCY
 
-    async def on_convert_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """STAT_CONVERT_CURRENCY: show converted result; offer details only if there are any."""
-        text = _message(update).text or ""
+    async def _ask_target(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                          prompt: str) -> None:
+        """Reply with the Recent currencies of this User and «🌍 Другая»."""
+        assert update.effective_user is not None
+        recent = await asyncio.to_thread(
+            picker.load_recent, _user_data(context), self._sheets(context),
+            update.effective_user.id)
+        await _message(update).reply_text(
+            prompt, reply_markup=_inline(picker.recent_grid(recent, _picker_cb)))
 
+    async def on_convert_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_CONVERT_CURRENCY, typed: symbol, ISO code or Russian name («дин», «GEL», «юань»)."""
+        text = _message(update).text or ""
+        codes = await asyncio.to_thread(self._all_codes)
+        found = picker.search(text, codes)
+        if len(found) == 1:
+            return await self._convert(update, context, currency.stored_value(found[0]))
+        if found:
+            await _message(update).reply_text(
+                f"{picker.SEVERAL} {picker.TYPE_HINT}",
+                reply_markup=_inline(picker.choice_grid(found[:picker.PAGE_SIZE], _picker_cb)))
+            return State.STAT_CONVERT_CURRENCY
+        await self._ask_target(update, context, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
+        return State.STAT_CONVERT_CURRENCY
+
+    async def on_convert_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """STAT_CONVERT_CURRENCY, picker button: choose the target or turn a «🌍 Другая» page."""
+        button = update.callback_query
+        assert button is not None and button.data is not None
+        await button.answer()
+        payload = button.data[len(CURRENCY_CALLBACK):]
+        code = picker.picked_code(payload)
+        if code is not None:
+            target = currency.stored_value(code)
+            await button.edit_message_text(f"💱 Пересчёт в: {currency.label(target)}")
+            return await self._convert(update, context, target)
+        page = picker.page_number(payload)
+        if page is not None:
+            codes = await asyncio.to_thread(self._all_codes)
+            await button.edit_message_text(
+                picker.page_text(codes, page),
+                reply_markup=_inline(picker.page_grid(codes, page, _picker_cb)))
+        return State.STAT_CONVERT_CURRENCY
+
+    async def _convert(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       target: str) -> int:
+        """Remember the target, show the converted result; offer details if there are any."""
+        assert update.effective_user is not None
+        await asyncio.to_thread(
+            picker.remember, _user_data(context), self._sheets(context),
+            update.effective_user.id, self._who(update, context), target)
         query = load_query(_user_data(context))
-        query.convert_to = text
+        query.convert_to = target
         await self._reply_result(update, context, query)
         if not query.conversion_details:
             return await self._finish(update, context)
@@ -291,14 +369,6 @@ class StatsFlow:
         reset(_user_data(context))
         await nav.show_main_menu(update, context)
         return State.CHOOSE_ACTION
-
-    def _currencies(self, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
-        try:
-            return analytics.unique_currencies(
-                self._load_rows(context), fallback=self._fallback_currencies(context))
-        except Exception as e:  # noqa: BLE001 - offer fallback currencies
-            print(f"Error getting currencies: {e}")
-            return self._fallback_currencies(context)
 
     def _last_records(self, context: ContextTypes.DEFAULT_TYPE, category: str) -> str:
         try:
