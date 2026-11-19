@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #14 currency registry)  
+**Updated by:** agent session (issue #14 currency registry, merged after issues #10, #11, #17)  
 **Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -28,12 +28,23 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
-  for pip-only hosts (Render Build Command, `dashboard/run.sh`).
+  for pip-format installs (Render Build Command; `dashboard/run.sh` installs it with `uv pip`).
 - Currency registry `currency.py` (issue #14): `$` is back on the buttons and
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
-  except the `sheets.REGULAR_HEADERS` bootstrap list (left to issue #17).
-- Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
+  except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- Data writes follow the sheet's header names (column order is free) and go
+  `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
+  and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
+- `dashboard/run.sh` builds in `dashboard/venv/` on Python 3.12 via `uv`; the
+  venv is recreated when `dashboard/requirements.txt` changes (stamp file
+  `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
+  and Telegram.
+- Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …);
+  `FakeSheetsClient` lives in `tests/conftest.py`.
+- CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
+  `mypy` (library modules) and `pip-audit` on every pull request and push to
+  `main`, installing with `uv sync --locked` on Python 3.12.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
 ## Settled (do not re-open as unknowns)
@@ -59,6 +70,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Lint and type checks are relaxed so CI passed without product-code edits
+  (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
+  per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips
+  `bot.py`, does not use `--strict`, and disables named error codes in
+  `analytics`, `flow_preset`, `navigation`, `photo_input`, `voice_input`. Both
+  lists are in `pyproject.toml`; shrink them as modules are cleaned up.
+- `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
+  before the move still import it. Drop the re-export once no branch imports
+  the fake from `tests.test_sheets`.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
   recorded as open: stats not returning home (R7, R8, see
   `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see

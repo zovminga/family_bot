@@ -157,8 +157,12 @@ class GspreadSheetsClient:
         return self._worksheet(DATA_SHEET).row_values(1) or []
 
     def append_data_row(self, row: list) -> None:
-        """Append one raw Data-sheet row (used via ExpenseRecord.to_row)."""
-        self._worksheet(DATA_SHEET).append_row(row, value_input_option="USER_ENTERED")
+        """Append one Data-sheet row (built by ExpenseRecord.to_row).
+
+        RAW stores values as given: a comment starting with "=" stays text and
+        "2026-11" is not turned into a date.
+        """
+        self._worksheet(DATA_SHEET).append_row(row, value_input_option="RAW")
 
     def read_regular_values(self) -> list[list[str]]:
         return self._worksheet(REGULAR_SHEET).get_all_values()
