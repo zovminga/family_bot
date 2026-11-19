@@ -80,7 +80,8 @@ def test_manual_today_no_comment_save_does_not_block(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(manual, "append_expense", slow_append)
     flow = manual.ManualFlow(categories=lambda _ctx: ["Food"], currencies=lambda _ctx: ["дин"],
-                             sheets=lambda _ctx: object(), who=lambda _u, _c: "Azat")
+                             sheets=lambda _ctx: object(), who=lambda _u, _c: "Azat",
+                             all_codes=lambda: ["RSD"])
     ctx = SimpleNamespace(user_data={"cat": "Food", "amt": 350.0, "cur": "дин",
                                      "spender": "Azat"})
     upd = make_update(query=FakeQuery(manual.TODAY_NO_COMMENT))

@@ -29,6 +29,10 @@ def ctx():
                        allowed_users={111: "Azat"})
 
 
+def _inline_labels(markup):
+    return {btn.text: btn.callback_data for row in markup.inline_keyboard for btn in row}
+
+
 def replies(update):
     return [t for t, _ in update.message.replies]
 
@@ -93,14 +97,96 @@ def test_currency_by_symbol_code_or_word(ctx, text, stored):
     assert ctx.user_data["cur"] == stored
 
 
-@pytest.mark.parametrize("text", ["eru", "¥", "xyz"])
-def test_currency_typo_asks_to_pick_from_list(ctx, text):
+@pytest.mark.parametrize("text", ["eru", "xyz", "кофе"])
+def test_currency_typo_offers_recent_currencies(ctx, text):
     upd = make_update(text)
     assert run(bot.MANUAL.choose_cur(upd, ctx)) == CHOOSE_CUR
     assert "cur" not in ctx.user_data
-    _, kw = upd.message.replies[-1]
-    labels = [btn.text for row in kw["reply_markup"].keyboard for btn in row]
-    assert "€" in labels and "дин" in labels, labels
+    reply, kw = upd.message.replies[-1]
+    assert reply.startswith("❌")
+    labels = _inline_labels(kw["reply_markup"])
+    assert {"🇷🇸 дин", "🇪🇺 €", "🇷🇺 ₽", "🌍 Другая"} <= set(labels), labels
+
+
+# --- Currency picker (issue #33) ---
+
+@pytest.mark.parametrize("text,stored", [("юань", "CNY"), ("GEL", "GEL"), ("лари", "GEL"),
+                                         ("¥", "¥")])
+def test_currency_found_by_name_or_code(ctx, text, stored):
+    assert run(bot.MANUAL.choose_cur(make_update(text), ctx)) == TYPING_CMNT
+    assert ctx.user_data["cur"] == stored
+
+
+def test_several_matches_are_offered_as_buttons(ctx):
+    upd = make_update("долл")
+    assert run(bot.MANUAL.choose_cur(upd, ctx)) == CHOOSE_CUR
+    labels = _inline_labels(upd.message.replies[-1][1]["reply_markup"])
+    assert {"🇨🇦 CAD", "🇺🇸 $"} <= set(labels), labels
+
+
+def test_currency_step_shows_recent_currencies_with_flags(ctx):
+    from tests.conftest import FakeSheetsClient, settings_of
+
+    sheets = FakeSheetsClient()
+    sheets.users[111] = ["CNY", "дин", "€"]
+    settings_of(ctx).sheets = sheets
+    upd = make_update("1 200")
+    assert run(bot.MANUAL.type_amount(upd, ctx)) == CHOOSE_CUR
+    markup = upd.message.replies[-1][1]["reply_markup"]
+    rows = [[b.text for b in row] for row in markup.inline_keyboard]
+    assert rows[0] == ["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"]
+    assert rows[1] == ["🌍 Другая"]
+
+
+def _tap(ctx, data):
+    from tests.known_bugs.fakes import FakeQuery
+
+    query = FakeQuery(data)
+    state = run(bot.MANUAL.on_currency_button(make_update(query=query), ctx))
+    return state, query
+
+
+def test_other_pages_then_pick_saves_iso_code_and_recent(ctx):
+    from tests.conftest import FakeSheetsClient, settings_of
+
+    sheets = FakeSheetsClient()
+    settings_of(ctx).sheets = sheets
+    ctx.user_data["amt"] = 10.0
+    state, query = _tap(ctx, "cur:page:0")
+    assert state == CHOOSE_CUR
+    assert query.edits[-1].startswith("🌍 Все валюты, стр. 1 из 1")
+    labels = _inline_labels(query.markups[-1])
+    assert labels["🇬🇪 GEL"] == "cur:pick:GEL"
+    state, query = _tap(ctx, labels["🇬🇪 GEL"])
+    assert state == TYPING_CMNT
+    assert ctx.user_data["cur"] == "GEL"
+    assert query.edits == ["💱 Валюта: 🇬🇪 GEL"]
+    assert sheets.users == {}, "Recent currencies change only when the Expense is saved"
+
+
+def test_picker_buttons_have_a_handler_in_currency_state():
+    from telegram.ext import CallbackQueryHandler
+
+    patterns = [h.pattern for h in bot.MANUAL.states()[CHOOSE_CUR]
+                if isinstance(h, CallbackQueryHandler)]
+    assert any(p.match("cur:pick:RSD") for p in patterns)
+    assert any(p.match("cur:page:2") for p in patterns)
+
+
+def test_saved_currency_goes_to_recent(ctx, monkeypatch):
+    from family_bot.flows import manual
+    from tests.conftest import FakeSheetsClient, settings_of
+
+    sheets = FakeSheetsClient()
+    sheets.users[111] = ["дин", "€", "₽"]
+    settings_of(ctx).sheets = sheets
+    monkeypatch.setattr(manual.clock, "now", lambda: datetime(2026, 11, 19))
+    ctx.user_data["cat"] = "Food"
+    assert run(bot.MANUAL.type_amount(make_update("350 $"), ctx)) == TYPING_CMNT
+    assert sheets.users[111] == ["дин", "€", "₽"]
+    run(bot.MANUAL.type_dt(make_update("19.11.2026"), ctx))
+    assert sheets.users[111] == ["$", "дин", "€"]
+    assert sheets.user_names[111] == "Azat"
 
 
 # --- Comment and date ---
@@ -122,10 +208,6 @@ def test_skip_comment_then_today_saves_and_goes_home(ctx, monkeypatch):
                                            "Azat", ""]
     assert query.edits == ["✅ Сохранено: Food — 350 дин, 19.11.2026"]
     assert "cat" not in ctx.user_data
-
-
-def _inline_labels(markup):
-    return {btn.text: btn.callback_data for row in markup.inline_keyboard for btn in row}
 
 
 def test_today_no_comment_button_saves_today_with_empty_comment(ctx, monkeypatch):

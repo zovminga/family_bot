@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #27 menu after deploy, merged after issue #36)  
-**Product code tip:** `4e8fcc4` (2026-11-19) — main-menu and home buttons are conversation entry points, old Draft cards say the Draft is stale after a restart (issue #27)  
+**Updated by:** agent session (issue #33 Currency picker, merged after issues #27, #36)  
+**Product code tip:** `5a34d7b` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,19 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
+  Currency step and «💱 Валюта» in the Draft card show the User's Recent
+  currencies with flags («🇷🇸 дин», «🇨🇳 CNY»), then «🌍 Другая»: every
+  currency of the rate service in code order, 24 per page. Typed «юань»,
+  «лари» or «GEL» finds it (Russian names from Babel, new bot dependency;
+  several matches come back as buttons). A new Currency is written to Data as
+  its ISO code. Recent currencies are per Telegram account in the new `Users`
+  sheet (bot creates it; `scripts/bootstrap_sheet.py` too); a new User gets
+  the three most frequent in Data, empty Data → `дин`, `€`, `₽`. Manual input updates them on save, the Draft card on pick. Code:
+  `currency_picker.py` (Telegram-free, for #34 Conversion in statistics).
+  Render needs the new `requirements.txt` (Babel) — the usual Build Command
+  installs it. If the rate service is down, «🌍 Другая» lists only the seven
+  registry Currencies.
 - After a restart (issue #27, plan 2.5, R17, Q15): main-menu buttons (old
   English labels too, `navigation.MENU_ACTIONS`) and 🏠 are conversation
   `entry_points`, so they work without `/start`. `allow_reentry=False`:
@@ -229,10 +242,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Currency picker (issue #33): Recent currencies are read from `Users` once
+  per User per bot process (cache in `user_data`), so a hand edit of `Users`
+  shows after a restart. Buttons of an old manual-input picker message (after
+  the User moved on) get no answer. Voice/receipt/typed Drafts still snap to
+  the seven registry Currencies; only «💱 Валюта» on the card reaches the rest.
+
 - Monthly summary (issue #36) needs `DASHBOARD_CHAT_ID` on Render; today it is
-  only in the owner's Mac `.env` (dashboard publish). If the Render instance
-  sleeps when idle (free plan), the job does not fire on the 1st unless the
-  bot is awake at that hour; nobody has checked which plan the service uses.
+  only in the owner's Mac `.env` (dashboard publish). The Render service is on
+  the paid Starter plan (seen on the owner's Render dashboard), which does not
+  sleep, so the job fires if no deploy runs at that hour.
 - README «Install from scratch» (issue #40): a clean-clone walk with fake keys
   covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
   download. Not walked: the Google Cloud console steps, a real spreadsheet, and

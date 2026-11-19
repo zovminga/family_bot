@@ -31,6 +31,7 @@ bot = [
     "vosk>=0.3.44",
     "av>=14.0,<17",
     "anthropic>=0.40,<1",
+    "babel>=2.16",
 ]
 dashboard = [
     "anthropic>=0.40,<1",
@@ -81,6 +82,8 @@ files = [
     "family_bot/clock.py",
     "family_bot/config.py",
     "family_bot/conversation_states.py",
+    "family_bot/currency.py",
+    "family_bot/currency_picker.py",
     "family_bot/dashboard/failure_alert.py",
     "family_bot/draft_expense.py",
     "family_bot/errors.py",

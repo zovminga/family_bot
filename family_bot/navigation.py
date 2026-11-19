@@ -11,6 +11,7 @@ from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 from family_bot.conversation_states import State
+from family_bot.currency_picker import KEY_RECENT
 from family_bot.draft_expense import KEY_DRAFTS
 from family_bot.undo import KEY_LAST_SAVE
 
@@ -51,6 +52,14 @@ MENU_ACTIONS: dict[str, str] = {
 MENU_TEXT = filters.Text(list(MENU_ACTIONS))
 
 
+MENU_LABELS = {ADD_EXPENSE, ADD_PRESET, THIS_MONTH, SHOW_STATS, DASHBOARD}
+
+
+def is_menu_text(text: str) -> bool:
+    """Main-menu or home button label (outer spaces ignored)."""
+    return text.strip() in MENU_LABELS | HOME_LABELS
+
+
 def home_row() -> list[str]:
     return [HOME_BUTTON]
 
@@ -84,9 +93,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Clear flow state and return to the main menu; open Drafts and the last save stay."""
+    """Clear flow state and return to the main menu.
+
+    Open Drafts, the last save and the Recent currencies cache stay.
+    """
     kept = {k: v for k, v in context.user_data.items()
-            if k in (KEY_DRAFTS, KEY_LAST_SAVE) and v}
+            if k in (KEY_DRAFTS, KEY_LAST_SAVE, KEY_RECENT) and v}
     context.user_data.clear()
     context.user_data.update(kept)
     await show_main_menu(update, context)

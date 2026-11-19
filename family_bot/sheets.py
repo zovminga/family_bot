@@ -26,6 +26,7 @@ DATA_SHEET = "Data"
 CONFIG_SHEET = "Config"
 META_SHEET = "Meta"
 REGULAR_SHEET = "Regular_expenses"
+USERS_SHEET = "Users"
 META_FILE_ID_CELL = "B1"
 META_FILE_ID_LABEL_CELL = "A1"
 META_UPDATED_AT_LABEL_CELL = "A2"
@@ -52,6 +53,12 @@ REGULAR_HEADERS = [
     "категория",
     "кто",
 ]
+# Users: one row per Telegram account. Recent currencies are stored values,
+# newest first, joined by RECENT_SEPARATOR («CNY, дин, €»).
+USERS_HEADERS = ["User ID", "Name", "Recent currencies"]
+USERS_ID_COL, USERS_NAME_COL, USERS_RECENT_COL = range(3)
+RECENT_SEPARATOR = ", "
+USERS_ROWS = 20  # initial size; Sheets grows it on append
 REGULAR_SECTION_MONTHLY = "ежемесячные траты"
 REGULAR_SECTION_ONEOFF = "разовые траты"
 
@@ -124,6 +131,25 @@ class SheetsClient(Protocol):
     def get_dashboard_file_id(self) -> Optional[str]: ...
 
     def set_dashboard_file_id(self, file_id: str) -> None: ...
+
+    def read_recent_currencies(self, user_id: int) -> Optional[list[str]]: ...
+
+    def write_recent_currencies(self, user_id: int, name: str, values: list[str]) -> None: ...
+
+
+def _users_row(values: list[list[str]], user_id: int) -> Optional[int]:
+    """1-based row number of user_id in Users values (header in row 1), else None."""
+    key = str(user_id)
+    for n, row in enumerate(values[1:], start=2):
+        if row and row[USERS_ID_COL].strip() == key:
+            return n
+    return None
+
+
+def _recent_cell(values: list[list[str]], row_number: int) -> list[str]:
+    row = values[row_number - 1]
+    cell = row[USERS_RECENT_COL] if len(row) > USERS_RECENT_COL else ""
+    return [v.strip() for v in cell.split(RECENT_SEPARATOR.strip()) if v.strip()]
 
 
 class GspreadSheetsClient:
@@ -219,6 +245,38 @@ class GspreadSheetsClient:
             clock.now().strftime("%Y-%m-%d %H:%M"),
         )
 
+    def read_recent_currencies(self, user_id: int) -> Optional[list[str]]:
+        """Recent currencies of a User from Users; None if no row (or no sheet)."""
+        import gspread
+
+        try:
+            values = self._worksheet(USERS_SHEET).get_all_values()
+        except gspread.WorksheetNotFound:
+            return None
+        n = _users_row(values, user_id)
+        return (_recent_cell(values, n) or None) if n is not None else None
+
+    def write_recent_currencies(self, user_id: int, name: str, values: list[str]) -> None:
+        """Save a User's Recent currencies: update their Users row or add one.
+
+        Creates the Users sheet with its headers when missing. RAW keeps
+        «€, дин» and the id as plain text.
+        """
+        from gspread.utils import rowcol_to_a1
+
+        ws, _ = self._ensure_worksheet(USERS_SHEET, rows=USERS_ROWS, cols=len(USERS_HEADERS))
+        rows = ws.get_all_values()
+        if not rows or not any(c.strip() for c in rows[0]):
+            ws.update(range_name="A1", values=[USERS_HEADERS], value_input_option="RAW")
+            rows = [USERS_HEADERS]
+        text = RECENT_SEPARATOR.join(values)
+        n = _users_row(rows, user_id)
+        if n is None:
+            ws.append_row([str(user_id), name, text], value_input_option="RAW")
+            return
+        ws.update(range_name=rowcol_to_a1(n, USERS_RECENT_COL + 1), values=[[text]],
+                  value_input_option="RAW")
+
     def _ensure_worksheet(
         self, title: str, rows: int = 100, cols: int = 10
     ) -> tuple[Any, bool]:
@@ -254,6 +312,8 @@ class GspreadSheetsClient:
             "regular_seeded": False,
             "meta_created": False,
             "meta_seeded": False,
+            "users_created": False,
+            "users_seeded": False,
         }
 
         data_ws, changed["data_created"] = self._ensure_worksheet(
@@ -298,6 +358,13 @@ class GspreadSheetsClient:
             meta_ws.update_acell(META_FILE_ID_LABEL_CELL, "dashboard_file_id")
             meta_ws.update_acell(META_UPDATED_AT_LABEL_CELL, "updated_at")
             changed["meta_seeded"] = True
+
+        users_ws, changed["users_created"] = self._ensure_worksheet(
+            USERS_SHEET, rows=USERS_ROWS, cols=len(USERS_HEADERS)
+        )
+        if seed_if_empty and not any(c.strip() for c in (users_ws.row_values(1) or [])):
+            users_ws.update(range_name="A1", values=[USERS_HEADERS])
+            changed["users_seeded"] = True
 
         return changed
 

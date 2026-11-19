@@ -6,7 +6,7 @@ Prerequisites:
   2. Empty (or existing) spreadsheet named SHEET_NAME, shared with the
      service account email as Editor
 
-Creates worksheets Data / Config / Regular_expenses / Meta with headers
+Creates worksheets Data / Config / Regular_expenses / Meta / Users with headers
 and default categories. Safe to re-run — does not wipe existing data.
 
 Usage:
