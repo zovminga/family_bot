@@ -2,6 +2,7 @@
 import os
 import json
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -20,6 +21,7 @@ from family_bot import clock
 from family_bot import config
 from family_bot import currency_picker as picker
 from family_bot import errors
+from family_bot import logs
 from family_bot import fx
 from family_bot import voice_input as vx
 from family_bot import photo_input as px
@@ -36,6 +38,8 @@ from family_bot.sheet_data import parse_rows, DATE_FMT, Row
 from family_bot.per_user import PerUserUpdateProcessor
 from family_bot.sheets import SheetsClient
 from family_bot import analytics
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- Settings (Config in bot_data) ----------
@@ -58,22 +62,22 @@ COMMANDS = [
 
 
 async def post_init(app: Application) -> None:
-    """Load Config and fill the command menu; print each setup problem as one line."""
+    """Load Config and fill the command menu; log each setup problem as one line."""
     settings = await asyncio.to_thread(config.load, os.environ)
     app.bot_data[config.KEY] = settings
     for line in settings.problems:
-        print(line)
+        logger.warning("%s", line)
     if settings.sheets is not None:
-        print(f"✅ Google Sheets: {len(settings.categories)} categories, "
-              f"{len(settings.presets)} presets")
-    print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
-    # Without Sheets the job could only fail; the Sheets problem line is printed above.
+        logger.info("✅ Google Sheets: %d categories, %d presets",
+                    len(settings.categories), len(settings.presets))
+    logger.info("✅ Allowlist: %d user(s)", len(settings.allowed_users))
+    # Without Sheets the job could only fail; the Sheets problem line is logged above.
     if settings.summary_chat_id is not None and settings.sheets is not None:
         # Rows are read through bot_data at send time, so /reloadcats changes apply.
         monthly_summary.schedule(
             app.job_queue, settings.summary_chat_id, settings.summary_hour,
             lambda: load_expense_rows(app.bot_data[config.KEY].sheets))
-        print(f"✅ Monthly summary: 1st of each month, {settings.summary_hour}:00")
+        logger.info("✅ Monthly summary: 1st of each month, %d:00", settings.summary_hour)
     try:
         await app.bot.set_my_commands(COMMANDS)
     except TelegramError as e:  # the menu is a convenience, the bot still works
@@ -92,7 +96,7 @@ def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
     try:
         return sheets.get_dashboard_file_id()
     except Exception as e:
-        print(f"Error reading dashboard file_id: {e}")
+        logger.warning("Error reading dashboard file_id: %s", e)
         return None
 
 
@@ -711,6 +715,7 @@ def build_application(bot_token: str) -> Application:
 def main():
     # Local runs read .env here, not at import; on Render env vars come from the dashboard.
     config.load_env_file()
+    logs.setup()
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise SystemExit(config.problem(
@@ -725,15 +730,15 @@ def main():
     render_url = os.getenv("RENDER_EXTERNAL_URL")
 
     if not render_url:
-        print("RENDER_EXTERNAL_URL variable not found, running in polling mode for local development.")
+        logger.info("RENDER_EXTERNAL_URL variable not found, running in polling mode for local development.")
         app.run_polling()
     else:
         raw_secret = os.getenv(config.WEBHOOK_SECRET_ENV)
         secret = config.webhook_secret(raw_secret)
         if not raw_secret:
-            print(f"{config.WEBHOOK_SECRET_ENV} is not set, using a random secret for this run.")
+            logger.warning("%s is not set, using a random secret for this run.", config.WEBHOOK_SECRET_ENV)
         webhook_url = f"{render_url}/{config.WEBHOOK_PATH}"
-        print(f"Running in webhook mode, URL: {webhook_url}")
+        logger.info("Running in webhook mode, URL: %s", webhook_url)
         # The path is public; Telegram proves itself with the secret_token header instead.
         app.run_webhook(
             listen="0.0.0.0",

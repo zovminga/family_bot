@@ -10,14 +10,17 @@ Also holds FakeSheetsClient, the in-memory SheetsClient shared by unit tests
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import dotenv
 import pytest
+
+from family_bot import logs
 
 dotenv.load_dotenv = lambda *args, **kwargs: False
 for _var in ("GOOGLE_CREDS_PATH", "SHEET_NAME", "BOT_TOKEN", "ANTHROPIC_API_KEY",
@@ -32,6 +35,19 @@ if str(ROOT) not in sys.path:
 # Currencies the stub rate service lists in tests (no network).
 TEST_CURRENCY_CODES = ["AED", "CAD", "CNY", "EUR", "GBP", "GEL", "IQD", "JPY", "RSD",
                        "RUB", "TRY", "USD"]
+
+
+@pytest.fixture(autouse=True)
+def _restore_logging() -> Iterator[None]:
+    """Undo logs.setup() from entry points called in a test (root handlers, levels)."""
+    root = logging.getLogger()
+    quiet = {name: logging.getLogger(name).level for name in logs.QUIET_LOGGERS}
+    saved = (list(root.handlers), root.level)
+    yield
+    root.handlers[:] = saved[0]
+    root.setLevel(saved[1])
+    for name, level in quiet.items():
+        logging.getLogger(name).setLevel(level)
 
 
 @pytest.fixture(autouse=True)

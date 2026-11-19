@@ -4,6 +4,9 @@
 that catch an error themselves (voice, photo, dashboard, stats) call
 ``log_exception`` and reply with a short text of their own or one of the texts
 below, never with the exception text.
+
+Standard library only, imports in Python 3.9 syntax: ``logs`` imports
+``mask_secrets`` and ``dashboard/failure_alert.py`` (system python3) imports ``logs``.
 """
 from __future__ import annotations
 

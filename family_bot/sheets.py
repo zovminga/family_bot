@@ -7,11 +7,14 @@ they do not authorize or open worksheets themselves.
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional, Protocol, runtime_checkable
 
 from family_bot import clock
+
+logger = logging.getLogger(__name__)
 
 # Repo root (family_bot/ lives one level below): relative GOOGLE_CREDS_PATH
 # such as secrets/creds.json resolves from here.
@@ -178,7 +181,7 @@ class GspreadSheetsClient:
             self._worksheet(CONFIG_SHEET)
             return True
         except Exception as e:  # noqa: BLE001 - surface as False to callers
-            print(f"❌ Google Sheets connection error: {e}")
+            logger.error("❌ Google Sheets connection error: %s", e)
             return False
 
     def read_categories(self) -> list[str]:

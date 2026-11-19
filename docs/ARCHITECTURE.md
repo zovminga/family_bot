@@ -41,6 +41,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── clock.py                "now" in the family time zone (TZ_NAME)
     ├── monthly_summary.py      JobQueue job: last month's summary on the 1st
     ├── errors.py               error handler, user texts, secret masking
+    ├── logs.py                 logging setup for entry points (LOG_LEVEL, masking)
     └── sheets.py  SheetsClient ──────────────────────────┐
                                                           ▼
                                               Google Spreadsheet
@@ -65,6 +66,7 @@ Finances never share across installs.
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `monthly_summary.py` | Job on the 1st of each month at `MONTHLY_SUMMARY_HOUR` (default 9) in `TZ_NAME`: `schedule(job_queue, chat_id, hour, load_rows)` (`JobQueue.run_monthly`) and the callback `send_summary`, which reads rows in a thread and sends `analytics.format_month_summary` for `previous_month(clock.now())` to `DASHBOARD_CHAT_ID`. A failure is logged with `errors.log_exception`. The job lives in memory: if the bot is down at that hour, the month is skipped, not sent late | Send scheduled messages another way; catch up a missed summary at start (nothing records that it was sent) |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
+| `logs.py` | `setup()`: one stderr handler on the root logger, level from `LOG_LEVEL` (default INFO; an unknown value → INFO plus one warning line), format `time LEVEL module: message`, every formatted line (traceback too) passed through `errors.mask_secrets`; `httpx` held at WARNING (it logs Telegram URLs with the token). Called once by each entry point after `.env` is read: `bot.main`, `build_dashboard.main`, `failure_alert.main`, `scripts/`. Standard library only (runs under system python3 from `run.sh`) | `print` diagnostics (ruff `T20`; only `scripts/` print their report); call `logging.basicConfig` elsewhere |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
@@ -132,7 +134,8 @@ works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
 Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
 reads `.env` and stops with one line if `BOT_TOKEN` is missing;
-`post_init` loads `Config`, prints each setup problem as one line, schedules
+`logs.setup()` runs right after `.env` is read, before that check.
+`post_init` loads `Config`, logs each setup problem as one WARNING line, schedules
 the monthly summary when `DASHBOARD_CHAT_ID` is set and Sheets is open (`monthly_summary.schedule`)
 and fills the Telegram command menu from `bot.COMMANDS` (`set_my_commands`; a Telegram error
 there is logged and the bot still starts).

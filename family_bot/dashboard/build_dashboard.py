@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
-import traceback
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -30,9 +30,12 @@ from dotenv import load_dotenv
 from family_bot.currency import BASE_CURRENCY_ENV, DEFAULT_BASE, to_iso
 from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
 from family_bot.fx import fetch_rates
+from family_bot import logs
 from family_bot.llm import extract_json_object, reply_text
 from family_bot.sheets import open_client
 from family_bot.sheet_data import ISO_TO_SYMBOL, parse_rows, resolve_columns
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths & configuration
@@ -381,7 +384,7 @@ def get_chartjs() -> str:
     """
     if CHARTJS_PATH.exists():
         return CHARTJS_PATH.read_text(encoding="utf-8")
-    print("→ Fetching Chart.js to inline (first run; cached under vendor/)…")
+    logger.info("→ Fetching Chart.js to inline (first run; cached under vendor/)…")
     resp = requests.get(CHARTJS_CDN, timeout=30)
     resp.raise_for_status()
     VENDOR_DIR.mkdir(parents=True, exist_ok=True)
@@ -538,15 +541,14 @@ def group_comments_llm(comments: list[str], provider: str, model: str) -> dict[s
             except Exception as exc:  # noqa: BLE001 - degrade gracefully
                 # Not cached: the build falls back to rules for these comments
                 # and the next run asks the LLM again.
-                print(f"⚠️  {provider} grouping failed for a batch, will retry next run: {exc}",
-                      file=sys.stderr)
+                logger.warning("⚠️  %s grouping failed for a batch, will retry next run: %s",
+                               provider, exc)
                 continue
             for comment in batch:
                 cache[comment] = _snap_to_canonical(mapping.get(comment))
         save_cache(path, cache)
     elif pending:
-        print(f"⚠️  {env_var} not set — comments left ungrouped ('Без темы').",
-              file=sys.stderr)
+        logger.warning("⚠️  %s not set — comments left ungrouped ('Без темы').", env_var)
         for comment in pending:
             cache.setdefault(comment, "Без темы")
 
@@ -579,10 +581,10 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     spreadsheet_url = None
     config_categories: list[str] = []
     if csv_path:
-        print(f"→ Reading data from CSV: {csv_path}")
+        logger.info("→ Reading data from CSV: %s", csv_path)
         headers, raw_rows = read_csv(Path(csv_path))
     else:
-        print("→ Connecting to Google Sheets…")
+        logger.info("→ Connecting to Google Sheets…")
         client = open_client()
         spreadsheet_url = client.url
         values = client.read_data_values()
@@ -609,9 +611,9 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
                 if a_idx is not None and a_idx < len(ar):
                     aligned[idx] = ar[a_idx]
             raw_rows.append(aligned)
-        print(f"→ Merged {len(a_rows)} manual adjustment row(s) from {adj_path.name}.")
+        logger.info("→ Merged %d manual adjustment row(s) from %s.", len(a_rows), adj_path.name)
 
-    print(f"→ Parsed {len(raw_rows)} raw rows. Fetching FX rates (base={base_iso})…")
+    logger.info("→ Parsed %d raw rows. Fetching FX rates (base=%s)…", len(raw_rows), base_iso)
     rates = fetch_rates(base_iso)
 
     parsed = parse_rows(headers, raw_rows)
@@ -645,21 +647,22 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     for r in rows:
         r["category"] = repair_category(r["category"], r["comment"], known)
 
-    print(f"→ Kept {len(rows)} rows, skipped {skipped} unparseable, "
-          f"excluded {excluded} cash withdrawal(s).")
+    logger.info("→ Kept %d rows, skipped %d unparseable, excluded %d cash withdrawal(s).",
+                len(rows), skipped, excluded)
 
     # Optionally hide early periods (e.g. data before the household settled in).
     if from_month:
         before = len(rows)
         rows = [r for r in rows if r["month"] and r["month"] >= from_month]
-        print(f"→ Filtered to months >= {from_month}: kept {len(rows)}, hid {before - len(rows)}.")
+        logger.info("→ Filtered to months >= %s: kept %d, hid %d.",
+                    from_month, len(rows), before - len(rows))
 
     rate_error = unconvertible_rows_error(rows)
     if rate_error:
         raise RuntimeError(rate_error)
 
     if use_llm:
-        print(f"→ Grouping comments into themes via LLM ({provider}, model={model})…")
+        logger.info("→ Grouping comments into themes via LLM (%s, model=%s)…", provider, model)
         theme_map = group_comments_llm(comments, provider, model)
         # Hybrid: the LLM is great at semantics but doesn't know local venue/brand
         # names (theme_keywords.json). For anything it left as "Прочее", fall back
@@ -679,9 +682,9 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
                     fallback_hits += 1
             r["theme"] = theme
         if fallback_hits:
-            print(f"→ Rules fallback re-classified {fallback_hits} row(s) out of 'Прочее'.")
+            logger.info("→ Rules fallback re-classified %d row(s) out of 'Прочее'.", fallback_hits)
     else:
-        print("→ Grouping comments into themes via rules…")
+        logger.info("→ Grouping comments into themes via rules…")
         for r in rows:
             if not r["comment"].strip():
                 r["theme"] = "Без комментария"
@@ -714,7 +717,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / "expenses_dashboard.html"
     out_path.write_text(html, encoding="utf-8")
-    print(f"✅ Dashboard written to {out_path}")
+    logger.info("✅ Dashboard written to %s", out_path)
     return out_path
 
 
@@ -738,11 +741,10 @@ def publish_to_telegram(html_path: Path) -> None:
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("DASHBOARD_CHAT_ID")
     if not token or not chat_id:
-        print("⚠️  BOT_TOKEN/DASHBOARD_CHAT_ID not set — skipping Telegram publish.",
-              file=sys.stderr)
+        logger.warning("⚠️  BOT_TOKEN/DASHBOARD_CHAT_ID not set — skipping Telegram publish.")
         return
 
-    print("→ Publishing dashboard to Telegram…")
+    logger.info("→ Publishing dashboard to Telegram…")
     try:
         with html_path.open("rb") as fh:
             resp = requests.post(
@@ -765,12 +767,13 @@ def publish_to_telegram(html_path: Path) -> None:
 
     file_id = result["result"]["document"]["file_id"]
     _store_file_id_in_sheet(file_id)
-    print("✅ Published to Telegram and stored file_id in the 'Meta' sheet.")
+    logger.info("✅ Published to Telegram and stored file_id in the 'Meta' sheet.")
 
 
 def main() -> None:
     # Defaults come from .env, so the scheduled build needs no family-specific flags.
     load_dotenv(BOT_DIR / ".env")
+    logs.setup()
     parser = argparse.ArgumentParser(description="Build the family expenses dashboard.")
     parser.add_argument("--base", default=os.getenv(BASE_CURRENCY_ENV) or DEFAULT_BASE.code,
                         help=f"Base currency ISO code (default: {BASE_CURRENCY_ENV} "
@@ -814,7 +817,7 @@ def main() -> None:
         # the stage and exception type go out; the text can quote sheet rows.
         if not args.publish:
             raise
-        traceback.print_exc()
+        logger.exception("Build failed at stage: %s", stage)
         send_failure_alert(f"{stage}: {type(exc).__name__}")
         sys.exit(ALERT_HANDLED_EXIT_CODE)
 

@@ -136,13 +136,14 @@ def test_bad_time_zone_does_not_stop_startup(monkeypatch: pytest.MonkeyPatch) ->
     assert str(queue.monthly[0]["when"].tzinfo) == clock.DEFAULT_TZ
 
 
-def test_post_init_without_chat_skips_job_and_prints_one_line(
-        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_post_init_without_chat_skips_job_and_logs_one_line(
+        monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
     monkeypatch.delenv("DASHBOARD_CHAT_ID", raising=False)
     queue = FakeJobQueue()
     run(bot.post_init(fake_bot_app(queue)))  # type: ignore[arg-type]
     assert queue.monthly == []
-    out = [line for line in capsys.readouterr().out.splitlines() if "DASHBOARD_CHAT_ID" in line]
+    out = [line for line in caplog.messages if "DASHBOARD_CHAT_ID" in line]
     assert len(out) == 1 and out[0].startswith("⚠️")
 
 

@@ -17,11 +17,15 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
 sys.path.insert(0, str(ROOT))
 
+from family_bot import logs
 from family_bot.sheets import open_client
 
 
 def main():
     load_dotenv(ENV_FILE)
+    # print() below is this check's report to the person running it; library
+    # messages (e.g. the Sheets connection error) go through logging.
+    logs.setup()
     print("🔍 Testing Google Sheets connection...")
     print("=" * 50)
 
