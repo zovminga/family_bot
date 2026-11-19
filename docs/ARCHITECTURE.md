@@ -40,14 +40,20 @@ Finances never share across installs.
 |--------|------|------------------|
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes | Call gspread directly |
 | `expense.py` | `ExpenseRecord`, column order, month derivation | Hand-build Data rows |
-| `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps | Duplicate parse rules |
+| `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps | Duplicate parse rules (known gap below) |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
-| `analytics.py` | Aggregations + FX adapter hook | Mix Sheets I/O into stats |
+| `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
 | `auth.py` | `ALLOWED_USERS` parse and checks | Scatter allowlist string parsing |
 | `navigation.py` | «return home» labels/callbacks | Fork home behaviour per flow |
 | `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
+
+**Known gap (finding C3, plan 2.3 / issue #25):** `dashboard/build_dashboard.py`
+imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
+maps from `sheet_data`, but runs its own row loop: its own `cell()`, category
+repair, symbol → ISO fallback, and its own FX fetch (`fetch_rates`). It does not
+use `sheet_data.normalize_rows`.
 
 ## Conversation flows
 
@@ -62,6 +68,11 @@ One `ConversationHandler` (`bot.py` `main()`), states in `conversation_states.py
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
                              → STAT_SHOW_DETAILS → result → home
 ```
+
+The stats branch does not return home cleanly today (findings R7, R8, plan 1.5 /
+issue #16): `stat_*` keys survive into the next query and `/start`, and after
+"No" grouping without conversion details the menu is shown while the state stays
+`STAT_SHOW_DETAILS`, so the first menu tap is lost.
 
 **Outside** the conversation (registered earlier, same group):
 

@@ -67,7 +67,7 @@ expense.py          ExpenseRecord + append
 draft_expense.py    Voice/photo confirmation card
 sheets.py           SheetsClient seam
 sheet_data.py       Headers, dates, currency maps
-analytics.py        Stats over normalized rows (no I/O)
+analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
 voice_input.py      Vosk STT + Claude extract
 photo_input.py      Claude Vision receipt → drafts
 regular.py          Regular_expenses → presets

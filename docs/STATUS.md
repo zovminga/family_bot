@@ -60,6 +60,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
   with native "blocked by" links. #9 (Python 3.12 + pyproject) and #42 (doc
   mismatches) have no blockers.
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
+  recorded as open: Preset code names (`DEFAULTS`, `load_defaults`, see
+  `CONTEXT.md`) and the dashboard's own row parsing (C3, see
+  `docs/ARCHITECTURE.md`).
 
 ## Only a person knows
 
@@ -85,7 +89,7 @@ When finishing work, rewrite facts that changed:
 
 1. Bump **Last updated** / **Updated by**. Set **Product code tip** to the last commit that changed behaviour (a docs-only commit does not move it).
 2. Move finished items out of **Open** into **What works** (or delete).
-3. Add new risks, deploy notes, or follow-ups under **Open / unknown**.
+3. Add new risks, deploy notes, or follow-ups under **Open**.
 4. One short bullet under a dated subsection if the change needs a breadcrumb.
 
 Do not leave STATUS describing a world the code no longer matches.

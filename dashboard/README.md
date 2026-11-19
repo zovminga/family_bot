@@ -128,4 +128,5 @@ RUN_DAY=1 RUN_HOUR=8 RUN_MINUTE=30 ./schedule.sh install
 - Курсы валют берутся с бесплатного `exchangerate-api.com` (без ключа).
 - Темы комментариев кэшируются в `output/llm_cache_<provider>.json` — повторные
   запуски отправляют в LLM только новые комментарии.
-- Для онлайн-графиков нужен интернет (Chart.js подгружается с CDN).
+- Готовый HTML работает без интернета: Chart.js вшит в файл. Первая сборка
+  скачивает Chart.js в `dashboard/vendor/` (gitignored), дальше берёт из кэша.
