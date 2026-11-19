@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #18 slow calls do not freeze the bot)  
-**Product code tip:** issue #18 branch (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
+**Product code tip:** `cbda600` (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -94,8 +94,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Slow calls do not freeze the bot (issue #18, R11): handlers run Sheets reads
   and writes, FX requests (stats) and `config.load` / `reload` through
   `asyncio.to_thread`. `per_user.PerUserUpdateProcessor` runs updates of
-  different people at the same time and one person's updates in order, so a
-  Draft double tap still sees «✅ Сохранено». Claude clients for voice, text
+  different people at the same time and one person's updates in order (PTB
+  advises `ConversationHandler` without concurrent updates; the per-user lock
+  keeps each conversation in order). A Draft is marked closed before its save
+  starts and reopened if the save fails, so a double tap still sees
+  «✅ Сохранено». Claude clients for voice, text
   and receipt photo use a 30 s timeout and 1 retry
   (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
   client keeps the SDK defaults.
@@ -175,6 +178,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
   recorded as open: the dashboard's own row parsing (C3, see
   `docs/ARCHITECTURE.md`).
+- Since issue #18 two people's Sheets calls can run in two threads on the
+  one shared gspread client (`Config.sheets`). gspread does not document
+  thread safety; no problem has been seen or tested.
 - Logging is not configured: `errors` logs through the `family_bot.errors`
   logger, which prints to stderr via Python's fallback handler (WARNING and
   above). Other modules still `print` exception text to stdout without
@@ -189,8 +195,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   there (section 2) until fixed; tick plan items as they land.
 - Known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
-  `pytest -rx` lists what is still open. After issue #18 it lists none: every
-  reproduction there passes.
+  `pytest -rx` lists what is still open. R11 (issue #18) was the last marked
+  reproduction; no `known_bug` marker is left in the suite.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
   with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
   blocked can start once it merges.
