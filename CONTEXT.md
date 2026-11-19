@@ -37,7 +37,7 @@ _Avoid_: Pending expense, suggestion
 **Preset**:
 A reusable Expense from the Regular_expenses sheet (monthly or one-off).
 _Avoid_: Default expense, regular (as a noun), template
-_Code today:_ still named `DEFAULTS` / `load_defaults` (`bot.py`, `regular.py`). Open; rename when `bot.py` is restructured (issues #22, #24).
+_Code names (open until issues #22, #24 restructure `bot.py`):_ `DEFAULTS` / `load_defaults` (`bot.py`, `regular.py`).
 
 **Sheets**:
 The Google Spreadsheet that stores Data, Config, Meta, Regular_expenses, and Users worksheets.

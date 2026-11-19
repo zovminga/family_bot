@@ -49,7 +49,7 @@ Finances never share across installs.
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
-**Known gap (finding C3, plan 2.3 / issue #25):** `dashboard/build_dashboard.py`
+**Known gap until issue #25 closes (finding C3, plan 2.3):** `dashboard/build_dashboard.py`
 imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
 maps from `sheet_data`, but runs its own row loop: its own `cell()`, category
 repair, symbol → ISO fallback, and its own FX fetch (`fetch_rates`). It does not
@@ -66,12 +66,13 @@ One `ConversationHandler` (`bot.py` `main()`), states in `conversation_states.py
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
-                             → STAT_SHOW_DETAILS → result → home
+                             → STAT_SHOW_DETAILS → result → home (not reliable, see below)
 ```
 
-The stats branch does not return home cleanly today (findings R7, R8, plan 1.5 /
-issue #16): `stat_*` keys survive into the next query and `/start`, and after
-"No" grouping without conversion details the menu is shown while the state stays
+Until issue #16 (plan 1.5, findings R7, R8) closes, the stats branch does not
+return home cleanly. `stat_*` keys survive into the next query and past `/start`.
+When `show_statistics_result` is called with `ask_details=True` but has no
+conversion details, it shows the main menu while the handler still returns
 `STAT_SHOW_DETAILS`, so the first menu tap is lost.
 
 **Outside** the conversation (registered earlier, same group):
