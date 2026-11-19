@@ -2,7 +2,7 @@
 """Tests for analytics over fixture rows (no Sheets / no HTTP)."""
 from __future__ import annotations
 
-from analytics import (
+from family_bot.analytics import (
     aggregate,
     filter_rows,
     format_last_n,

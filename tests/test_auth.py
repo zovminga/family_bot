@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from auth import is_allowed, parse_allowed_users, spender_name
+from family_bot.auth import is_allowed, parse_allowed_users, spender_name
 
 
 def test_parse_empty():

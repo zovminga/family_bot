@@ -12,6 +12,17 @@ dependencies = [
     "requests>=2.32.4",
 ]
 
+[project.scripts]
+# Starts the bot (webhook on Render, polling locally). Render Start Command.
+family-bot = "family_bot.bot:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["family_bot"]
+
 [dependency-groups]
 bot = [
     "python-telegram-bot[webhooks]>=22.2,<23",
@@ -33,8 +44,6 @@ dev = [
 ]
 
 [tool.uv]
-# Modules live in the repo root, so uv installs dependencies only, not the project.
-package = false
 default-groups = ["bot", "dashboard", "dev"]
 # Lock only versions that ship wheels for the dashboard Mac and the Linux host,
 # so a package release without a wheel for one of them never enters the lock.
@@ -57,8 +66,8 @@ select = ["E4", "E7", "E9", "F"]
 [tool.ruff.lint.per-file-ignores]
 # Existing findings left in place so CI is green without touching product code.
 # Remove an entry once its file is cleaned up.
-"bot.py" = ["F401"]
-"voice_input.py" = ["F401"]
+"family_bot/bot.py" = ["F401"]
+"family_bot/voice_input.py" = ["F401"]
 "tests/known_bugs/test_bot_flows.py" = ["F401"]
 "scripts/test_google_sheets.py" = ["E402"]
 
@@ -66,25 +75,25 @@ select = ["E4", "E7", "E9", "F"]
 python_version = "3.12"
 # Library modules only. bot.py and the dashboard/scripts entry points are not checked.
 files = [
-    "amount_input.py",
-    "analytics.py",
-    "auth.py",
-    "clock.py",
-    "config.py",
-    "conversation_states.py",
-    "dashboard/failure_alert.py",
-    "draft_expense.py",
-    "errors.py",
-    "expense.py",
-    "flow_preset.py",
-    "flows",
-    "navigation.py",
-    "photo_input.py",
-    "regular.py",
-    "sheet_data.py",
-    "sheets.py",
-    "text_input.py",
-    "voice_input.py",
+    "family_bot/amount_input.py",
+    "family_bot/analytics.py",
+    "family_bot/auth.py",
+    "family_bot/clock.py",
+    "family_bot/config.py",
+    "family_bot/conversation_states.py",
+    "family_bot/dashboard/failure_alert.py",
+    "family_bot/draft_expense.py",
+    "family_bot/errors.py",
+    "family_bot/expense.py",
+    "family_bot/flow_preset.py",
+    "family_bot/flows",
+    "family_bot/navigation.py",
+    "family_bot/photo_input.py",
+    "family_bot/regular.py",
+    "family_bot/sheet_data.py",
+    "family_bot/sheets.py",
+    "family_bot/text_input.py",
+    "family_bot/voice_input.py",
 ]
 
 [[tool.mypy.overrides]]
@@ -94,21 +103,21 @@ ignore_missing_imports = true
 # Existing type errors, relaxed per module so CI is green without touching
 # product code. Remove a code once the module no longer trips it.
 [[tool.mypy.overrides]]
-module = ["analytics"]
+module = ["family_bot.analytics"]
 disable_error_code = ["type-var", "return-value", "arg-type", "misc", "operator", "index"]
 
 [[tool.mypy.overrides]]
-module = ["flow_preset"]
+module = ["family_bot.flow_preset"]
 disable_error_code = ["union-attr"]
 
 [[tool.mypy.overrides]]
-module = ["navigation"]
+module = ["family_bot.navigation"]
 disable_error_code = ["assignment", "union-attr"]
 
 [[tool.mypy.overrides]]
-module = ["photo_input"]
+module = ["family_bot.photo_input"]
 disable_error_code = ["list-item"]
 
 [[tool.mypy.overrides]]
-module = ["voice_input"]
+module = ["family_bot.voice_input"]
 disable_error_code = ["union-attr"]

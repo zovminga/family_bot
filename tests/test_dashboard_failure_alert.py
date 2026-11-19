@@ -12,12 +12,8 @@ from pathlib import Path
 
 import pytest
 
-DASHBOARD_DIR = Path(__file__).resolve().parents[1] / "dashboard"
-if str(DASHBOARD_DIR) not in sys.path:
-    sys.path.insert(0, str(DASHBOARD_DIR))
-
-import build_dashboard as bd  # noqa: E402
-import failure_alert as fa  # noqa: E402
+from family_bot.dashboard import build_dashboard as bd
+from family_bot.dashboard import failure_alert as fa
 
 TOKEN = "123456:SECRET-token-value"
 CHAT_ID = "4242"

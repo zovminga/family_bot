@@ -34,7 +34,7 @@ def bot_context(**fields: Any) -> SimpleNamespace:
     Defaults: Allowlist 111:Azat, 222:Lisa, fallback categories, no Sheets.
     Pass any Config field to override (``sheets=FakeSheets()``).
     """
-    import config
+    from family_bot import config
 
     settings = config.Config(**{
         "allowed_users": {111: "Azat", 222: "Lisa"},
@@ -46,7 +46,7 @@ def bot_context(**fields: Any) -> SimpleNamespace:
 
 def settings_of(context: SimpleNamespace) -> Any:
     """The Config inside a ``bot_context``."""
-    import config
+    from family_bot import config
 
     return context.bot_data[config.KEY]
 

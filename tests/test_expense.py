@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from expense import ExpenseRecord, append_expense, append_expenses
+from family_bot.expense import ExpenseRecord, append_expense, append_expenses
 from tests.conftest import FakeSheetsClient
 
 

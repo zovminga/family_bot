@@ -24,7 +24,7 @@ BOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BOT_DIR))
 load_dotenv(BOT_DIR / ".env")
 
-from sheets import open_client  # noqa: E402
+from family_bot.sheets import open_client  # noqa: E402
 
 
 def main() -> int:
