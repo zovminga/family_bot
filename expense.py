@@ -49,9 +49,10 @@ class ExpenseRecord:
 
         amount = self.amount
         if isinstance(amount, str):
-            amount = parse_amount(amount)
-            if amount is None:
+            parsed = parse_amount(amount)
+            if parsed is None:
                 raise ValueError(f"Unparseable amount: {self.amount!r}")
+            amount = parsed
 
         values = {
             "date": self.date,
