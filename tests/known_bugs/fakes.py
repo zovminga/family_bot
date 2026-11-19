@@ -60,12 +60,20 @@ def make_update(text: Optional[str] = None, user_id: int = 111,
 
 
 class FakeSheets:
-    """Records Data rows; optionally fails on the N-th append."""
+    """Records Data rows; optionally fails on the N-th append.
 
-    def __init__(self, fail_on_call: Optional[int] = None) -> None:
+    ``headers`` is the Data header row; empty means a sheet without headers.
+    """
+
+    def __init__(self, fail_on_call: Optional[int] = None,
+                 headers: Optional[list[str]] = None) -> None:
+        self.headers = list(headers or [])
         self.rows: list[list[Any]] = []
         self.calls = 0
         self.fail_on_call = fail_on_call
+
+    def read_data_headers(self) -> list[str]:
+        return list(self.headers)
 
     def append_data_row(self, row: list[Any]) -> None:
         self.calls += 1

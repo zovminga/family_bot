@@ -22,17 +22,15 @@ import voice_input as vx  # noqa: E402
 
 
 # 13. Thousands separator read as decimal: "1,234" -> 1.234, "12,500" -> 12.5.
-@known_bug("R14")
 @pytest.mark.parametrize("raw,expected", [("1,234", 1234.0), ("12,500", 12500.0)])
 def test_parse_amount_thousands_comma(raw, expected):
     assert parse_amount(raw) == expected
 
 
 # 14. Reads resolve columns by header, writes use fixed order → moved header = corrupted rows.
-@known_bug("R10")
 def test_append_respects_header_order():
     headers = ["Date", "Category", "Month", "Amount", "Currency", "Who", "Comment"]
-    sheets = FakeSheets()
+    sheets = FakeSheets(headers=headers)
     append_expense(sheets, ExpenseRecord(date="01.11.2026", category="Food",
                                          amount=250.0, currency="дин", who="Azat"))
     rec = normalize_rows(headers, sheets.rows)[0]

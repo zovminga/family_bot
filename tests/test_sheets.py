@@ -7,7 +7,7 @@ from typing import Optional
 import pytest
 
 from regular import parse_regular
-from sheets import resolve_creds_path
+from sheets import GspreadSheetsClient, resolve_creds_path
 
 
 class FakeSheetsClient:
@@ -144,3 +144,20 @@ def test_resolve_creds_path_missing_env(monkeypatch):
     monkeypatch.delenv("GOOGLE_CREDS_PATH", raising=False)
     with pytest.raises(RuntimeError, match="GOOGLE_CREDS_PATH"):
         resolve_creds_path()
+
+
+def test_gspread_append_writes_values_raw():
+    calls = []
+
+    class FakeWorksheet:
+        def append_row(self, row, **kw):
+            calls.append((row, kw))
+
+    class FakeSpreadsheet:
+        def worksheet(self, name):
+            assert name == "Data"
+            return FakeWorksheet()
+
+    row = ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "=1+1"]
+    GspreadSheetsClient(FakeSpreadsheet()).append_data_row(row)
+    assert calls == [(row, {"value_input_option": "RAW"})]
