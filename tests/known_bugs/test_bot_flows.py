@@ -26,9 +26,9 @@ CHOOSE_ACTION, STAT_SHOW_DETAILS = State.CHOOSE_ACTION, State.STAT_SHOW_DETAILS
 
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
-     currency="дин", who="Azat", comment=""),
+     currency="дин", who="Ann", comment=""),
     Row(date=date(2026, 11, 5), month="2026-11", category="Food", amount=7.0,
-     currency="дин", who="Azat", comment=""),
+     currency="дин", who="Ann", comment=""),
 ]
 
 
@@ -104,7 +104,7 @@ def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
 # 5. "$" must be on the Currency buttons so voice/photo dollars stay dollars (R4).
 def test_dollar_currency_survives_snap(ctx: SimpleNamespace) -> None:
     from family_bot import voice_input as vx
-    assert vx._snap_currency("$", settings_of(ctx).currencies, bot.DEFAULT_CURRENCY) == "$"
+    assert vx._snap_currency("$", settings_of(ctx).currencies, settings_of(ctx).default_currency) == "$"
 
 
 CHIPS = {"comment": "chips", "amount": 100.0, "currency": "дин",
@@ -121,11 +121,11 @@ def save_cb(session):
 # 6. A second voice draft silently replaced the first; the OLD card's Save saved the NEW items.
 def test_old_card_save_does_not_save_other_draft(ctx, monkeypatch):
     a = draft.add_draft(ctx.user_data, draft.session_from_voice(
-        [dict(CHIPS)], who="Azat", transcript="chips"))
+        [dict(CHIPS)], who="Ann", transcript="chips"))
     draft.add_draft(ctx.user_data, draft.session_from_voice(
         [{"comment": "taxi", "amount": 900.0, "currency": "дин",
           "date": "01.11.2026", "category": "Transport"}],
-        who="Azat", transcript="taxi"))
+        who="Ann", transcript="taxi"))
     sheets = FakeSheets()
     settings_of(ctx).sheets = sheets
     run(bot.vx_callback(make_update(query=FakeQuery(save_cb(a))), ctx))  # tap Save on card A
@@ -135,7 +135,7 @@ def test_old_card_save_does_not_save_other_draft(ctx, monkeypatch):
 # 7. go_home (/cancel, 🏠, finishing any manual/preset/stat flow) wiped an open voice draft.
 def test_go_home_keeps_open_draft(ctx):
     a = draft.add_draft(ctx.user_data, draft.session_from_voice(
-        [dict(CHIPS)], who="Azat", transcript="chips"))
+        [dict(CHIPS)], who="Ann", transcript="chips"))
     ctx.user_data["amt"] = 5.0  # manual-flow key: still cleared
     run(nav.go_home(make_update(nav.HOME_BUTTON), ctx))
     kept = draft.get_draft(ctx.user_data, a.id)
@@ -147,7 +147,7 @@ def test_go_home_keeps_open_draft(ctx):
 def test_partial_save_retry_does_not_duplicate(ctx, monkeypatch):
     items = [{"comment": f"i{n}", "amount": 10.0, "currency": "дин",
               "date": "01.11.2026", "category": "Food"} for n in range(3)]
-    s = draft.add_draft(ctx.user_data, draft.session_from_receipt(items, who="Azat"))
+    s = draft.add_draft(ctx.user_data, draft.session_from_receipt(items, who="Ann"))
     sheets = FakeSheets(fail_on_call=1)
     settings_of(ctx).sheets = sheets
     with pytest.raises(RuntimeError):
@@ -160,7 +160,7 @@ def test_partial_save_retry_does_not_duplicate(ctx, monkeypatch):
 # 9. Double tap on Save: second callback overwrote "✅ Сохранено" with "Нечего сохранять".
 def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
     s = draft.add_draft(ctx.user_data, draft.session_from_voice(
-        [dict(CHIPS)], who="Azat", transcript="chips"))
+        [dict(CHIPS)], who="Ann", transcript="chips"))
     sheets = FakeSheets()
     settings_of(ctx).sheets = sheets
     q1, q2 = FakeQuery(save_cb(s)), FakeQuery(save_cb(s))
@@ -181,7 +181,7 @@ def test_save_does_not_block_event_loop(ctx, monkeypatch):
     sheets = SlowSheets()
     settings_of(ctx).sheets = sheets
     s = draft.add_draft(ctx.user_data, draft.session_from_voice(
-        [dict(CHIPS)], who="Azat", transcript="chips"))
+        [dict(CHIPS)], who="Ann", transcript="chips"))
 
     async def scenario():
         ticks = 0

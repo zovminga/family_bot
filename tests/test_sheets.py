@@ -14,7 +14,7 @@ def test_fake_append_and_read_roundtrip():
     client = FakeSheetsClient(data_values=[
         ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"],
     ])
-    row = ["07.08.2026", "2026-08", "Food", "12.5", "дин", "Azat", "lunch"]
+    row = ["07.08.2026", "2026-08", "Food", "12.5", "дин", "Ann", "lunch"]
     client.append_data_row(row)
 
     assert client.appended_rows == [row]
@@ -54,12 +54,12 @@ def test_parse_regular_skips_blank_amounts():
     values = [
         ["name", "динары", "категория", "кто"],
         ["Subscription", "", "Other", "Both"],
-        ["Coffee", "200", "Food", "Azat"],
+        ["Coffee", "200", "Food", "Ann"],
     ]
     parsed = parse_regular(values)
     assert parsed["monthly"] == [
         {"name": "Coffee", "amount": 200.0, "currency": "дин",
-         "category": "Food", "who": "Azat"},
+         "category": "Food", "who": "Ann"},
     ]
     assert parsed["oneoff"] == []
 
@@ -92,7 +92,7 @@ def test_gspread_append_writes_values_raw():
             assert name == "Data"
             return FakeWorksheet()
 
-    row = ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "=1+1"]
+    row = ["07.08.2026", "2026-08", "Food", 1.0, "€", "Ann", "=1+1"]
     GspreadSheetsClient(FakeSpreadsheet()).append_data_row(row)
     assert calls == [(row, {"value_input_option": "RAW"})]
 
@@ -110,8 +110,8 @@ def test_gspread_append_data_rows_is_one_raw_request():
             return FakeWorksheet()
 
     rows = [
-        ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "a"],
-        ["07.08.2026", "2026-08", "Food", 2.0, "€", "Azat", "b"],
+        ["07.08.2026", "2026-08", "Food", 1.0, "€", "Ann", "a"],
+        ["07.08.2026", "2026-08", "Food", 2.0, "€", "Ann", "b"],
     ]
     GspreadSheetsClient(FakeSpreadsheet()).append_data_rows(rows)
     assert calls == [(rows, {"value_input_option": "RAW"})]

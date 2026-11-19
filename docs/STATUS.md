@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #25 shared Row/fx/llm, merged after issue #29)  
+**Updated by:** agent session (issue #41 household data in settings)  
 **Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -17,6 +17,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Household data in settings, not code (issue #41, plan 5.6, I8):
+  `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
+  unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
+  all history), `DASHBOARD_SPENDER_ALIASES`, own shops/places for themes in
+  git-ignored `dashboard/theme_keywords.json`, launchd label `LAUNCHD_LABEL`
+  (default `local.family-bot.dashboard`). Owner must set `BASE_CURRENCY` in
+  `.env` and on Render, and reinstall the launchd agent (see PR). Open: a few
+  test files still use real first names (edited in parallel by #32/#35);
+  `clock.DEFAULT_TZ` stays `Europe/Belgrade`.
 - Russian UI (issue #29, plan 3.1 and 3.5): messages, buttons, errors, hints
   and setup problem lines are Russian; Category names stay as in Config.
   Amounts everywhere (bot replies, Draft card, stats, presets) go through
