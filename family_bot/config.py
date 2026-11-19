@@ -121,8 +121,8 @@ def webhook_secret(raw: Optional[str]) -> str:
         return secrets.token_urlsafe(WEBHOOK_SECRET_BYTES)
     if not is_valid_webhook_secret(raw):
         raise SystemExit(problem(
-            f"{WEBHOOK_SECRET_ENV} is not valid",
-            "use 1-256 characters: letters, digits, _ and - "
+            f"{WEBHOOK_SECRET_ENV} задан неверно",
+            "нужно 1-256 символов: латинские буквы, цифры, _ и - "
             "(python -c \"import secrets; print(secrets.token_urlsafe(32))\")"))
     return raw
 
@@ -149,13 +149,13 @@ def _allowed_users(raw: Optional[str], problems: list[str]) -> dict[int, str]:
         users = auth.parse_allowed_users(raw)
     except ValueError as e:
         problems.append(problem(
-            f"ALLOWED_USERS is not valid ({_first_line(e)})",
-            "write it as 111111111:Имя,222222222:Имя in .env and restart"))
+            f"ALLOWED_USERS задан неверно ({_first_line(e)})",
+            "запишите в .env так: 111111111:Имя,222222222:Имя и перезапустите бота"))
         return {}
     if not users:
         problems.append(problem(
-            "ALLOWED_USERS is empty, nobody can use the bot",
-            "send /whoami to the bot and add the ID to ALLOWED_USERS in .env, then restart"))
+            "ALLOWED_USERS пуст, ботом никто не может пользоваться",
+            "отправьте боту /whoami, добавьте ID в ALLOWED_USERS в .env и перезапустите бота"))
     return users
 
 
@@ -163,8 +163,8 @@ def _client_email(creds: Path, problems: list[str]) -> Optional[str]:
     """client_email of a service account key file, or None after adding a problem."""
     if not creds.exists():
         problems.append(problem(
-            f"GOOGLE_CREDS_PATH: file {creds} not found",
-            "download the service account JSON key (README → Google Sheets) and fix the path"))
+            f"GOOGLE_CREDS_PATH: файл {creds} не найден",
+            "скачайте JSON-ключ сервисного аккаунта (README → Google Sheets) и исправьте путь"))
         return None
     try:
         key = json.loads(creds.read_text(encoding="utf-8"))
@@ -172,9 +172,9 @@ def _client_email(creds: Path, problems: list[str]) -> Optional[str]:
         key = None
     if not isinstance(key, dict) or not key.get("client_email") or not key.get("private_key"):
         problems.append(problem(
-            f"GOOGLE_CREDS_PATH: {creds} is not a service account key "
-            "(no client_email / private_key)",
-            "download a new JSON key on the service account's Keys tab"))
+            f"GOOGLE_CREDS_PATH: {creds} — не ключ сервисного аккаунта "
+            "(нет client_email / private_key)",
+            "скачайте новый JSON-ключ на вкладке Keys сервисного аккаунта"))
         return None
     return str(key["client_email"])
 
@@ -187,8 +187,8 @@ def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
         ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
         problems.append(problem(
-            f"{clock.TZ_ENV}={name!r} is not a known time zone",
-            f"use an IANA name such as {clock.DEFAULT_TZ} or remove the line from .env"))
+            f"{clock.TZ_ENV}={name!r} — неизвестный часовой пояс",
+            f"укажите имя IANA, например {clock.DEFAULT_TZ}, или удалите строку из .env"))
 
 
 def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
@@ -197,12 +197,12 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
     creds_raw, sheet_name = env.get("GOOGLE_CREDS_PATH"), env.get("SHEET_NAME")
     if not creds_raw:
         problems.append(problem(
-            "GOOGLE_CREDS_PATH is not set",
-            "set it in .env to the service account JSON key, e.g. secrets/creds.json"))
+            "GOOGLE_CREDS_PATH не задан",
+            "укажите в .env путь к JSON-ключу сервисного аккаунта, например secrets/creds.json"))
     if not sheet_name:
         problems.append(problem(
-            "SHEET_NAME is not set",
-            "set it in .env to the exact title of the Google Spreadsheet"))
+            "SHEET_NAME не задан",
+            "укажите в .env точное название таблицы Google"))
     if not creds_raw or not sheet_name:
         return None
     creds = resolve_creds_path(creds_raw)
@@ -213,12 +213,12 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
         return open_sheets(str(creds), sheet_name)
     except SpreadsheetNotFound:
         problems.append(problem(
-            f"spreadsheet {sheet_name!r} not found",
-            f"check SHEET_NAME and share the spreadsheet with {email} as Editor"))
+            f"таблица {sheet_name!r} не найдена",
+            f"проверьте SHEET_NAME и дайте {email} доступ к таблице как редактору"))
     except Exception as e:  # noqa: BLE001 - any open failure is a setup problem
         problems.append(problem(
-            f"cannot open Google Sheets ({_first_line(e)})",
-            "check the key file, SHEET_NAME and network, then run "
+            f"не открывается Google Sheets ({_first_line(e)})",
+            "проверьте файл ключа, SHEET_NAME и сеть, потом запустите "
             "python scripts/test_google_sheets.py"))
     return None
 
@@ -245,21 +245,21 @@ def reload(cfg: Config) -> list[str]:
     except Exception as e:  # noqa: BLE001 - keep the bot usable
         categories = []
         problems.append(problem(
-            f"cannot read the Config sheet ({_first_line(e)})",
-            "check the Config worksheet, then send /reloadcats"))
+            f"не читается лист Config ({_first_line(e)})",
+            "проверьте лист Config и отправьте /reloadcats"))
     else:
         if not categories:
             problems.append(problem(
-                "Config sheet has no categories, using " + ", ".join(FALLBACK_CATEGORIES),
-                "fill column A of the Config worksheet, then send /reloadcats"))
+                "в листе Config нет категорий, взяты " + ", ".join(FALLBACK_CATEGORIES),
+                "заполните столбец A листа Config и отправьте /reloadcats"))
     cfg.categories = categories or list(FALLBACK_CATEGORIES)
     try:
         cfg.presets = regular.load_presets(cfg.sheets)
     except Exception as e:  # noqa: BLE001 - presets are optional
         cfg.presets = []
         problems.append(problem(
-            f"cannot read Regular_expenses ({_first_line(e)})",
-            "check the Regular_expenses worksheet, then send /reloadcats"))
+            f"не читается лист Regular_expenses ({_first_line(e)})",
+            "проверьте лист Regular_expenses и отправьте /reloadcats"))
     return problems
 
 

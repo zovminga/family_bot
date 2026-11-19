@@ -46,7 +46,7 @@ def test_last_n_sheet_order_newest_first():
 def test_format_last_n_filtered():
     text = format_last_n(ROWS, n=5, category="Transport")
     assert "Transport" in text
-    assert "5.00" in text or "5,00" in text
+    assert "5 дин" in text
 
 
 def test_filter_by_month_and_category():
@@ -62,8 +62,7 @@ def test_filter_by_date_range():
 
 def test_aggregate_group_by_currency():
     text, details = aggregate(ROWS, category="All", month="2026-08", group_by_currency=True)
-    assert "дин: 10.00" in text or "дин: 10,00" in text
-    assert "€: 20.00" in text or "€: 20,00" in text
+    assert text.splitlines() == ["10 дин", "20 €"]
     assert details == {}
 
 
@@ -83,7 +82,7 @@ def test_aggregate_convert_with_fake_rate():
         get_rate=fake_rate,
     )
     # 10 дин + 20€*100 = 2010
-    assert "2,010.00" in text or "2010.00" in text
+    assert text == "💰 Итого: 2 010 дин"
     assert details["€"]["rate"] == 100.0
     assert details["€"]["original_amount"] == 20.0
     assert details["€"]["converted_amount"] == 2000.0
@@ -96,7 +95,7 @@ def test_aggregate_missing_rate():
         convert_to_currency="дин",
         get_rate=lambda *_: None,
     )
-    assert text.startswith("❌ Failed to get exchange rate")
+    assert text == "❌ Не удалось получить курс € → дин"
     assert details == {}
 
 

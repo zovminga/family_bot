@@ -139,3 +139,19 @@ def test_regular_header_word_containing_a_stem_is_not_a_currency() -> None:
         ["Gift", "7", "", "Other", "Both"],
     ]
     assert regular.parse_regular(grid)["monthly"] == []
+
+
+@pytest.mark.parametrize("amount, symbol, text", [
+    (350, "дин", "350 дин"),
+    (350.0, "дин", "350 дин"),
+    (1234, "дин", "1 234 дин"),
+    (1234567.0, "€", "1 234 567 €"),
+    (12.5, "€", "12,50 €"),
+    (1234.05, "$", "1 234,05 $"),
+    (0.285, "€", "0,29 €"),  # rounds half up, not down through float error
+    (999.999, "дин", "1 000 дин"),
+    (-1500, "дин", "-1 500 дин"),
+    (1234.5, None, "1 234,50"),
+])
+def test_format_amount(amount: float, symbol: str | None, text: str) -> None:
+    assert currency.format_amount(amount, symbol) == text
