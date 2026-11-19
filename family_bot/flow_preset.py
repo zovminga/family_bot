@@ -2,11 +2,13 @@
 """Preset expense flow: pick a ⚡ template and save immediately."""
 from __future__ import annotations
 
+import asyncio
+
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from family_bot import clock
-from family_bot.conversation_states import CHOOSE_ACTION, CHOOSE_PRESET
+from family_bot.conversation_states import State
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot import navigation as nav
 
@@ -20,7 +22,7 @@ async def begin_preset_picker(
     if not presets:
         await update.message.reply_text(
             "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
-        return CHOOSE_ACTION
+        return State.CHOOSE_ACTION
     labels = [f"⚡ {t['name']}" for t in presets]
     kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
     kb.append(nav.home_row())
@@ -28,7 +30,7 @@ async def begin_preset_picker(
         "🧾 Выбери заготовку — сохранится сразу с сегодняшней датой:",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True),
     )
-    return CHOOSE_PRESET
+    return State.CHOOSE_PRESET
 
 
 async def choose_preset(
@@ -42,23 +44,20 @@ async def choose_preset(
 ) -> int:
     """Save a tapped preset or go home. Unknown labels prompt retry."""
     text = update.message.text
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-
     if not text.startswith("⚡"):
         await update.message.reply_text("Выбери заготовку с кнопки ⚡ или «To start».")
-        return CHOOSE_PRESET
+        return State.CHOOSE_PRESET
 
     name = text.replace("⚡", "", 1).strip()
     preset = next((t for t in presets if t["name"] == name), None)
     if not preset:
         await update.message.reply_text(
             "Не нашёл такую заготовку (список мог обновиться). Выбери снова или /reloadcats.")
-        return CHOOSE_PRESET
+        return State.CHOOSE_PRESET
 
     who = preset.get("who") or resolve_who(update)
     date_str = clock.now().strftime(date_fmt)
-    append_expense(sheets, ExpenseRecord(
+    await asyncio.to_thread(append_expense, sheets, ExpenseRecord(
         date=date_str,
         category=preset["category"],
         amount=preset["amount"],

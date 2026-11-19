@@ -223,13 +223,27 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `ALLOWED_USERS` | same line as in `.env` |
 | `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
+| `WEBHOOK_SECRET` | recommended: a random string of 1–256 characters `A–Z a–z 0–9 _ -` (command below) |
 
 Render sets `RENDER_EXTERNAL_URL` (the service address) by itself. When it is
 set, the bot runs in webhook mode, and the log says `Running in webhook mode`.
+Telegram posts updates to `<RENDER_EXTERNAL_URL>/telegram`; the bot token is
+not in the address.
 If the log says `polling mode`, add the variable `RENDER_EXTERNAL_URL` with
 the service address `https://<name>.onrender.com`.
 Do not put `RENDER_EXTERNAL_URL` in your local `.env`: without it the bot uses polling. Stop the local bot once the
 Render one runs — two copies with one token interfere.
+
+Make `WEBHOOK_SECRET` on your computer:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Telegram sends it with every update; the bot answers 403 to requests without
+it. If it is unset, the bot makes a random secret at each start and registers
+it with Telegram, so it still works; a fixed value avoids rejected updates
+while an old and a new instance overlap during a deploy.
 
 ## Commands
 

@@ -1,29 +1,33 @@
 #!/usr/bin/env python3
-"""Conversation state constants for the Telegram expense bot.
+"""Conversation states for the Telegram expense bot.
 
 One ConversationHandler wires three flows (manual add, preset, stats) plus the
-main menu. Keeping the ints here makes each flow's diagram readable in isolation.
+main menu. Keeping the states here makes each flow's diagram readable in isolation.
 """
 from __future__ import annotations
 
-(
-    CHOOSE_ACTION,
-    # Manual add-expense flow
-    CHOOSE_CAT,
-    TYPING_AMT,
-    CHOOSE_CUR,
-    TYPING_CMNT,
-    CHOOSE_DT,
-    TYPING_DT,
+from enum import IntEnum, auto
+
+
+class State(IntEnum):
+    """ConversationHandler states; tests check each one has a handler."""
+
+    CHOOSE_ACTION = 0
+    # Manual add-expense flow (flows/manual.py)
+    CHOOSE_CAT = auto()
+    TYPING_AMT = auto()
+    CHOOSE_CUR = auto()
+    TYPING_CMNT = auto()
+    CHOOSE_DT = auto()
+    TYPING_DT = auto()
     # Preset (⚡) flow — not shared with CHOOSE_CAT
-    CHOOSE_PRESET,
-    # Statistics flow
-    STAT_CAT,
-    STAT_TYPE,
-    STAT_DATE_FROM,
-    STAT_DATE_TO,
-    STAT_MONTH,
-    STAT_GROUP_CURRENCY,
-    STAT_CONVERT_CURRENCY,
-    STAT_SHOW_DETAILS,
-) = range(16)
+    CHOOSE_PRESET = auto()
+    # Statistics flow (flows/stats.py)
+    STAT_CAT = auto()
+    STAT_TYPE = auto()
+    STAT_DATE_FROM = auto()
+    STAT_DATE_TO = auto()
+    STAT_MONTH = auto()
+    STAT_GROUP_CURRENCY = auto()
+    STAT_CONVERT_CURRENCY = auto()
+    STAT_SHOW_DETAILS = auto()

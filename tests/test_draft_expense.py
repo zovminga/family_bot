@@ -109,6 +109,20 @@ def test_failed_save_keeps_draft_open():
     assert not session.closed
 
 
+def test_draft_is_closed_while_save_runs():
+    # Save runs in a worker thread (issue #18): a tap arriving mid-write must see a closed Draft.
+    seen = []
+
+    class WatchingClient(FakeSheetsClient):
+        def append_data_rows(self, rows):
+            seen.append(session.closed)
+            super().append_data_rows(rows)
+
+    session = DraftSession(id="ab12", items=[_item()])
+    apply_callback("save", session, ["Food"], ["дин"], WatchingClient())
+    assert seen == [True] and session.closed
+
+
 def test_long_category_name_survives_reorder():
     long_name = "Развлечения, подписки и прочие радости жизни"
     session = DraftSession(id="ab12", items=[_item()])

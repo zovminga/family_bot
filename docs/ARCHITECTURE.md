@@ -22,8 +22,9 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     │
     ├── config.py               Config (Allowlist, Sheets, categories, Presets) — post_init
     ├── auth.py                 allowlist id → Spender name
-    ├── navigation.py           go_home
+    ├── navigation.py           go_home, home fallbacks
     ├── flow_preset.py          ⚡ preset steps
+    ├── flows/manual.py         manual add steps (ManualFlow)
     ├── flows/stats.py          statistics steps, StatQuery
     ├── draft_expense.py        Draft review UI state machine
     ├── voice_input.py          OGG → Vosk → Claude → draft items
@@ -63,9 +64,11 @@ Finances never share across installs.
 | `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
-| `navigation.py` | «return home» labels/callbacks | Fork home behaviour per flow |
+| `navigation.py` | «return home» labels/callbacks; `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
+| `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `comment`); data sources injected from `bot.py` | Add manual-input handlers to `bot.py` |
 | `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
-| `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
+| `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
+| `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
@@ -78,7 +81,8 @@ use `sheet_data.normalize_rows`.
 
 ## Conversation flows
 
-One `ConversationHandler` (`bot.py` `build_application()`), states in `conversation_states.py`.
+One `ConversationHandler` (`bot.py` `build_application()`), states in the
+`IntEnum` `conversation_states.State`; a test checks every state has a handler.
 
 ```
 /start → CHOOSE_ACTION (main menu)
@@ -96,7 +100,8 @@ Stats (`flows/stats.py`): the menu tap and the category step each start a new
 carry over. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
 drops it too. `STAT_SHOW_DETAILS` is entered only when there are conversion
 details to show. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
-`STATS.states()` into the `ConversationHandler`.
+`STATS.states()` into the `ConversationHandler`. Manual add (`flows/manual.py`)
+works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
 **Outside** the conversation (registered earlier, same group):
 
@@ -110,8 +115,13 @@ Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
 reads `.env` and stops with one line if `BOT_TOKEN` is missing;
 `post_init` loads `Config` and prints each setup problem as one line.
 
-Fallbacks: `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
-Home: `navigation.go_home` → `CHOOSE_ACTION`. Clears flow keys in `user_data`, keeps open Drafts.
+Fallbacks: home button, `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
+Home: state handlers never see it — their filters exclude the home text
+(`navigation.INPUT_TEXT`) and the `to_start` callback. `navigation.home_fallbacks()`
+catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
+So an old inline home button now works in any state (before #24 only in
+`TYPING_CMNT` / `CHOOSE_DT`), and typed home text works in `CHOOSE_DT` too.
+Clears flow keys in `user_data`, keeps open Drafts.
 
 ## Sheet schema
 
@@ -136,7 +146,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`bot.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
@@ -166,6 +176,8 @@ Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
 
+The bot's Claude clients (`voice_input`, `photo_input`) use a 30 s timeout and 1 retry (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`).
+
 Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
 
@@ -174,7 +186,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 | Mode | When | How |
 |------|------|-----|
 | Polling | `RENDER_EXTERNAL_URL` unset | `app.run_polling()` — local default |
-| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path = bot token |
+| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path `/telegram` (`config.WEBHOOK_PATH`), `secret_token` from `WEBHOOK_SECRET` (random per start when unset; invalid value → one-line exit). python-telegram-bot answers 403 to requests without the `X-Telegram-Bot-Api-Secret-Token` header |
 
 ## Dashboard boundary
 

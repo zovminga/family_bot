@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #40 README for first install; docs only)  
-**Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
+**Updated by:** agent session (issue #40 README, merged after issues #18, #24, #28)  
+**Product code tip:** `6ad018c` (2026-11-19) — manual input in `flows/manual.py`, one home handler in fallbacks (issue #24)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -18,7 +18,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## What works
 
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
-- Manual expense ConversationHandler (category → amount → currency → comment → date)
+- Manual expense ConversationHandler (category → amount → currency → comment → date),
+  in `flows/manual.py` since issue #24. The home button is handled once, in the
+  `ConversationHandler` fallbacks (`navigation.home_fallbacks()`); states are
+  the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
 - Voice: Vosk STT + Claude → Draft confirmation card
@@ -29,6 +32,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «❌ Не разобрал, введите вручную».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
+- Webhook (issue #28): Telegram posts to `<RENDER_EXTERNAL_URL>/telegram`, the
+  bot token is not in the URL. `run_webhook` gets `secret_token` from
+  `WEBHOOK_SECRET`; requests without the header get 403. Unset → random secret
+  per start (still works); a value with characters Telegram rejects → one-line
+  exit. Render needs `WEBHOOK_SECRET` set by the owner (recommended, not blocking).
 - Package layout (issue #23): all Python code is the `family_bot/` package.
   `uv sync` installs it; `family-bot` (`[project.scripts]` →
   `family_bot.bot:main`) starts the bot, `python -m family_bot.dashboard`
@@ -91,6 +99,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   user gets «❌ Не сохранилось. Попробуйте ещё раз»; a Vosk/Claude failure on
   voice or photo gets «❌ Не разобрал, введите вручную». No raw exception text
   reaches the user (R3, U5 fixed).
+- Slow calls do not freeze the bot (issue #18, R11): handlers run Sheets reads
+  and writes, FX requests (stats) and `config.load` / `reload` through
+  `asyncio.to_thread`. `per_user.PerUserUpdateProcessor` runs updates of
+  different people at the same time and one person's updates in order (PTB
+  advises `ConversationHandler` without concurrent updates; the per-user lock
+  keeps each conversation in order). A Draft is marked closed before its save
+  starts and reopened if the save fails, so a double tap still sees
+  «✅ Сохранено». Claude clients for voice, text
+  and receipt photo use a 30 s timeout and 1 retry
+  (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
+  client keeps the SDK defaults.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
@@ -176,9 +195,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
   recorded as open: the dashboard's own row parsing (C3, see
   `docs/ARCHITECTURE.md`).
-- Draft double-tap guard (issue #13) relies on save running with no `await`
-  between the `closed` check and the Sheets write. When issue #18 moves the
-  write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- Since issue #18 two people's Sheets calls can run in two threads on the
+  one shared gspread client (`Config.sheets`). gspread does not document
+  thread safety; no problem has been seen or tested.
 - Logging is not configured: `errors` logs through the `family_bot.errors`
   logger, which prints to stderr via Python's fallback handler (WARNING and
   above). Other modules still `print` exception text to stdout without
@@ -193,7 +212,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   there (section 2) until fixed; tick plan items as they land.
 - Known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
-  `pytest -rx` lists what is still open.
+  `pytest -rx` lists what is still open. R11 (issue #18) was the last marked
+  reproduction; no `known_bug` marker is left in the suite.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
   with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
   blocked can start once it merges.
