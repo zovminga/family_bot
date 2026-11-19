@@ -21,6 +21,8 @@ def test_positive_amount_accepts(raw, expected):
 @pytest.mark.parametrize("text,amount,symbol", [
     ("350", 350.0, None),
     ("1 200", 1200.0, None),
+    ("1\u202f200", 1200.0, None),
+    ("12.50", 12.5, None),
     ("350 дин", 350.0, "дин"),
     ("350дин", 350.0, "дин"),
     ("12,5 €", 12.5, "€"),
@@ -40,6 +42,7 @@ def test_parse_amount_text_reads_amount_and_currency(text, amount, symbol):
 
 @pytest.mark.parametrize("text", [
     "nan", "inf", "-500", "0", "", "abc", "350 xyz", "€350 дин", "1e400", "- 5",
+    "1.234",  # three decimals: never silently rounded to 1.23
 ])
 def test_parse_amount_text_rejects(text):
     assert amount_input.parse_amount_text(text) is None
