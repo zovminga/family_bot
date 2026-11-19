@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+import currency
 from sheet_data import parse_amount
 
 BOT_DIR = Path(__file__).resolve().parent
@@ -152,6 +153,12 @@ def _merchant_hints_block() -> str:
     )
 
 
+def _spoken_currencies(currencies: list[str]) -> str:
+    """'доллар/долларов→$, юань/юаней→CNY, …' for the allowed registry Currencies."""
+    return ", ".join(f"{'/'.join(c.words)}→{c.symbol}"
+                     for c in currency.registered(currencies))
+
+
 def _build_prompt(transcript: str, categories: list[str], currencies: list[str],
                   today: str, who: str, default_currency: str) -> str:
     cats = "\n".join(f"- {c}" for c in categories)
@@ -166,8 +173,7 @@ def _build_prompt(transcript: str, categories: list[str], currencies: list[str],
         + _merchant_hints_block() +
         "Правила:\n"
         "- Числа могут быть словами («сто», «двести пятьдесят») — переведи в число.\n"
-        "- Слова валют: рубль/рублей→₽, динар/динаров→дин, евро→€, иена/йен→¥, "
-        "доллар→$, фунт/фунтов/фунт стерлингов→£. Если валюта не названа — "
+        f"- Слова валют: {_spoken_currencies(currencies)}. Если валюта не названа — "
         "используй валюту по умолчанию.\n"
         "- Дата: относительные слова («сегодня», «вчера», «позавчера») и явные "
         "(«восьмое июля», «8 июля») переведи в ДД.ММ.ГГГГ, отсчитывая от сегодня. "
@@ -200,8 +206,12 @@ def _snap_category(value: Optional[str], categories: list[str]) -> str:
 
 def _snap_currency(value: Optional[str], currencies: list[str],
                    default_currency: str) -> str:
+    """Stored symbol for a symbol, ISO code or word Claude returned; else the default."""
     if value and value.strip() in currencies:
         return value.strip()
+    found = currency.find(value)
+    if found is not None and found.symbol in currencies:
+        return found.symbol
     return default_currency
 
 

@@ -18,6 +18,7 @@ from telegram.ext import (
 )
 
 import auth
+import currency
 import voice_input as vx
 import photo_input as px
 import regular
@@ -132,7 +133,7 @@ def load_defaults() -> list[dict]:
 
 
 DEFAULTS = load_defaults()
-CURS = ["₽", "дин", "€", "¥", "£"]
+CURS = currency.symbols()
 
 # Allowlist: Telegram ID -> spender name on the Data sheet.
 # Loaded from ALLOWED_USERS in .env (see .env.example). Empty = nobody.

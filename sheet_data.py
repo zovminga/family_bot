@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Shared parsing kernel for Data-sheet rows.
 
-One locality for amount parsing, header aliases, month keys, and currency
-symbol ↔ ISO maps used by the bot, dashboard, presets, and voice snaps.
+One locality for amount parsing, header aliases, month keys, and the currency
+symbol ↔ ISO maps (derived from currency.py) used by the bot and dashboard.
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Optional
+
+import currency
 
 # Header aliases (English + Russian), matched case-insensitively.
 HEADER_ALIASES: dict[str, list[str]] = {
@@ -20,15 +22,8 @@ HEADER_ALIASES: dict[str, list[str]] = {
     "comment": ["comment", "комментарий", "коммент"],
 }
 
-# Currency symbols used in the sheet → ISO codes.
-SYMBOL_TO_ISO: dict[str, str] = {
-    "₽": "RUB",
-    "дин": "RSD",
-    "€": "EUR",
-    "¥": "JPY",
-    "$": "USD",
-    "£": "GBP",
-}
+# Stored currency value → ISO code, derived from the registry in currency.py.
+SYMBOL_TO_ISO: dict[str, str] = {c.symbol: c.code for c in currency.CURRENCIES}
 ISO_TO_SYMBOL: dict[str, str] = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 
 DATE_FMT = "%d.%m.%Y"
@@ -137,8 +132,6 @@ def normalize_rows(headers: list[str], raw_rows: list[list]) -> list[dict]:
     return out
 
 
-def to_iso(currency: str) -> str:
+def to_iso(value: str) -> str:
     """Map a sheet currency symbol (or ISO) to an ISO code."""
-    if not currency:
-        return currency
-    return SYMBOL_TO_ISO.get(currency, currency.upper() if len(currency) == 3 else currency)
+    return currency.to_iso(value)
