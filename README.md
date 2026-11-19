@@ -118,7 +118,19 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
    `GOOGLE_CREDS_PATH` resolve from the repo checkout, not from `site-packages`.
    Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
 4. Start command: `family-bot`
-5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
+5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling).
+   Telegram posts updates to `<RENDER_EXTERNAL_URL>/telegram`; the bot token
+   is not in the address.
+   Set `WEBHOOK_SECRET` to a random string of 1–256 characters `A–Z a–z 0–9 _ -`:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+   Telegram sends it with every update; the bot answers 403 to requests
+   without it. If it is unset, the bot makes a random secret at each start and
+   registers it with Telegram, so it still works; a fixed value avoids rejected
+   updates while an old and a new instance overlap during a deploy.
 6. Optional: `TZ_NAME` — the family's IANA time zone (default `Europe/Belgrade`).
    Render runs in UTC; the bot takes "today" and "yesterday" in this zone.
 
