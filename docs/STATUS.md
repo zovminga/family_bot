@@ -22,7 +22,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   summary (same text as «📅 Этот месяц») to `DASHBOARD_CHAT_ID`
   (`monthly_summary.py`, PTB `JobQueue.run_monthly`; the `job-queue` extra
   adds APScheduler). Unset `DASHBOARD_CHAT_ID` → no job and one setup line at
-  start. A failure is logged, the bot keeps running. The job lives in memory:
+  start (the line also shows in the «not connected to Google Sheets» reply); no
+  Sheets → no job. A wrong `TZ_NAME` → the job uses `Europe/Belgrade`. The two
+  settings are parsed in `config.py`. A failure is logged, the bot keeps running. The job lives in memory:
   if the bot is down at that hour (deploy, restart, sleeping instance), that
   month is skipped, not sent late.
 - Household data in settings, not code (issue #41, plan 5.6, I8):

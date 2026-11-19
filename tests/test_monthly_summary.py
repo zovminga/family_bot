@@ -68,15 +68,15 @@ def test_bad_chat_id_is_one_setup_line() -> None:
 
 
 def test_summary_hour_default_and_override() -> None:
-    assert config.load(ENV).summary_hour == ms.DEFAULT_HOUR
-    assert config.load({**ENV, ms.HOUR_ENV: "7"}).summary_hour == 7
+    assert config.load(ENV).summary_hour == config.DEFAULT_SUMMARY_HOUR
+    assert config.load({**ENV, config.SUMMARY_HOUR_ENV: "7"}).summary_hour == 7
 
 
 @pytest.mark.parametrize("raw", ["24", "-1", "утром"])
 def test_bad_summary_hour_keeps_default(raw: str) -> None:
-    cfg = config.load({**ENV, ms.HOUR_ENV: raw})
-    assert cfg.summary_hour == ms.DEFAULT_HOUR
-    assert any(ms.HOUR_ENV in p and " — " in p for p in cfg.problems)
+    cfg = config.load({**ENV, config.SUMMARY_HOUR_ENV: raw})
+    assert cfg.summary_hour == config.DEFAULT_SUMMARY_HOUR
+    assert any(config.SUMMARY_HOUR_ENV in p and " — " in p for p in cfg.problems)
 
 
 # ---------- scheduling ----------
@@ -113,11 +113,27 @@ def fake_bot_app(queue: FakeJobQueue) -> SimpleNamespace:
 
 def test_post_init_schedules_summary_when_chat_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_CHAT_ID", "-100")
-    monkeypatch.setenv(ms.HOUR_ENV, "10")
+    with_sheets(monkeypatch, FakeSheetsClient(categories=["Еда"]))
+    monkeypatch.setenv(config.SUMMARY_HOUR_ENV, "10")
     queue = FakeJobQueue()
     run(bot.post_init(fake_bot_app(queue)))  # type: ignore[arg-type]
     (job,) = queue.monthly
     assert job["chat_id"] == -100 and job["when"].hour == 10
+
+
+def test_post_init_without_sheets_skips_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASHBOARD_CHAT_ID", "-100")
+    monkeypatch.delenv("SHEET_NAME", raising=False)
+    queue = FakeJobQueue()
+    run(bot.post_init(fake_bot_app(queue)))  # type: ignore[arg-type]
+    assert queue.monthly == []  # the Sheets problem line already says what to fix
+
+
+def test_bad_time_zone_does_not_stop_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(clock.TZ_ENV, "Mars/Base")
+    queue = FakeJobQueue()
+    ms.schedule(queue, chat_id=-100, hour=9, load_rows=lambda: [])  # type: ignore[arg-type]
+    assert str(queue.monthly[0]["when"].tzinfo) == clock.DEFAULT_TZ
 
 
 def test_post_init_without_chat_skips_job_and_prints_one_line(
@@ -130,8 +146,18 @@ def test_post_init_without_chat_skips_job_and_prints_one_line(
     assert len(out) == 1 and out[0].startswith("⚠️")
 
 
+def with_sheets(monkeypatch: pytest.MonkeyPatch, sheets: Any) -> None:
+    """Make post_init's config.load return a Config with this Sheets client."""
+    real_load = config.load
+    monkeypatch.setattr(config, "load", lambda env: real_load(env, open_sheets=lambda c, n: sheets))
+    monkeypatch.setattr(config, "_client_email", lambda creds, problems: "bot@example.test")
+    monkeypatch.setenv("GOOGLE_CREDS_PATH", "creds.json")
+    monkeypatch.setenv("SHEET_NAME", "Family")
+
+
 def test_post_init_job_reads_rows_from_config_sheets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_CHAT_ID", "-100")
+    with_sheets(monkeypatch, FakeSheetsClient(categories=["Еда"]))
     queue = FakeJobQueue()
     app = fake_bot_app(queue)
     run(bot.post_init(app))  # type: ignore[arg-type]
