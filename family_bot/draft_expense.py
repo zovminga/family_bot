@@ -271,7 +271,7 @@ def search_currency(session: DraftSession, i: int, text: str,
         return _currency_page(session, i, codes, 0, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
     grid = picker.choice_grid(found[:picker.PAGE_SIZE], _currency_cb(session, i))
     return CallbackOutcome(
-        text=_currency_prompt(session, i, f"Нашлось несколько. {picker.TYPE_HINT}"),
+        text=_currency_prompt(session, i, f"{picker.SEVERAL} {picker.TYPE_HINT}"),
         buttons=[*grid, _back_row(session)],
         await_currency=i,
     )
@@ -468,7 +468,10 @@ def apply_callback(
         if page is not None:
             return _currency_page(session, i, all_codes(), page)
         return CallbackOutcome(
-            buttons=currency_buttons(session, i, recent), markup_only=True)
+            text=_currency_prompt(session, i, picker.TYPE_HINT),
+            buttons=currency_buttons(session, i, recent),
+            await_currency=i,
+        )
     if action == "date":
         return CallbackOutcome(buttons=date_buttons(session, i), markup_only=True)
     if action == "amt":

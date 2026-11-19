@@ -41,8 +41,8 @@ Callback = Callable[[str], str]  # picker payload -> caller's callback_data
 # user_data key: this User's Recent currencies (stored values), newest first.
 KEY_RECENT = "recent_currencies"
 RECENT_COUNT = 3
-# Recent currencies of a new User when Data has none (Q18).
-DEFAULT_RECENT = ("дин", "€", "₽")
+# Recent currencies of a new User when Data has none (Q18), as ISO codes.
+DEFAULT_RECENT = tuple(currency.stored_value(c) for c in ("RSD", "EUR", "RUB"))
 
 OTHER_BUTTON = "🌍 Другая"
 PICK = "pick:"
@@ -61,6 +61,8 @@ CATALOG_TTL_SEC = 3600.0
 ASK = "💱 Валюта?"
 TYPE_HINT = "Нажмите кнопку или введите код (GEL) или название (юань)."
 NOT_FOUND = "❌ Не нашёл такую валюту."
+SEVERAL = "💱 Нашлось несколько."
+PREV_PAGE, NEXT_PAGE = "◀️", "▶️"
 
 
 # ---------- search ----------
@@ -87,6 +89,11 @@ def search(text: str, codes: Iterable[str]) -> list[str]:
     -------
     list[str]
         Matching codes in code order; empty when nothing matches.
+
+    Notes
+    -----
+    A registry word («доллар», «динар», «юань») means the household's own
+    Currency (USD, RSD, CNY); «канадский доллар» finds the others.
     """
     available = sorted(set(codes))
     query = text.strip()
@@ -124,6 +131,7 @@ def choice_grid(codes: Iterable[str], cb: Callback) -> Grid:
 
 
 def page_count(codes: Iterable[str]) -> int:
+    """Number of «🌍 Другая» pages for these codes (at least 1)."""
     return max(1, -(-len(list(codes)) // PAGE_SIZE))
 
 
@@ -150,12 +158,13 @@ def page_grid(codes: Iterable[str], page: int, cb: Callback) -> Grid:
     page %= pages
     grid = choice_grid(ordered[page * PAGE_SIZE:(page + 1) * PAGE_SIZE], cb)
     if pages > 1:
-        grid.append([("◀️", cb(f"{PAGE}{(page - 1) % pages}")),
-                     ("▶️", cb(f"{PAGE}{(page + 1) % pages}"))])
+        grid.append([(PREV_PAGE, cb(f"{PAGE}{(page - 1) % pages}")),
+                     (NEXT_PAGE, cb(f"{PAGE}{(page + 1) % pages}"))])
     return grid
 
 
 def page_text(codes: Iterable[str], page: int) -> str:
+    """Message text above a page: its number and the typing hint."""
     pages = page_count(codes)
     return f"🌍 Все валюты, стр. {page % pages + 1} из {pages}. {TYPE_HINT}"
 
@@ -203,6 +212,23 @@ def _from_data(sheets: SheetsClient) -> list[str]:
     return [*frequent, *(v for v in DEFAULT_RECENT if v not in frequent)][:RECENT_COUNT]
 
 
+def _load(user_data: MutableMapping, sheets: Optional[SheetsClient],
+          user_id: int) -> Optional[list[str]]:
+    """Recent currencies from cache, Users or Data; None when the read failed."""
+    cached = user_data.get(KEY_RECENT)
+    if cached:
+        return list(cached)
+    if sheets is None:
+        return list(DEFAULT_RECENT)
+    try:
+        recent = sheets.read_recent_currencies(user_id) or _from_data(sheets)
+    except Exception as e:  # noqa: BLE001 - the picker still works with defaults
+        errors.log_exception("Recent currencies read", e)
+        return None
+    user_data[KEY_RECENT] = recent
+    return list(recent)
+
+
 def load_recent(user_data: MutableMapping, sheets: Optional[SheetsClient],
                 user_id: int) -> list[str]:
     """
@@ -223,18 +249,8 @@ def load_recent(user_data: MutableMapping, sheets: Optional[SheetsClient],
         Stored values, newest first. A failed read gives DEFAULT_RECENT and is
         not cached, so the next call tries again.
     """
-    cached = user_data.get(KEY_RECENT)
-    if cached:
-        return list(cached)
-    if sheets is None:
-        return list(DEFAULT_RECENT)
-    try:
-        recent = sheets.read_recent_currencies(user_id) or _from_data(sheets)
-    except Exception as e:  # noqa: BLE001 - the picker still works with defaults
-        errors.log_exception("Recent currencies read", e)
-        return list(DEFAULT_RECENT)
-    user_data[KEY_RECENT] = recent
-    return list(recent)
+    recent = _load(user_data, sheets, user_id)
+    return recent if recent is not None else list(DEFAULT_RECENT)
 
 
 def remember(user_data: MutableMapping, sheets: Optional[SheetsClient], user_id: int,
@@ -243,7 +259,8 @@ def remember(user_data: MutableMapping, sheets: Optional[SheetsClient], user_id:
     Put a chosen Currency first in Recent currencies and save them to Users.
 
     Writes only when the list changed. A failed write is logged; the choice
-    stays in memory until the next restart.
+    stays in memory until the next restart. When the saved list could not be
+    read, nothing is written, so a Sheets hiccup never overwrites it.
 
     Parameters
     ----------
@@ -258,7 +275,9 @@ def remember(user_data: MutableMapping, sheets: Optional[SheetsClient], user_id:
     value : str
         Stored value of the chosen Currency.
     """
-    before = load_recent(user_data, sheets, user_id)
+    before = _load(user_data, sheets, user_id)
+    if before is None:
+        return
     after = push(before, value)
     user_data[KEY_RECENT] = after
     if after == before or sheets is None:

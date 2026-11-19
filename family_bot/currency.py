@@ -82,6 +82,9 @@ def stored_value(code: str) -> str:
 REGIONAL_A = 0x1F1E6
 # Codes that start with X belong to no country (XAF, XDR, XAU …).
 NO_COUNTRY_FLAG = "🌐"
+# Codes whose first two letters are not a current country: ANG (Netherlands
+# Antilles guilder) is used in Curaçao.
+FLAG_COUNTRY = {"ANG": "CW"}
 
 
 def flag(code: str) -> str:
@@ -101,7 +104,8 @@ def flag(code: str) -> str:
     upper = code.strip().upper()
     if len(upper) != 3 or not (upper.isascii() and upper.isalpha()) or upper[0] == "X":
         return NO_COUNTRY_FLAG
-    return "".join(chr(REGIONAL_A + ord(ch) - ord("A")) for ch in upper[:2])
+    country = FLAG_COUNTRY.get(upper, upper[:2])
+    return "".join(chr(REGIONAL_A + ord(ch) - ord("A")) for ch in country)
 
 
 def label(value: str) -> str:

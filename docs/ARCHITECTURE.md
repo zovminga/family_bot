@@ -167,7 +167,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; the Currency step is `currency_picker` as inline buttons (callback `cur:pick:<ISO>`, `cur:page:<n>`): Recent currencies of the User, «🌍 Другая» pages, or typed text — one match is chosen, several come back as buttons, none re-asks with Recent currencies. The chosen (or typed-with-amount) Currency goes to Recent currencies. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; the Currency step is `currency_picker` as inline buttons (callback `cur:pick:<ISO>`, `cur:page:<n>`): Recent currencies of the User, «🌍 Другая» pages, or typed text — one match is chosen, several come back as buttons, none re-asks with Recent currencies. The saved Expense's Currency goes to Recent currencies (`save_row`), so a cancelled entry leaves them as they were. A registry word («доллар», «динар») means the registry Currency; «канадский доллар» finds the others. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
@@ -199,7 +199,7 @@ restart.
 manual flow; a Currency typed with it replaces the item's). «👤 Кто» (`who:<i>`) lists the Allowlist Spender names;
 `setwho:<i>:<index>` carries the index (names may not fit 64 bytes; Drafts and
 the Allowlist both live until restart). «💱 Валюта» (`cur:<i>`) shows the
-User's Recent currencies; `cur:<i>:page:<n>` a page of all Currencies and sets
+User's Recent currencies, `cur:<i>:page:<n>` a page of all Currencies; both set
 `draft_amount_edit` with `currency=True`, so typed text («GEL», «юань») goes
 through `draft_expense.search_currency`; text with a digit, a command or a menu
 button ends that wait. `cur:<i>:pick:<ISO>` sets the item's Currency; the

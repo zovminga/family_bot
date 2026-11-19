@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #33 Currency picker)  
-**Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
+**Product code tip:** `f5d781c` (2026-11-19) — Currency picker: Recent currencies in `Users`, flags, «🌍 Другая», search (issue #33)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
