@@ -131,6 +131,15 @@ Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or 
 
 `pytest` from repo root. `tests/` covers pure modules with fakes — no live Telegram or Sheets. Prefer extending those over manual-only verification for seam changes.
 
+`tests/conftest.py` keeps tests away from `.env` and live Sheets, and holds
+`FakeSheetsClient` (in-memory `SheetsClient`). Known-bug reproductions and
+their own fakes live in `tests/known_bugs/`.
+
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs on every pull request and
+push to `main`: `uv sync --locked` on Python 3.12, then `pytest`, `ruff check`,
+`mypy` over the library modules, and `pip-audit`. Rule sets and per-module
+relaxations live in `pyproject.toml` under `[tool.ruff]` and `[tool.mypy]`.
+
 ## Conventions
 
 - Domain vocabulary: [`CONTEXT.md`](../CONTEXT.md)

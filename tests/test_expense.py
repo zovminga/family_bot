@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from expense import ExpenseRecord, append_expense
-from tests.test_sheets import FakeSheetsClient
+from tests.conftest import FakeSheetsClient
 
 
 def test_to_row_includes_derived_month():

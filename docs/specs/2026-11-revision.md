@@ -280,14 +280,14 @@ dashboard/          импортирует общие модули как пак
 - [x] 0.1 `.python-version` = 3.12, `pyproject.toml`, `uv.lock`. Обновить уязвимые пакеты.
   Убрать `oauth2client`, `pandas`, `numpy`, `StrEnum`. Поднять `av` до версии с готовой
   сборкой под 3.12–3.13. Закрепить `anthropic`. *(I1, C6)*
-- [ ] 0.2 GitHub Actions: `pytest`, `ruff check`, `mypy` по библиотекам, `pip-audit`. *(C6)*
-- [ ] 0.3 Убрать `__pycache__` из git и добавить в `.gitignore`. `FakeSheetsClient` → `conftest.py`. *(C7)*
+- [x] 0.2 GitHub Actions: `pytest`, `ruff check`, `mypy` по библиотекам, `pip-audit`. *(C6)*
+- [x] 0.3 Убрать `__pycache__` из git и добавить в `.gitignore`. `FakeSheetsClient` → `conftest.py`. *(C7)*
 - [x] 0.4 Перенести 24 теста-воспроизведения в `tests/known_bugs/` с пометкой
   `xfail(strict=True)`. Исправленная ошибка снимает пометку.
   Пометка — `known_bug("R7")` из `tests/known_bugs/fakes.py`, номер находки виден в отчёте
   `pytest -rx`. `tests/conftest.py` не даёт тестам прочитать `.env` и обратиться
   к Sheets. Тест, который сверяет английский текст кнопки (R8), придётся поправить в 3.1.
-- [ ] 0.5 `dashboard/run.sh` на Python 3.12. venv пересоздаётся при изменении зависимостей. *(D6)*
+- [x] 0.5 `dashboard/run.sh` на Python 3.12. venv пересоздаётся при изменении зависимостей. *(D6)*
 
 **Готово, когда:** CI зелёный на `main`, `pip-audit` без уязвимостей, установка по README
 проходит на 3.12.
