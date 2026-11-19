@@ -66,7 +66,8 @@ async def post_init(app: Application) -> None:
         print(f"✅ Google Sheets: {len(settings.categories)} categories, "
               f"{len(settings.presets)} presets")
     print(f"✅ Allowlist: {len(settings.allowed_users)} user(s)")
-    if settings.summary_chat_id is not None:
+    # Without Sheets the job could only fail; the Sheets problem line is printed above.
+    if settings.summary_chat_id is not None and settings.sheets is not None:
         # Rows are read through bot_data at send time, so /reloadcats changes apply.
         monthly_summary.schedule(
             app.job_queue, settings.summary_chat_id, settings.summary_hour,

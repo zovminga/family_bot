@@ -9,8 +9,9 @@ The family can still open the month in «📊 Статистика».
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time
+from datetime import datetime, time, tzinfo
 from typing import Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 from telegram.ext import CallbackContext, ContextTypes, JobQueue
@@ -20,11 +21,7 @@ from family_bot import clock
 from family_bot import errors
 from family_bot.sheet_data import MONTH_FMT, Row
 
-# Chat the summary goes to: the same chat the dashboard is published to.
-CHAT_ENV = "DASHBOARD_CHAT_ID"
-# Hour (0-23, family time zone) of the 1st when the summary is sent.
-HOUR_ENV = "MONTHLY_SUMMARY_HOUR"
-DEFAULT_HOUR = 9
+# Chat and hour settings are parsed in config.py (DASHBOARD_CHAT_ID, MONTHLY_SUMMARY_HOUR).
 DAY_OF_MONTH = 1
 JOB_NAME = "monthly_summary"
 
@@ -72,6 +69,14 @@ async def send_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
         errors.log_exception("Monthly summary", e)
 
 
+def _job_tz() -> tzinfo:
+    """Family zone; ``DEFAULT_TZ`` when ``TZ_NAME`` is wrong (config already printed that line)."""
+    try:
+        return clock.family_tz()
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo(clock.DEFAULT_TZ)
+
+
 def schedule(job_queue: JobQueue[CallbackContext], chat_id: int, hour: int,
              load_rows: LoadRows) -> None:
     """
@@ -90,7 +95,7 @@ def schedule(job_queue: JobQueue[CallbackContext], chat_id: int, hour: int,
     """
     job_queue.run_monthly(
         send_summary,
-        when=time(hour, tzinfo=clock.family_tz()),
+        when=time(hour, tzinfo=_job_tz()),
         day=DAY_OF_MONTH,
         data=load_rows,
         name=JOB_NAME,
