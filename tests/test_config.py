@@ -29,7 +29,8 @@ def key_file(tmp_path: Path) -> Path:
 
 
 def env(key_file: Path | None = None, **extra: str) -> dict[str, str]:
-    values = {"ALLOWED_USERS": "111:Ann"}
+    # DASHBOARD_CHAT_ID set: a missing one is its own problem line (tests/test_monthly_summary.py).
+    values = {"ALLOWED_USERS": "111:Ann", "DASHBOARD_CHAT_ID": "111"}
     if key_file is not None:
         values.update(GOOGLE_CREDS_PATH=str(key_file), SHEET_NAME="Family")
     values.update(extra)
