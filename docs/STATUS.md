@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #24 flows/manual.py, merged after issues #18, #28)  
+**Updated by:** agent session (issue #40 README, merged after issues #18, #24, #28)  
 **Product code tip:** `6ad018c` (2026-11-19) — manual input in `flows/manual.py`, one home handler in fallbacks (issue #24)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -162,10 +162,19 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- README «Install from scratch» (issue #40): a clean-clone walk with fake keys
+  covered `uv sync`, the pip route, `family-bot`, the setup lines and the Vosk
+  download. Not walked: the Google Cloud console steps, a real spreadsheet, and
+  Render (need real accounts). Two rough edges stay in code: a wrong `BOT_TOKEN` ends in a
+  `telegram.error.InvalidToken` traceback, and the setup lines print only after
+  Telegram accepts the token (`post_init`); `scripts/bootstrap_sheet.py` prints a
+  traceback instead of one line when the key or sheet is wrong.
 - Render still has the old commands until the owner changes them (issue #23
   PR, README «Deploy»): Build Command
   `pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"`,
-  Start Command `family-bot`. Open check (Q16): after the first deploy, the
+  Start Command `family-bot`. Render ignored `.python-version` on the owner's
+  service (built with 3.11.5); env var `PYTHON_VERSION=3.12.12` fixed the build.
+  Open check (Q16): after the first deploy, the
   runtime log has no «Downloading Vosk model» line on the first voice message
   (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
