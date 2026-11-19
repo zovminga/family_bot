@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+import clock
 from expense import ExpenseRecord, append_expense
 from sheet_data import DATE_FMT
 from sheets import SheetsClient
@@ -221,7 +222,7 @@ def apply_callback(
     now: Optional[datetime] = None,
 ) -> CallbackOutcome:
     """Apply one draft callback (payload after 'vx:'). Mutates session.items."""
-    now = now or datetime.now()
+    now = now or clock.now()
     items = session.items
 
     if data == "cancel":

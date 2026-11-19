@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #14 currency registry, merged after issues #10, #11, #17)  
-**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
+**Updated by:** agent session (issue #19 family time zone)  
+**Product code tip:** issue #19 PR (2026-11-19) — "today" in `TZ_NAME` zone via `clock.py`  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -33,6 +33,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
+- "Today" follows the family time zone (issue #19): `clock.now()` reads
+  `TZ_NAME` (default `Europe/Belgrade`). The date buttons, presets, the Draft
+  card, voice/receipt prompts, the month list in stats and the Meta
+  `updated_at` stamp all use it. The dashboard `generated_at` stays on the
+  build Mac's local clock.
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.

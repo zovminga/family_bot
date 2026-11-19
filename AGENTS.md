@@ -67,6 +67,7 @@ expense.py          ExpenseRecord + append
 draft_expense.py    Voice/photo confirmation card
 sheets.py           SheetsClient seam
 sheet_data.py       Headers, dates, currency maps
+clock.py            clock.now() in the family time zone (TZ_NAME)
 analytics.py        Stats over normalized rows (no Sheets I/O; FX via HTTP adapter)
 voice_input.py      Vosk STT + Claude extract
 photo_input.py      Claude Vision receipt → drafts

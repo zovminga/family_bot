@@ -68,6 +68,7 @@ python_version = "3.12"
 files = [
     "analytics.py",
     "auth.py",
+    "clock.py",
     "conversation_states.py",
     "draft_expense.py",
     "expense.py",
