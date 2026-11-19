@@ -150,6 +150,13 @@ class StatsFlow:
         )
         return State.STAT_CAT
 
+    async def this_month(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Main-menu entry: current month summary in one tap; stays on the menu."""
+        month = clock.now().strftime(MONTH_FMT)
+        await _message(update).reply_text(
+            await asyncio.to_thread(self._month_summary, context, month))
+        return State.CHOOSE_ACTION
+
     async def on_category(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_CAT: all categories, the category list, or a chosen category (starts a new query)."""
         text = _message(update).text or ""
@@ -301,6 +308,14 @@ class StatsFlow:
         except Exception as e:  # noqa: BLE001 - details go to the log
             errors.log_exception("Last records", e)
             return "❌ Не удалось загрузить записи. Попробуйте ещё раз"
+
+    def _month_summary(self, context: ContextTypes.DEFAULT_TYPE, month: str) -> str:
+        try:
+            return analytics.format_month_summary(
+                analytics.month_summary(self._load_rows(context), month))
+        except Exception as e:  # noqa: BLE001 - details go to the log
+            errors.log_exception("Month summary", e)
+            return "❌ Не удалось загрузить траты. Попробуйте ещё раз"
 
     def _aggregate(self, context: ContextTypes.DEFAULT_TYPE,
                    query: StatQuery) -> tuple[str, dict]:

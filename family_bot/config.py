@@ -29,7 +29,7 @@ KEY = "config"  # bot_data key
 # .env sits in the repo root, one level above the family_bot/ package.
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 # Used when the Config sheet is empty or unreadable, so the add-expense flow still has buttons.
-FALLBACK_CATEGORIES = ["Food", "Transport", "Entertainment", "Other"]
+FALLBACK_CATEGORIES = ["Еда", "Транспорт", "Развлечения", "Другое"]
 # Telegram sends this value in the X-Telegram-Bot-Api-Secret-Token header of every
 # webhook request; python-telegram-bot answers 403 to requests without it.
 WEBHOOK_SECRET_ENV = "WEBHOOK_SECRET"
