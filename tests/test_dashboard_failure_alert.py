@@ -6,6 +6,7 @@ checkout is never read.
 """
 from __future__ import annotations
 
+import http.client
 import sys
 from pathlib import Path
 
@@ -76,6 +77,20 @@ def test_send_reads_env_file_when_env_is_empty(tmp_path: Path) -> None:
     sender = FakeSender()
     assert fa.send_failure_alert("x", send=sender) is True
     assert sender.calls[0][:2] == (TOKEN, CHAT_ID)
+
+
+def test_env_file_export_prefix_and_inline_comment(tmp_path: Path) -> None:
+    fa.ENV_PATH.write_text(
+        f"export BOT_TOKEN={TOKEN}\nDASHBOARD_CHAT_ID={CHAT_ID}   # dashboard chat\n",
+        encoding="utf-8")
+    sender = FakeSender()
+    assert fa.send_failure_alert("x", send=sender) is True
+    assert sender.calls[0][:2] == (TOKEN, CHAT_ID)
+
+
+def test_send_http_protocol_error_does_not_raise(creds: None) -> None:
+    sender = FakeSender(http.client.IncompleteRead(b""))
+    assert fa.send_failure_alert("x", send=sender) is False
 
 
 def test_send_skips_without_credentials(capsys: pytest.CaptureFixture[str]) -> None:
@@ -153,3 +168,21 @@ def test_failed_build_without_publish_does_not_alert(
     with pytest.raises(RuntimeError, match="boom"):
         bd.main()
     assert sender.calls == []
+
+
+def test_rejected_publish_raises(monkeypatch: pytest.MonkeyPatch, creds: None,
+                                 tmp_path: Path) -> None:
+    # Telegram answering ok:false means the dashboard was not updated, so the
+    # build must fail and main() must alert.
+    class Resp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict:
+            return {"ok": False, "description": "Bad Request: chat not found"}
+
+    html = tmp_path / "out.html"
+    html.write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setattr(bd.requests, "post", lambda *a, **k: Resp())
+    with pytest.raises(RuntimeError, match="chat not found"):
+        bd.publish_to_telegram(html)

@@ -620,8 +620,8 @@ def publish_to_telegram(html_path: Path) -> None:
         raise type(exc)(str(exc).replace(token, "<BOT_TOKEN>")) from None
     result = resp.json()
     if not result.get("ok"):
-        print(f"⚠️  Telegram publish failed: {result}", file=sys.stderr)
-        return
+        # Raise so main() reports the failed publish to the Dashboard chat.
+        raise RuntimeError(f"Telegram publish failed: {result}")
 
     file_id = result["result"]["document"]["file_id"]
     _store_file_id_in_sheet(file_id)

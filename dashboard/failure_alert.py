@@ -12,6 +12,7 @@ CLI (used by run.sh):  python3 failure_alert.py "<reason>"
 """
 from __future__ import annotations
 
+import http.client
 import os
 import sys
 import urllib.parse
@@ -26,12 +27,27 @@ ALERT_HANDLED_EXIT_CODE = 3
 MAX_REASON_LEN = 200
 SEND_TIMEOUT_SEC = 30
 TOKEN_MASK = "<BOT_TOKEN>"
+UNKNOWN_REASON = "причина неизвестна"
 
 Sender = Callable[[str, str, str], None]
 
 
 def failure_text(reason: str, token: str) -> str:
-    """Alert text: the reason (masked, cut to MAX_REASON_LEN) and where the log is."""
+    """
+    Build the alert text.
+
+    Parameters
+    ----------
+    reason : str
+        Stage and exception type; masked and cut to MAX_REASON_LEN.
+    token : str
+        Bot token to replace with TOKEN_MASK.
+
+    Returns
+    -------
+    str
+        Message text with the reason and where the log is.
+    """
     if token:
         reason = reason.replace(token, TOKEN_MASK)
     if len(reason) > MAX_REASON_LEN:
@@ -42,7 +58,18 @@ def failure_text(reason: str, token: str) -> str:
 
 
 def post_message(token: str, chat_id: str, text: str) -> None:
-    """Send `text` to `chat_id` with the Bot API sendMessage method."""
+    """
+    Send a message with the Bot API sendMessage method.
+
+    Parameters
+    ----------
+    token : str
+        Bot token.
+    chat_id : str
+        Target chat.
+    text : str
+        Message text.
+    """
     data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage", data=data)
@@ -51,7 +78,20 @@ def post_message(token: str, chat_id: str, text: str) -> None:
 
 
 def _env_file_values(path: Path) -> dict[str, str]:
-    """KEY=VALUE pairs from a .env file; quotes around a value are dropped."""
+    """
+    Read KEY=VALUE pairs from a .env file.
+
+    Parameters
+    ----------
+    path : Path
+        The .env file; a missing file gives an empty dict.
+
+    Returns
+    -------
+    dict[str, str]
+        Values without an `export ` prefix, a ` #` comment after an
+        unquoted value, or surrounding quotes.
+    """
     if not path.is_file():
         return {}
     values = {}
@@ -60,14 +100,31 @@ def _env_file_values(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip("'\"")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip()
+        if value[:1] not in ("'", '"'):
+            value = value.split(" #", 1)[0].strip()
+        values[key] = value.strip("'\"")
     return values
 
 
 def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
-    """Send the alert; return True when Telegram accepted it.
+    """
+    Send the failure alert to DASHBOARD_CHAT_ID.
 
     Never raises: the alert must not hide the build error it reports.
+
+    Parameters
+    ----------
+    reason : str
+        Stage and exception type, never the exception text.
+    send : Sender, optional
+        Transport; defaults to post_message. Tests pass a fake.
+
+    Returns
+    -------
+    bool
+        True when the message was sent.
     """
     file_values = _env_file_values(ENV_PATH)
     token = os.getenv("BOT_TOKEN") or file_values.get("BOT_TOKEN", "")
@@ -78,7 +135,7 @@ def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
         return False
     try:
         (send or post_message)(token, chat_id, failure_text(reason, token))
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, http.client.HTTPException) as exc:
         # urllib errors quote the request URL, which holds the token.
         print("⚠️  Failure alert not sent: " + str(exc).replace(token, TOKEN_MASK),
               file=sys.stderr)
@@ -88,7 +145,20 @@ def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
 
 
 def main(argv: list[str]) -> int:
-    reason = " ".join(argv).strip() or "причина неизвестна"
+    """
+    CLI entry point for run.sh.
+
+    Parameters
+    ----------
+    argv : list[str]
+        Reason words.
+
+    Returns
+    -------
+    int
+        Always 0: a failed alert must not change the build's exit code.
+    """
+    reason = " ".join(argv).strip() or UNKNOWN_REASON
     send_failure_alert(reason)
     return 0
 
