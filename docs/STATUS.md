@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #11 dashboard build on Python 3.12, merged after issue #10 CI)  
-**Product code tip:** `edb7e15` (2026-11-19) — dashboard `run.sh` on Python 3.12, venv rebuilt on dependency change  
+**Updated by:** agent session (issue #17 header writes, merged after issues #10, #11)  
+**Product code tip:** `bb8c7c8` (2026-11-19) — Data writes by header names, RAW, thousands-comma amounts  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -29,6 +29,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
   for pip-format installs (Render Build Command; `dashboard/run.sh` installs it with `uv pip`).
+- Data writes follow the sheet's header names (column order is free) and go
+  `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
+  and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
 - `dashboard/run.sh` builds in `dashboard/venv/` on Python 3.12 via `uv`; the
   venv is recreated when `dashboard/requirements.txt` changes (stamp file
   `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
@@ -80,7 +83,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
-- 24 known-bug reproductions live in `tests/known_bugs/` as
+- Known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
