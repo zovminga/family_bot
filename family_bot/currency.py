@@ -74,10 +74,23 @@ CENT = Decimal("0.01")
 
 
 def format_amount(amount: float, symbol: str | None = None) -> str:
-    """Amount as the bot shows it: «1 234 дин», «12,50 €».
+    """
+    Amount as the bot shows it: «1 234 дин», «12,50 €».
 
     Thousands are split by a space, the decimal mark is a comma, and the two
     decimals appear only when they are not zero. Rounds half up to cents.
+
+    Parameters
+    ----------
+    amount : float
+        Amount to show.
+    symbol : str or None
+        Currency symbol put after the number; None shows the number alone.
+
+    Returns
+    -------
+    str
+        Formatted amount.
     """
     cents = int(Decimal(str(amount)).quantize(CENT, rounding=ROUND_HALF_UP) * 100)
     whole, frac = divmod(abs(cents), 100)
