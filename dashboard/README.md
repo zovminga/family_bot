@@ -28,7 +28,7 @@ Claude или OpenAI) и собирает один самодостаточны�
 
 ```bash
 cd family_bot
-pip install -r dashboard/requirements.txt
+uv sync    # see README.md; or: pip install -r dashboard/requirements.txt
 ```
 
 Нужны переменные окружения (берутся из `family_bot/.env`):

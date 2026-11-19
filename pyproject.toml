@@ -1,0 +1,45 @@
+[project]
+name = "family-bot"
+version = "0.1.0"
+description = "Telegram expense bot and offline HTML dashboard over Google Sheets"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+# Shared by the bot and the dashboard: both open the sheet through sheets.py.
+dependencies = [
+    "gspread>=6.1,<7",
+    "google-auth>=2.40",
+    "python-dotenv>=1.1",
+    "requests>=2.32.4",
+]
+
+[dependency-groups]
+bot = [
+    "python-telegram-bot[webhooks]>=22.2,<23",
+    "python-dateutil>=2.9",
+    # Voice input: offline speech-to-text; PyAV wheels bundle ffmpeg.
+    "vosk>=0.3.44",
+    "av>=14.0,<17",
+    "anthropic>=0.40,<1",
+]
+dashboard = [
+    "anthropic>=0.40,<1",
+    "openai>=1.40,<3",
+]
+dev = [
+    "pytest>=8.0",
+    "pip-audit>=2.7",
+]
+
+[tool.uv]
+# Modules live in the repo root, so uv installs dependencies only, not the project.
+package = false
+default-groups = ["bot", "dashboard", "dev"]
+# Lock only versions that ship wheels for the dashboard Mac and the Linux host,
+# so a package release without a wheel for one of them never enters the lock.
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
