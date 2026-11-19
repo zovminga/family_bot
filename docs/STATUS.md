@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #37 dashboard on a phone, per-currency sums)  
-**Product code tip:** `1d33021` (2026-11-19) — dashboard fits 375 px, per-currency sums (issue #37)  
+**Updated by:** agent session (issue #21 build failure alert, merged after issue #37)  
+**Product code tip:** `786cd63` (2026-11-19) — Telegram alert when a dashboard build fails (issue #21)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -64,6 +64,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   comment with HTML or `</script>` stays text. A Telegram publish error masks
   `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
   A failed Claude batch is not cached, the next run retries it.
+- Failed dashboard build alert (issue #21): a non-trial `run.sh` build that
+  fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
+  exception type (`dashboard/failure_alert.py`, stdlib only). Details:
+  `dashboard/SPEC.md` §5.1.
 - Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
   inside their card. «По каждой» with no Currency chosen shows sums per
   Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
