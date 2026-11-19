@@ -12,11 +12,14 @@
 #
 # The generated plist lives in ~/Library/LaunchAgents and is NOT committed
 # (it contains machine-specific absolute paths).
+#
+# LAUNCHD_LABEL names the agent (default local.family-bot.dashboard). Pass the
+# same value to every command, e.g. LAUNCHD_LABEL=my.label ./schedule.sh status.
 set -euo pipefail
 
 DASHBOARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_SH="$DASHBOARD_DIR/run.sh"
-LABEL="com.zovminga.familybot.dashboard"
+LABEL="${LAUNCHD_LABEL:-local.family-bot.dashboard}"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_OUT="$DASHBOARD_DIR/output/launchd.log"
 

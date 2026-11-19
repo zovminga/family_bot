@@ -36,7 +36,7 @@ def test_whoami_answers_without_google() -> None:
     run(bot.enforce_allowlist(upd, ctx))  # does not stop the update
     run(bot.whoami(upd, ctx))
     assert "ID: 111" in replies(upd)[0]
-    assert "В списке как: Azat" in replies(upd)[0]
+    assert "В списке как: Ann" in replies(upd)[0]
 
 
 def test_stranger_whoami_without_google_gives_id() -> None:

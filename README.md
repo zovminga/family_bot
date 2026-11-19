@@ -144,7 +144,7 @@ In Telegram, open your bot → `/whoami` → copy your numeric ID.
 Add household members to `.env`:
 
 ```bash
-ALLOWED_USERS=111111111:Azat,222222222:Lisa
+ALLOWED_USERS=111111111:Ann,222222222:Bob
 ```
 
 Restart the bot (Ctrl+C, then `family-bot`). Anyone not on this list is
@@ -160,6 +160,7 @@ words or the photo into a Draft. Get a key at
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
+BASE_CURRENCY=EUR   # used when the words or the receipt name no currency
 ```
 
 Without the key, manual entry by category and presets still work. A voice
@@ -222,6 +223,7 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `SHEET_NAME` | exact spreadsheet title, as in `.env` |
 | `ALLOWED_USERS` | same line as in `.env` |
 | `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
+| `BASE_CURRENCY` | optional, ISO code of the currency used when an expense names none (default `EUR`), as in `.env` |
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
 | `WEBHOOK_SECRET` | recommended: a random string of 1–256 characters `A–Z a–z 0–9 _ -` (command below) |
 

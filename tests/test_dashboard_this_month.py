@@ -27,7 +27,7 @@ node_only = pytest.mark.skipif(
 
 
 def _row(day: str, category: str, amount: int, cur: str = "дин") -> list[str]:
-    return [day, day[6:] + "-" + day[3:5], category, str(amount), cur, "Azat", ""]
+    return [day, day[6:] + "-" + day[3:5], category, str(amount), cur, "Ann", ""]
 
 
 # Per month (RSD): Rent on the 1st, Food and Fun inside and after day 19.

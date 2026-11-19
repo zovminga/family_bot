@@ -27,7 +27,7 @@ def _item(**overrides):
         "category": "Food",
         "amount": 12.5,
         "currency": "дин",
-        "who": "Azat",
+        "who": "Ann",
         "comment": "lunch",
     }
     base.update(overrides)
@@ -35,7 +35,7 @@ def _item(**overrides):
 
 
 def test_card_text_single_voice():
-    session = session_from_voice([_item()], who="Azat", transcript="ланч двенадцать")
+    session = session_from_voice([_item()], who="Ann", transcript="ланч двенадцать")
     text = card_text(session)
     assert "Расшифровка" in text
     assert "12.50" in text or "12,50" in text
@@ -45,11 +45,11 @@ def test_card_text_single_voice():
 def test_card_text_receipt_header():
     session = session_from_receipt(
         [_item(), _item(comment="beer", amount=3.0, category="Alcohol")],
-        who="Lisa",
-        merchant="Maxi",
+        who="Bob",
+        merchant="Shop",
     )
     text = card_text(session)
-    assert "Чек · Maxi" in text
+    assert "Чек · Shop" in text
     assert "2 трат" in text
 
 
@@ -169,8 +169,8 @@ def test_cancel_closes_and_later_taps_do_nothing():
 
 def test_add_draft_gives_distinct_ids_and_keeps_both():
     user_data: dict = {}
-    a = add_draft(user_data, session_from_voice([_item()], who="Azat", transcript="a"))
-    b = add_draft(user_data, session_from_voice([_item()], who="Azat", transcript="b"))
+    a = add_draft(user_data, session_from_voice([_item()], who="Ann", transcript="a"))
+    b = add_draft(user_data, session_from_voice([_item()], who="Ann", transcript="b"))
     assert a.id and b.id and a.id != b.id
     assert get_draft(user_data, a.id) is a
     assert get_draft(user_data, b.id) is b

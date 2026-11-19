@@ -15,7 +15,7 @@ A spending bucket loaded from the Config sheet (e.g. Food, Transport).
 _Avoid_: Tag, type, label
 
 **Spender**:
-The person who paid (Lisa, Azat, or Both for shared presets).
+The person who paid (a household member's name, or Both for shared presets).
 _Avoid_: User (prefer Spender for sheet identity; User is the Telegram account)
 
 **Currency**:

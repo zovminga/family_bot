@@ -145,7 +145,7 @@ def _group_by_bucket(items: list[dict]) -> list[dict]:
 def extract_receipt(image_bytes: bytes, media_type: Optional[str],
                     categories: list[str], currencies: list[str],
                     today: str, who: str,
-                    default_currency: str = "дин",
+                    default_currency: str,
                     model: str = DEFAULT_LLM_MODEL) -> dict:
     """Read a receipt photo and return grouped expenses.
 
