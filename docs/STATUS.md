@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #13 Draft ids, merged after issues #16, #19, #20)  
-**Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
+**Updated by:** agent session (issue #37 dashboard on a phone, per-currency sums)  
+**Product code tip:** `1d33021` (2026-11-19) — dashboard fits 375 px, per-currency sums (issue #37)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -64,6 +64,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   comment with HTML or `</script>` stays text. A Telegram publish error masks
   `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
   A failed Claude batch is not cached, the next run retries it.
+- Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
+  inside their card. «По каждой» with no Currency chosen shows sums per
+  Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
+  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
 
 ## Settled (do not re-open as unknowns)
 
