@@ -258,6 +258,9 @@ while an old and a new instance overlap during a deploy.
 | `/test_connection` | allowlisted | Ping Google Sheets |
 | `/cancel` `/stop` | allowlisted | Abort current flow |
 
+The bot fills Telegram's command menu (the «/» button) with these commands at
+startup (`bot.COMMANDS`), except `/stop`. The bot speaks Russian.
+
 ## Dashboard
 
 The bot does **not** build the dashboard. Build it on a laptop and publish

@@ -12,6 +12,7 @@ import pytest
 from family_bot import bot
 from family_bot import draft_expense as draft
 from family_bot import errors
+from family_bot import navigation as nav
 from family_bot import text_input
 from family_bot.conversation_states import State
 from tests.conftest import FakeSheetsClient, bot_context
@@ -81,7 +82,7 @@ def test_coffee_350_becomes_one_draft_item(claude):
     assert "кофе 350" in claude.prompts[0]
     text = draft.card_text(session)
     assert "«кофе 350»" in text and "Расшифровка" not in text
-    assert "350.00 дин" in text
+    assert "350 дин" in text
 
 
 def test_category_and_currency_snap_to_the_lists(claude):
@@ -183,5 +184,5 @@ def test_menu_text_claude_error_gets_shared_reply(monkeypatch, menu):
 
 
 def test_menu_buttons_still_work(menu):
-    state, msg, _ = menu("📊 Show statistics")
+    state, msg, _ = menu(nav.SHOW_STATS)
     assert msg.replies and msg.replies[-1][0] != text_input.HINT
