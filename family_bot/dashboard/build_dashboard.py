@@ -4,7 +4,7 @@
 Pipeline:
   1. Connect to the same Google Sheet the Telegram bot writes to (SheetsClient).
   2. Parse rows robustly (English/Russian headers, comma decimals).
-  3. Convert every amount to a base currency (default RSD) using live FX rates.
+  3. Convert every amount to the base currency (BASE_CURRENCY) using live FX rates.
   4. Group free-text comments into themes (rule-based by default; optional LLM).
   5. Inject the resulting JSON into template.html and write a self-contained file.
 
@@ -27,7 +27,7 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
-from family_bot.currency import to_iso
+from family_bot.currency import BASE_CURRENCY_ENV, DEFAULT_BASE, to_iso
 from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
 from family_bot.fx import fetch_rates
 from family_bot.llm import extract_json_object, reply_text
@@ -63,12 +63,18 @@ def cache_path(provider: str) -> Path:
     """Cache file is provider-specific so switching provider re-classifies."""
     return OUTPUT_DIR / f"llm_cache_{provider}.json"
 
-# Spender name normalization (Latin/Cyrillic + nickname → one canonical name).
-# NOTE: "Лиза" (July) and "snezhi" (from August) are treated as the same person.
-SPENDER_NORMALIZE = {
-    "азат": "Азат", "azat": "Азат",
-    "лиза": "Лиза", "lisa": "Лиза", "snezhi": "Лиза", "снежи": "Лиза", "лиса": "Лиза",
-}
+# Ordered (theme, keywords) pairs; the first theme with a matching keyword wins.
+ThemeRules = list[tuple[str, list[str]]]
+
+# Household settings read from .env (see .env.example).
+# Hide months before this one (YYYY-MM); empty shows all history.
+FROM_MONTH_ENV = "DASHBOARD_FROM_MONTH"
+FROM_MONTH_RE = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
+# Spender aliases «alias=Name,alias=Name»: one Spender under several spellings.
+SPENDER_ALIASES_ENV = "DASHBOARD_SPENDER_ALIASES"
+# Git-ignored JSON {theme: [extra keywords]} with the household's own shops and
+# places, merged into THEME_RULES. Only themes from THEME_RULES are allowed.
+THEME_KEYWORDS_PATH = DASHBOARD_DIR / "theme_keywords.json"
 
 # Comments matching this are ATM cash withdrawals / cash-outs, not real
 # spending — they only move money between accounts. Excluded from the dashboard
@@ -81,63 +87,54 @@ EXCLUDE_COMMENT_RE = re.compile(
 
 # Ordered keyword → theme rules (first match wins). Encodes the semantic
 # grouping of free-text comments without calling an external LLM.
-THEME_RULES: list[tuple[str, list[str]]] = [
+THEME_RULES: ThemeRules = [
     ("Подписки и сервисы", ["chatgpt", "cursor", "ps store", "psn", "ps5", "linkedin",
                             "линкедин", "spotify", "спотифай", "airalo", "sim", "internet",
                             "интернет", "yettel", "plasticity", "migaku", "мигаку",
                             "games", "game", "скин"]),
     ("Жильё и коммуналка", ["аренд", "коммунал", "копия ключей"]),
     ("Такси", ["такси", "taxi", "так си"]),
-    ("Метро и транспорт", ["метро", "автобус", "поезд", "train", "синкансен",
-                           "kamikochi", "кама кура", "морю"]),
-    ("Спорт и танцы", ["танцы", "фитпасс", "fitpass", "трена", "тренировк", "креатин"]),
+    ("Метро и транспорт", ["метро", "автобус", "поезд", "train"]),
+    ("Спорт и танцы", ["танцы", "трена", "тренировк", "креатин"]),
     ("Красота", ["маникюр", "педикюр", "брови", "стрижка", "массаж", "окрашивание",
                  "косметолог", "салон", "ламинир", "ретейнер", "очки", "сауна",
                  "шампунь", "крем", "маск", "косметик", "гель", "полотенц", "расческ",
                  "расчёск", "санскрин", "мыло", "салфетк", "пилк", "средства для волос",
-                 "сыворотк", "духи", "парфюм", "zone"]),
+                 "сыворотк", "духи", "парфюм"]),
     ("Здоровье и аптека", ["аптек", "витамин", "анализ", "таблетк", "лор", "стоматолог",
-                           "кариес", "коронка", "vizim", "психолог", "зубн", "паразит",
+                           "кариес", "коронка", "психолог", "зубн", "паразит",
                            "лекарств"]),
-    ("Кофе", ["sonder", "surf", "старбакс", "starbucks", "latte", "латте", "кофе", "coffee"]),
-    ("Суши и рамен", ["рамен", "ramen", "суши", "sushi", "ичиран", "afuri", "куросуши",
-                      "кура суши", "go sushi", "sushirito"]),
+    ("Кофе", ["старбакс", "starbucks", "latte", "латте", "кофе", "coffee"]),
+    ("Суши и рамен", ["рамен", "ramen", "суши", "sushi"]),
     ("Фастфуд и конбини", ["мак", "mcdo", "mcdonald", "макдак", "бургер", "burger",
                            "kfs", "кфс", "shake shack", "family mart", "familymart",
-                           "конбини", "комбини", "lawson", "7eleven", "7 eleven", "осам",
-                           "бурек"]),
-    ("Доставка (Wolt и пр.)", ["wolt", "wilt", "вольт", "кафетери", "kafeterija", "embers",
-                               "sloj", "zaokret", "березка", "плескавица", "паста",
-                               "карбонара", "пицца", "плов", "frenzy"]),
+                           "конбини", "комбини", "lawson", "7eleven", "7 eleven", "бурек"]),
+    ("Доставка (Wolt и пр.)", ["wolt", "wilt", "вольт", "плескавица", "паста",
+                               "карбонара", "пицца", "плов"]),
     ("Кафе и рестораны", ["кафе", "ресторан", "обед", "ужин", "завтрак", "бранч", "ланч",
-                          "bobo", "gosti", "berliner", "крокеты", "hotel beograd", "june",
-                          "джун", "7:00", "focus", "стамба", "сендвич", "сэндвич",
-                          "попоболены"]),
+                          "крокеты", "сендвич", "сэндвич"]),
     ("Дом и быт", ["temu", "jysk", "икеа", "ikea", "pepco", "контейнер", "чайник",
                    "вентилятор", "кружка", "наволочк", "строительн", "отвертк", "петля",
-                   "посудин", "уборка", "анжела", "lily", "штанген", "наждачк",
+                   "посудин", "уборка", "штанген", "наждачк",
                    "клей", "скотч", "dm", "дм"]),
-    ("Супермаркет и продукты", ["maxi", "макси", "меркатор", "vero", "веро", "супер", "идея",
-                                "ah", "woltmarket", "wolt market", "продукт", "супермаркет",
-                                "овощи", "рыба", "заморозк", "mali kalenic", "kfood", "корейск",
-                                "арома", "aroma", "комбини", "онигири", "бенто",
-                                "нудлс", "cup noodles", "силк", "to-to", "супы", "вода",
-                                "водичка", "ритер", "фрикадельк", "чай"]),
+    ("Супермаркет и продукты", ["супер", "ah", "woltmarket", "wolt market", "продукт",
+                                "супермаркет", "овощи", "рыба", "заморозк", "корейск",
+                                "комбини", "онигири", "бенто", "нудлс", "cup noodles",
+                                "супы", "вода", "водичка", "фрикадельк", "чай"]),
     ("Алкоголь", ["пиво", "вино", "глинтвейн"]),
     ("Сладости и снеки", ["снек", "чипсы", "конфет", "сникерс", "баунти", "мороженое",
                           "десерт", "круассан", "плюшк", "булк", "кулич", "дрип", "матча"]),
     ("Одежда и обувь", ["uniqlo", "юникло", "кроссов", "кроссы", "джинс", "юбк", "футболк",
                         "носки", "тапки", "туфли", "плать", "куртка", "шапка", "шарф",
                         "сумка", "кольца", "панам", "термобелье", "костюм", "грамичи",
-                        "arket", "кодзима", "украшен"]),
+                        "arket", "украшен"]),
     ("Шопинг и магазины", ["loft", "muji", "муджи", "донки", "донкихот", "канцеляр",
-                           "художествен", "дизайнерск", "драгстор", "kengur", "китайк",
+                           "художествен", "дизайнерск", "драгстор", "китайк",
                            "доставка из германии"]),
     ("Техника", ["airpods", "мышка", "наушник", "ноутбук", "телефон", "зарядк",
                  "клавиатур", "монитор", "принтер", "3д", "3d"]),
     ("Путешествия", ["билет", "перелет", "перелёт", "самолет", "самолёт", "flixbus", "numa",
-                     "страховк", "токио", "берлин", "милан", "amsterdam", "belgrad",
-                     "барселон", "роттердам"]),
+                     "страховк"]),
     ("Подарки", ["подар", "букет", "цветы", "открытк"]),
     ("Документы и бюрократия", ["юрист", "пошлин", "доверенность", "внж", "нотариус",
                                 "уверенье", "консульств", "виза", "апостил"]),
@@ -148,7 +145,7 @@ THEME_RULES: list[tuple[str, list[str]]] = [
                              "кинотеатр", "кино", "бильярд", "компьютерный клуб", "cs", "кс",
                              "пленк", "проявк", "парк", "park", "сад", "pokemon",
                              "pokémon", "покемон", "плюшев", "стикер", "sylvanian",
-                             "минипиги", "газет"]),
+                             "газет"]),
 ]
 
 
@@ -156,24 +153,21 @@ THEME_RULES: list[tuple[str, list[str]]] = [
 # substring-collision bugs we already fixed, so adding a new keyword that
 # breaks one of them fails loudly at startup instead of silently miscategorizing.
 CLASSIFY_SELFTEST = {
-    "Фитпасс": "Спорт и танцы",       # must not match "пасс" (метро)
-    "Fitpass": "Спорт и танцы",
     "Чайник": "Дом и быт",            # must beat "чай" (продукты)
     "DM": "Дом и быт",                # moved out of продукты
-    "Maxi": "Супермаркет и продукты",
     "Pokémon": "Развлечения и музеи",
     "Покупка продуктов": "Супермаркет и продукты",  # must not match "пок" (покемон)
     "Аренда квартиры": "Жильё и коммуналка",
     "English lessons": "Образование",
-    "Easy frenzy": "Доставка (Wolt и пр.)",   # meal-kit delivery, not groceries
 }
 
 
-def _run_classify_selftest() -> None:
+def _run_classify_selftest(rules: ThemeRules) -> None:
+    """Raise AssertionError when ``rules`` break a CLASSIFY_SELFTEST pair."""
     failures = [
-        f"{comment!r}: expected {expected!r}, got {classify_theme(comment)!r}"
+        f"{comment!r}: expected {expected!r}, got {classify_theme(comment, rules)!r}"
         for comment, expected in CLASSIFY_SELFTEST.items()
-        if classify_theme(comment) != expected
+        if classify_theme(comment, rules) != expected
     ]
     if failures:
         raise AssertionError(
@@ -267,18 +261,111 @@ def repair_category(category: str, comment: str, known: list[str]) -> str:
     return category
 
 
-def normalize_spender(name: str) -> str:
-    if not name:
+def parse_spender_aliases(raw: Optional[str]) -> dict[str, str]:
+    """
+    Parse DASHBOARD_SPENDER_ALIASES: «alias=Name,alias=Name».
+
+    Parameters
+    ----------
+    raw : str or None
+        Setting value; empty or None means no aliases.
+
+    Returns
+    -------
+    dict[str, str]
+        Lower-case alias → Spender name to show.
+
+    Raises
+    ------
+    ValueError
+        When an item has no «=» or an empty side.
+    """
+    aliases: dict[str, str] = {}
+    for item in (raw or "").split(","):
+        if not item.strip():
+            continue
+        alias, sep, name = item.partition("=")
+        if not sep or not alias.strip() or not name.strip():
+            raise ValueError(f"{SPENDER_ALIASES_ENV}: expected alias=Name, got {item.strip()!r}")
+        aliases[alias.strip().lower()] = name.strip()
+    return aliases
+
+
+def normalize_spender(name: str, aliases: dict[str, str]) -> str:
+    """
+    Spender name to show on the dashboard.
+
+    Parameters
+    ----------
+    name : str
+        Spender cell as stored.
+    aliases : dict[str, str]
+        Lower-case alias → name, from ``parse_spender_aliases``.
+
+    Returns
+    -------
+    str
+        The alias target, else the cell without edge spaces; «—» when empty.
+    """
+    if not name or not name.strip():
         return "—"
-    return SPENDER_NORMALIZE.get(name.strip().lower(), name.strip())
+    return aliases.get(name.strip().lower(), name.strip())
 
 
-def classify_theme(comment: str) -> Optional[str]:
-    """Return a semantic theme for a comment, or None if no rule matches."""
+def load_theme_rules(path: Path) -> ThemeRules:
+    """
+    THEME_RULES plus the household's own keywords from a JSON file.
+
+    Parameters
+    ----------
+    path : Path
+        File with {theme: [keyword, ...]}; a missing file adds nothing.
+
+    Returns
+    -------
+    ThemeRules
+        Rules in THEME_RULES order, extra keywords after the built-in ones.
+
+    Raises
+    ------
+    ValueError
+        When the file is not such an object or names an unknown theme.
+    """
+    if not path.exists():
+        return THEME_RULES
+    extra = json.loads(path.read_text(encoding="utf-8"))
+    themes = [theme for theme, _ in THEME_RULES]
+    if not isinstance(extra, dict):
+        raise ValueError(f"{path.name}: expected {{theme: [keywords]}}")
+    for theme, words in extra.items():
+        if theme not in themes:
+            raise ValueError(f"{path.name}: unknown theme {theme!r}, use one of THEME_RULES")
+        if not isinstance(words, list) or not all(isinstance(w, str) for w in words):
+            raise ValueError(f"{path.name}: {theme!r} must be a list of strings")
+    return [(theme, keywords + [w.lower() for w in extra.get(theme, [])])
+            for theme, keywords in THEME_RULES]
+
+
+def classify_theme(comment: str, rules: ThemeRules) -> Optional[str]:
+    """
+    Theme of a comment by keyword substring.
+
+    Parameters
+    ----------
+    comment : str
+        Free-text comment of a row.
+    rules : ThemeRules
+        Rules to apply in order (THEME_RULES or ``load_theme_rules`` output).
+
+    Returns
+    -------
+    Optional[str]
+        First theme with a keyword in the lower-cased comment, or None.
+    """
     if not comment or not comment.strip():
         return None
     text = comment.lower()
-    for theme, keywords in THEME_RULES:
+    for theme, keywords in rules:
         if any(kw in text for kw in keywords):
             return theme
     return None
@@ -482,8 +569,12 @@ def read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
 
 def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
           csv_path: Optional[str] = None, from_month: Optional[str] = None,
-          as_of: Optional[date] = None) -> Path:
+          as_of: Optional[date] = None,
+          theme_rules: Optional[ThemeRules] = None,
+          spender_aliases: Optional[dict[str, str]] = None) -> Path:
     load_dotenv(BOT_DIR / ".env")
+    rules = theme_rules if theme_rules is not None else THEME_RULES
+    aliases = spender_aliases or {}
 
     spreadsheet_url = None
     config_categories: list[str] = []
@@ -545,7 +636,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
             "currency": iso,
             "currency_symbol": ISO_TO_SYMBOL.get(iso, r.currency or iso),
             "amount_base": round(amount_base, 2) if amount_base is not None else None,
-            "who": normalize_spender(r.who),
+            "who": normalize_spender(r.who, aliases),
             "comment": r.comment,
         })
 
@@ -571,8 +662,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         print(f"→ Grouping comments into themes via LLM ({provider}, model={model})…")
         theme_map = group_comments_llm(comments, provider, model)
         # Hybrid: the LLM is great at semantics but doesn't know local venue/brand
-        # names (e.g. "Bobo", "Sloj"). For anything it left as "Прочее", fall back
-        # to the keyword rules, which encode that local knowledge. Keeps "Прочее"
+        # names (theme_keywords.json). For anything it left as "Прочее", fall back
+        # to the keyword rules, which hold that local knowledge. Keeps "Прочее"
         # to genuinely unclassifiable comments.
         fallback_hits = 0
         for r in rows:
@@ -582,7 +673,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
                 continue
             theme = theme_map.get(key, "Прочее")
             if theme == "Прочее":
-                ruled = classify_theme(key)
+                ruled = classify_theme(key, rules)
                 if ruled:
                     theme = ruled
                     fallback_hits += 1
@@ -595,7 +686,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
             if not r["comment"].strip():
                 r["theme"] = "Без комментария"
             else:
-                r["theme"] = classify_theme(r["comment"]) or "Прочее"
+                r["theme"] = classify_theme(r["comment"], rules) or "Прочее"
 
     data = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -605,7 +696,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         "base_symbol": ISO_TO_SYMBOL.get(base_iso, base_iso),
         "spreadsheet_url": spreadsheet_url,
         "rates": {k: rates.get(k) for k in {r["currency"] for r in rows}},
-        "theme_rules": ({} if use_llm else {t: kws for t, kws in THEME_RULES}),
+        "theme_rules": ({} if use_llm else {t: kws for t, kws in rules}),
         "grouping_mode": (provider if use_llm else "rules"),
         "from_month": from_month,
         # colour order: Config sheet first, so a Category keeps its colour.
@@ -678,8 +769,12 @@ def publish_to_telegram(html_path: Path) -> None:
 
 
 def main() -> None:
+    # Defaults come from .env, so the scheduled build needs no family-specific flags.
+    load_dotenv(BOT_DIR / ".env")
     parser = argparse.ArgumentParser(description="Build the family expenses dashboard.")
-    parser.add_argument("--base", default="RSD", help="Base currency ISO code (default: RSD).")
+    parser.add_argument("--base", default=os.getenv(BASE_CURRENCY_ENV) or DEFAULT_BASE.code,
+                        help=f"Base currency ISO code (default: {BASE_CURRENCY_ENV} "
+                             f"from .env, else {DEFAULT_BASE.code}).")
     parser.add_argument("--provider", choices=list(LLM_PROVIDERS), default="anthropic",
                         help="LLM backend for comment grouping (default: anthropic/Claude).")
     parser.add_argument("--model", default=None,
@@ -690,21 +785,27 @@ def main() -> None:
                              "ANTHROPIC_API_KEY or OPENAI_API_KEY). "
                              "Default: built-in rule-based grouping.")
     parser.add_argument("--csv", default=None, help="Build from a CSV export instead of Google Sheets.")
-    parser.add_argument("--from", dest="from_month", default="2025-10",
-                        help="Hide data before this month (YYYY-MM). Use '' to include everything.")
+    parser.add_argument("--from", dest="from_month", default=os.getenv(FROM_MONTH_ENV, ""),
+                        help=f"Hide data before this month (YYYY-MM). Default: {FROM_MONTH_ENV} "
+                             "from .env, else all history. Use '' to include everything.")
     parser.add_argument("--publish", action="store_true",
                         help="After building, upload the HTML to Telegram and store its "
                              "file_id in the 'Meta' sheet (needs BOT_TOKEN + DASHBOARD_CHAT_ID).")
     args = parser.parse_args()
+    if args.from_month and not FROM_MONTH_RE.fullmatch(args.from_month):
+        parser.error(f"--from / {FROM_MONTH_ENV}: expected YYYY-MM, got {args.from_month!r}")
 
     stage = "самопроверка классификатора"
     try:
-        _run_classify_selftest()
+        rules = load_theme_rules(THEME_KEYWORDS_PATH)
+        _run_classify_selftest(rules)
+        aliases = parse_spender_aliases(os.getenv(SPENDER_ALIASES_ENV))
         base = to_iso(args.base)
         model = args.model or DEFAULT_LLM_MODELS[args.provider]
         stage = "сборка"
         out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
-                         csv_path=args.csv, from_month=args.from_month or None)
+                         csv_path=args.csv, from_month=args.from_month or None,
+                         theme_rules=rules, spender_aliases=aliases)
         if args.publish:
             stage = "публикация в Telegram"
             publish_to_telegram(out_path)

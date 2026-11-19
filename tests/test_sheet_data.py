@@ -65,14 +65,14 @@ def test_normalize_month_from_date():
 def test_parse_rows_skips_bad_amounts():
     headers = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"]
     rows = [
-        ["07.08.2026", "2026-08", "Food", "7,65", "дин", "Azat", "lunch"],
-        ["08.08.2026", "", "Transport", "", "€", "Lisa", "bus"],
+        ["07.08.2026", "2026-08", "Food", "7,65", "дин", "Ann", "lunch"],
+        ["08.08.2026", "", "Transport", "", "€", "Bob", "bus"],
         ["09.08.2026", "", "Rent", "850", "€", "Both", "rent"],
     ]
     out = parse_rows(headers, rows)
     assert out == [
         Row(date=date(2026, 8, 7), month="2026-08", category="Food", amount=7.65,
-            currency="дин", who="Azat", comment="lunch"),
+            currency="дин", who="Ann", comment="lunch"),
         Row(date=date(2026, 8, 9), month="2026-08", category="Rent", amount=850.0,
             currency="€", who="Both", comment="rent"),
     ]

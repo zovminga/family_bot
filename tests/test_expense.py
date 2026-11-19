@@ -14,12 +14,12 @@ def test_to_row_includes_derived_month():
         category="Food",
         amount=12.5,
         currency="дин",
-        who="Azat",
+        who="Ann",
         comment="lunch",
     )
     assert record.month() == "2026-08"
     assert record.to_row() == [
-        "07.08.2026", "2026-08", "Food", 12.5, "дин", "Azat", "lunch",
+        "07.08.2026", "2026-08", "Food", 12.5, "дин", "Ann", "lunch",
     ]
 
 
@@ -41,7 +41,7 @@ def test_append_expense_uses_client_seam():
         category="Food",
         amount="7,65",
         currency="₽",
-        who="Lisa",
+        who="Bob",
         comment="tea",
     )
     append_expense(client, record)
@@ -56,38 +56,38 @@ def test_append_expense_lays_row_out_by_headers():
     ])
     append_expense(client, ExpenseRecord(
         date="07.08.2026", category="Food", amount=12.5, currency="дин",
-        who="Azat", comment="lunch",
+        who="Ann", comment="lunch",
     ))
     # No Month column: month is not written; unknown "Notes" stays empty.
     assert client.appended_rows == [
-        ["Azat", "07.08.2026", 12.5, "Food", "", "дин", "lunch"],
+        ["Ann", "07.08.2026", 12.5, "Food", "", "дин", "lunch"],
     ]
 
 
 def test_append_expense_without_headers_uses_default_layout():
     client = FakeSheetsClient()
     record = ExpenseRecord(date="07.08.2026", category="Food", amount=1,
-                           currency="€", who="Lisa")
+                           currency="€", who="Bob")
     append_expense(client, record)
     assert client.appended_rows == [record.to_row()]
 
 
 def test_to_row_rejects_headers_missing_a_field():
     record = ExpenseRecord(date="07.08.2026", category="Food", amount=1,
-                           currency="€", who="Lisa")
+                           currency="€", who="Bob")
     with pytest.raises(ValueError, match="currency"):
         record.to_row(["Date", "Category", "Amount", "Who", "Comment"])
 
 
 def test_to_row_writes_text_amount_as_number():
     record = ExpenseRecord(date="07.08.2026", category="Food", amount="7,65",
-                           currency="€", who="Lisa")
+                           currency="€", who="Bob")
     assert record.to_row()[3] == 7.65
 
 
 def test_to_row_rejects_unparseable_amount():
     record = ExpenseRecord(date="07.08.2026", category="Food", amount="abc",
-                           currency="€", who="Lisa")
+                           currency="€", who="Bob")
     with pytest.raises(ValueError, match="amount"):
         record.to_row()
 
@@ -98,7 +98,7 @@ def test_month_rejects_bad_date():
         category="Other",
         amount=1,
         currency="€",
-        who="Azat",
+        who="Ann",
     )
     with pytest.raises(ValueError):
         record.month()
@@ -116,13 +116,13 @@ def test_append_expenses_reads_headers_once_and_appends_one_batch():
     ])
     append_expenses(client, [
         ExpenseRecord(date="07.08.2026", category="Food", amount=1,
-                      currency="€", who="Lisa", comment="a"),
+                      currency="€", who="Bob", comment="a"),
         ExpenseRecord(date="07.08.2026", category="Food", amount=2,
-                      currency="€", who="Azat", comment="b"),
+                      currency="€", who="Ann", comment="b"),
     ])
     assert calls == [[
-        ["Lisa", "07.08.2026", 1, "Food", "€", "a"],
-        ["Azat", "07.08.2026", 2, "Food", "€", "b"],
+        ["Bob", "07.08.2026", 1, "Food", "€", "a"],
+        ["Ann", "07.08.2026", 2, "Food", "€", "b"],
     ]]
 
 

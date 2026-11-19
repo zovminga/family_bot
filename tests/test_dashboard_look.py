@@ -51,7 +51,7 @@ RenderPage = Callable[..., dict[str, Any]]
 
 
 def _row(day: str, category: str, amount: int, cur: str = "дин", comment: str = "") -> list[str]:
-    return [day, day[6:] + "-" + day[3:5], category, str(amount), cur, "Azat", comment]
+    return [day, day[6:] + "-" + day[3:5], category, str(amount), cur, "Ann", comment]
 
 
 @pytest.fixture

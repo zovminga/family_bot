@@ -14,44 +14,44 @@ def test_parse_empty():
 
 
 def test_parse_colon_and_equals():
-    assert parse_allowed_users("111:Azat,222=Lisa") == {
-        111: "Azat",
-        222: "Lisa",
+    assert parse_allowed_users("111:Ann,222=Bob") == {
+        111: "Ann",
+        222: "Bob",
     }
 
 
 def test_parse_whitespace_and_semicolon():
-    assert parse_allowed_users(" 111 : Azat ; 222 : Lisa ") == {
-        111: "Azat",
-        222: "Lisa",
+    assert parse_allowed_users(" 111 : Ann ; 222 : Bob ") == {
+        111: "Ann",
+        222: "Bob",
     }
 
 
 def test_parse_invalid():
     with pytest.raises(ValueError, match="Invalid ALLOWED_USERS"):
-        parse_allowed_users("Azat:111")
+        parse_allowed_users("Ann:111")
 
 
 def test_is_allowed():
-    users = {111: "Azat"}
+    users = {111: "Ann"}
     assert is_allowed(111, users) is True
     assert is_allowed(999, users) is False
     assert is_allowed(None, users) is False
 
 
 def test_spender_name():
-    users = {111: "Azat"}
-    assert spender_name(111, "tg_name", users) == "Azat"
+    users = {111: "Ann"}
+    assert spender_name(111, "tg_name", users) == "Ann"
     assert spender_name(999, "tg_name", users) == "tg_name"
 
 
 def test_parse_comma_inside_name():
     # I7: a comma inside a name must not split the entry
-    assert parse_allowed_users("111:Иван, Петров,222:Lisa") == {
+    assert parse_allowed_users("111:Иван, Петров,222:Bob") == {
         111: "Иван, Петров",
-        222: "Lisa",
+        222: "Bob",
     }
 
 
 def test_parse_trailing_separator():
-    assert parse_allowed_users("111:Azat,") == {111: "Azat"}
+    assert parse_allowed_users("111:Ann,") == {111: "Ann"}

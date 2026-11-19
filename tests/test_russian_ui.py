@@ -33,12 +33,12 @@ from tests.known_bugs.fakes import FakeQuery, make_update
 CATEGORIES = ["Еда", "Транспорт"]
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Еда", amount=1234.5,
-        currency="дин", who="Азат", comment="кофе"),
+        currency="дин", who="Анна", comment="кофе"),
     Row(date=date(2026, 10, 6), month="2026-10", category="Транспорт", amount=10.0,
-        currency="€", who="Азат", comment=""),
+        currency="€", who="Анна", comment=""),
 ]
 PRESETS = [{"name": "Аренда", "amount": 500.0, "currency": "€", "category": "Еда",
-            "who": "Азат"}]
+            "who": "Анна"}]
 # Latin words the User is meant to see: commands, settings, services, sheet names.
 ALLOWED_LATIN = re.compile(
     r"/\w+|ALLOWED_USERS|\.env|Telegram|Google|Sheets|Config|Regular_expenses|\bID\b")
@@ -102,7 +102,7 @@ def seen(monkeypatch: pytest.MonkeyPatch) -> Seen:
 @pytest.fixture
 def ctx() -> SimpleNamespace:
     return bot_context(categories=list(CATEGORIES), currencies=["дин", "€"],
-                       allowed_users={111: "Азат"}, presets=list(PRESETS),
+                       allowed_users={111: "Анна"}, presets=list(PRESETS),
                        sheets=FakeSheetsClient(categories=list(CATEGORIES)))
 
 
@@ -192,7 +192,7 @@ def test_preset_flow(seen: Seen, ctx: SimpleNamespace) -> None:
 def test_draft_card() -> None:
     session = draft.DraftSession(id="ab12", transcript="кофе", items=[
         {"comment": "кофе", "amount": 1234.0, "currency": "дин", "category": "Еда",
-         "date": "19.11.2026", "who": "Азат"}])
+         "date": "19.11.2026", "who": "Анна"}])
     texts = [draft.card_text(session)]
     grids = [draft.main_buttons(session), draft.item_edit_buttons(session, 0),
              draft.category_buttons(session, 0, CATEGORIES),

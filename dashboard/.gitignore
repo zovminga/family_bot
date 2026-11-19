@@ -10,3 +10,5 @@ __pycache__/
 venv/
 # Third-party bundle fetched+cached at build time (inlined into the output)
 vendor/
+# Household's own shop/place keywords for comment themes (see README)
+theme_keywords.json

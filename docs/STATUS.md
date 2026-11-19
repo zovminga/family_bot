@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #31 undo and Draft edits, merged after issues #32, #35)  
-**Product code tip:** `f6b937a` (2026-11-19) — «↩️ Отменить» after a save, «✏️ Сумма» / «👤 Кто» in the Draft card (issue #31)  
+**Updated by:** agent session (issue #41 household data in settings, merged after issues #31, #32, #35)  
+**Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Household data in settings, not code (issue #41, plan 5.6, I8):
+  `BASE_CURRENCY` (ISO; bot `Config.default_currency` and dashboard `--base`,
+  unset → EUR, unknown → setup problem line), `DASHBOARD_FROM_MONTH` (unset →
+  all history), `DASHBOARD_SPENDER_ALIASES`, own shops/places for themes in
+  git-ignored `dashboard/theme_keywords.json`, launchd label `LAUNCHD_LABEL`
+  (env or `.env`, default `local.family-bot.dashboard`). Owner must set
+  `BASE_CURRENCY` in `.env` and on Render, and keep the old label in `.env`
+  or reinstall the agent (see PR). Open: a few
+  test files still use real first names (edited in parallel by #32/#35);
+  `clock.DEFAULT_TZ` stays `Europe/Belgrade`.
 - Undo and Draft edits (issue #31, plan 3.3, F2): «✅ Сохранено» (manual and
   Draft) has «↩️ Отменить». It deletes the rows of that save, found by their
   values (Data has no row id); a row changed in the sheet is not deleted. Only

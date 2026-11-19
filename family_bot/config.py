@@ -52,6 +52,8 @@ class Config:
     categories: list[str] = field(default_factory=list)
     presets: list[dict] = field(default_factory=list)
     currencies: list[str] = field(default_factory=currency.symbols)
+    # Stored symbol written when an expense names no Currency (BASE_CURRENCY).
+    default_currency: str = currency.DEFAULT_BASE.symbol
     problems: list[str] = field(default_factory=list)
 
 
@@ -191,6 +193,35 @@ def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
             f"укажите имя IANA, например {clock.DEFAULT_TZ}, или удалите строку из .env"))
 
 
+def _default_currency(code: Optional[str], problems: list[str]) -> str:
+    """
+    Stored symbol of the BASE_CURRENCY Currency.
+
+    Parameters
+    ----------
+    code : str or None
+        Value of BASE_CURRENCY (ISO code); empty means the default.
+    problems : list[str]
+        Problem lines; an unknown code appends one.
+
+    Returns
+    -------
+    str
+        Symbol written to Data when an expense names no Currency.
+    """
+    fallback = currency.DEFAULT_BASE
+    if not code:
+        return fallback.symbol
+    found = currency.find(code)
+    if found is None or found.code != code.strip().upper():
+        problems.append(problem(
+            f"{currency.BASE_CURRENCY_ENV}={code!r} — неизвестная валюта, взята {fallback.code}",
+            "укажите ISO-код одной из валют бота: "
+            + ", ".join(c.code for c in currency.CURRENCIES)))
+        return fallback.symbol
+    return found.symbol
+
+
 def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
                  problems: list[str]) -> Optional[SheetsClient]:
     """Open the spreadsheet from GOOGLE_CREDS_PATH / SHEET_NAME, or add problem lines."""
@@ -283,6 +314,7 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
     cfg = Config(allowed_users=_allowed_users(env.get("ALLOWED_USERS"), problems),
                  problems=problems)
     _check_time_zone(env.get(clock.TZ_ENV), problems)
+    cfg.default_currency = _default_currency(env.get(currency.BASE_CURRENCY_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))
     return cfg

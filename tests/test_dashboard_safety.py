@@ -89,7 +89,7 @@ def _page_script(html: str) -> str:
 
 def test_script_close_in_data_keeps_page_intact(build_from_rows):
     comment = f"{SCRIPT_CLOSE} __CHARTJS__ a\u2028b"
-    html = build_from_rows([["01.11.2026", "2026-11", "Food", "100", "дин", "Azat", comment]])
+    html = build_from_rows([["01.11.2026", "2026-11", "Food", "100", "дин", "Ann", comment]])
 
     # Exactly the two template scripts: Chart.js and the dashboard.
     assert html.lower().count("</script") == 2, "data closed or opened a script tag"
@@ -103,7 +103,7 @@ def test_script_close_in_data_keeps_page_intact(build_from_rows):
 def test_sheet_text_renders_as_text(build_from_rows, tmp_path):
     rows = [
         ["01.11.2026", "2026-11", XSS, "100", "дин", XSS, XSS],
-        ["02.10.2026", "2026-10", XSS, "50", "€", "Lisa", "кофе " + XSS],
+        ["02.10.2026", "2026-10", XSS, "50", "€", "Bob", "кофе " + XSS],
     ]
     html = build_from_rows(rows)
     runner = tmp_path / "run.js"
@@ -125,8 +125,8 @@ def test_rows_parsed_by_shared_row(build_from_rows):
     # The build reads rows through sheet_data.parse_rows: dates come out as
     # DD.MM.YYYY, Currency words map through the registry, bad amounts are skipped.
     html = build_from_rows([
-        ["2026-11-05", "", "Food", "1 200", "евро", "Azat", "обед"],
-        ["06.11.2026", "", "Food", "не число", "дин", "Azat", "x"],
+        ["2026-11-05", "", "Food", "1 200", "евро", "Ann", "обед"],
+        ["06.11.2026", "", "Food", "не число", "дин", "Ann", "x"],
     ])
     data = json.loads(re.search(r"const DATA = (.*);\n", _page_script(html)).group(1))
     assert [(r["date"], r["month"], r["amount"], r["currency"]) for r in data["rows"]] == [

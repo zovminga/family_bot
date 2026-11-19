@@ -214,7 +214,6 @@ MANUAL = flow_manual.ManualFlow(
 # ---------- Voice / photo Draft confirmation ----------
 # Extraction lives in voice_input / photo_input; review/edit/save lives in
 # draft_expense. Handlers here are thin Telegram adapters.
-DEFAULT_CURRENCY = "дин"  # used when the currency wasn't spoken
 # user_data key: AmountEdit while the User types a new amount («✏️ Сумма»).
 KEY_AMOUNT_EDIT = "draft_amount_edit"
 BAD_DRAFT_AMOUNT = (
@@ -274,7 +273,7 @@ async def text_expense(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         session = await asyncio.to_thread(
             text_input.draft_from_text, text, categories=settings.categories,
             currencies=settings.currencies,
-            today=today, who=who, default_currency=DEFAULT_CURRENCY)
+            today=today, who=who, default_currency=settings.default_currency)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Text extract", e)
         await status.edit_text(errors.NOT_PARSED)
@@ -317,7 +316,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         result = await asyncio.to_thread(
             vx.extract_expenses, transcript, settings.categories, settings.currencies,
-            today, who, DEFAULT_CURRENCY)
+            today, who, settings.default_currency)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Voice extract", e)
         await status.edit_text(f"🎧 «{transcript}»\n\n{errors.NOT_PARSED}")
@@ -368,7 +367,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         result = await asyncio.to_thread(
             px.extract_receipt, bytes(buf), media_type, settings.categories,
-            settings.currencies, today, who, DEFAULT_CURRENCY)
+            settings.currencies, today, who, settings.default_currency)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Receipt extract", e)
         await status.edit_text(errors.NOT_PARSED)

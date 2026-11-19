@@ -125,7 +125,7 @@ def test_failed_publish_build_alerts_without_error_text(
     # Build errors can quote sheet rows (spender, amount, comment). Only the
     # stage and the exception type may leave the machine.
     def broken_build(**_kwargs: object) -> Path:
-        raise RuntimeError("1 row(s) have a Currency with no FX rate: Lisa 1500 аренда")
+        raise RuntimeError("1 row(s) have a Currency with no FX rate: Bob 1500 аренда")
 
     sender = FakeSender()
     monkeypatch.setattr(fa, "post_message", sender)
@@ -134,7 +134,7 @@ def test_failed_publish_build_alerts_without_error_text(
     assert _run_main(monkeypatch, ["--publish"]) == fa.ALERT_HANDLED_EXIT_CODE
     [(_, _, text)] = sender.calls
     assert "сборка: RuntimeError" in text
-    assert "Lisa" not in text and "1500" not in text and "аренда" not in text
+    assert "Bob" not in text and "1500" not in text and "аренда" not in text
 
 
 def test_failed_publish_step_names_publish_stage(
