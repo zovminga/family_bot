@@ -111,6 +111,10 @@ class FakeSheetsClient:
         for row in rows:
             self.append_data_row(row)
 
+    def delete_data_rows(self, row_numbers: list[int]) -> None:
+        for n in sorted(set(row_numbers), reverse=True):
+            del self._data_values[n - 1]
+
     def read_regular_values(self) -> list[list[str]]:
         return [list(r) for r in self._regular_values]
 
