@@ -4,7 +4,6 @@ import json
 import asyncio
 from datetime import timedelta
 from dateutil import parser as dparser
-from dateutil.relativedelta import relativedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -26,14 +25,13 @@ import regular
 import draft_expense as draft
 import flow_preset
 import navigation as nav
+from flows import stats as flow_stats
 from conversation_states import (
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR, TYPING_CMNT, CHOOSE_DT, TYPING_DT,
     CHOOSE_PRESET,
-    STAT_CAT, STAT_TYPE, STAT_DATE_FROM, STAT_DATE_TO, STAT_MONTH,
-    STAT_GROUP_CURRENCY, STAT_CONVERT_CURRENCY, STAT_SHOW_DETAILS,
 )
 from expense import ExpenseRecord, append_expense
-from sheet_data import normalize_rows, DATE_FMT, MONTH_FMT
+from sheet_data import normalize_rows, DATE_FMT
 from sheets import SheetsClient, open_client
 import analytics
 
@@ -237,37 +235,13 @@ def load_expense_rows() -> list[dict]:
     return normalize_rows(all_values[0], all_values[1:])
 
 
-def get_currencies_from_sheet() -> list[str]:
-    """Gets list of unique currencies from Google Sheets."""
-    try:
-        return analytics.unique_currencies(load_expense_rows(), fallback=CURS)
-    except Exception as e:
-        print(f"Error getting currencies: {e}")
-        return CURS
-
-
-def get_last_n_records(n: int = 3, category: str = None) -> str:
-    """Returns last N records from Google Sheets, optionally filtered by category."""
-    try:
-        return analytics.format_last_n(load_expense_rows(), n=n, category=category)
-    except Exception as e:
-        return f"❌ Error getting records: {e}"
-
-
-def compute_stats(cat, month=None, date_from=None, date_to=None,
-                 group_by_currency=True, convert_to_currency=None):
-    """Computes statistics with support for custom periods and currency conversion.
-    Returns tuple: (stats_text, conversion_details_dict)"""
-    return analytics.aggregate(
-        load_expense_rows(),
-        category=cat,
-        month=month,
-        date_from=date_from,
-        date_to=date_to,
-        group_by_currency=group_by_currency,
-        convert_to_currency=convert_to_currency,
-        get_rate=analytics.http_exchange_rate,
-    )
+# Statistics conversation; data sources are read lazily so /reloadcats and
+# test monkeypatching of load_expense_rows apply.
+STATS = flow_stats.StatsFlow(
+    categories=lambda: CATS,
+    load_rows=lambda: load_expense_rows(),
+    fallback_currencies=lambda: CURS,
+)
 
 
 # ---------- Voice / photo Draft confirmation ----------
@@ -416,6 +390,7 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Conversation steps ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    flow_stats.reset(context.user_data)
     await nav.show_main_menu(update, context)
     return CHOOSE_ACTION
 
@@ -448,13 +423,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await flow_preset.begin_preset_picker(update, context, DEFAULTS)
 
     if text == "📊 Show statistics" or text == "Show statistics":
-        kb = [["All categories", "Specific category"]]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "📊 Statistics for all categories or specific?",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return STAT_CAT
+        return await STATS.begin(update, context)
 
     await update.message.reply_text("Please press a button 😉")
     return CHOOSE_ACTION
@@ -621,260 +590,6 @@ async def save_row(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str:
     return await nav.go_home(update, context)
 
 
-# ----- Stats flow -----
-async def stat_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles category selection for statistics."""
-    text = update.message.text
-    
-    # Handle "To start" button
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    if text == "All categories":
-        context.user_data["stat_cat"] = "All"
-    elif text == "Specific category":
-        # Show list of categories
-        kb = [[c] for c in CATS]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "📂 Choose category:",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return STAT_CAT
-    else:
-        # Specific category selected
-        context.user_data["stat_cat"] = text
-    
-    # Now ask for statistics type
-    cat = context.user_data["stat_cat"]
-    kb = [["📜 Last 3 records", "📅 Custom period", "📆 By months"]]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        f"📊 Statistics type for category '{cat}':",
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return STAT_TYPE
-
-
-async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles statistics type selection."""
-    text = update.message.text
-    
-    # Handle "To start" button
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    if text == "📜 Last 3 records":
-        # Show last 3 records immediately
-        cat = context.user_data.get("stat_cat", "All")
-        last_records = get_last_n_records(3, cat if cat != "All" else None)
-        await update.message.reply_text(last_records)
-        return await nav.go_home(update, context)
-    
-    elif text == "📅 Custom period":
-        # Ask for start date
-        kb = [nav.home_row()]
-        await update.message.reply_text(
-            "📅 Enter start date (DD.MM.YYYY):",
-            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
-        )
-        return STAT_DATE_FROM
-    
-    elif text == "📆 By months":
-        # Show list of months
-        now = clock.now()
-        months = [(now.replace(day=1) - relativedelta(months=i)).strftime(MONTH_FMT) for i in range(12)]
-        kb = [[m] for m in months]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "📆 Choose month:",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return STAT_MONTH
-    
-    else:
-        await update.message.reply_text("Please choose a valid option")
-        return STAT_TYPE
-
-
-async def stat_date_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles start date input for custom period."""
-    text = update.message.text
-    
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    try:
-        date_from = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
-        context.user_data["stat_date_from"] = date_from
-        kb = [nav.home_row()]
-        await update.message.reply_text(
-            "📅 Enter end date (DD.MM.YYYY):",
-            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
-        )
-        return STAT_DATE_TO
-    except Exception:
-        await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
-        return STAT_DATE_FROM
-
-
-async def stat_date_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles end date input for custom period."""
-    text = update.message.text
-    
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    try:
-        date_to = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
-        context.user_data["stat_date_to"] = date_to
-        
-        # Ask about currency grouping
-        kb = [["Yes", "No"]]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "💱 Group by currencies?",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return STAT_GROUP_CURRENCY
-    except Exception:
-        await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
-        return STAT_DATE_TO
-
-
-async def stat_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles month selection for statistics."""
-    text = update.message.text
-    
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    context.user_data["stat_month"] = text
-    
-    # Ask about currency grouping
-    kb = [["Yes", "No"]]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        "💱 Group by currencies?",
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return STAT_GROUP_CURRENCY
-
-
-async def stat_group_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles currency grouping choice."""
-    text = update.message.text
-    
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    group_by_currency = text == "Yes"
-    context.user_data["stat_group_currency"] = group_by_currency
-    
-    if group_by_currency:
-        # Show statistics with grouping
-        await show_statistics_result(update, context)
-        return CHOOSE_ACTION
-    else:
-        # Ask for currency to convert to
-        currencies = get_currencies_from_sheet()
-        kb = [[c] for c in currencies]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "💱 Convert all expenses to which currency?",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return STAT_CONVERT_CURRENCY
-
-
-async def stat_convert_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles currency selection for conversion."""
-    text = update.message.text
-    
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-    
-    context.user_data["stat_convert_to"] = text
-    
-    # Show statistics and ask about details
-    await show_statistics_result(update, context, ask_details=True)
-    return STAT_SHOW_DETAILS
-
-
-async def stat_show_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles showing conversion details or finishing."""
-    text = update.message.text
-
-    if nav.is_home_text(text):
-        return await nav.go_home(update, context)
-
-    if text == "Show details":
-        conversion_details = context.user_data.get("conversion_details", {})
-        if conversion_details:
-            lines = ["💱 Conversion details:\n"]
-            for from_cur, details in conversion_details.items():
-                lines.append(
-                    f"{from_cur} → {context.user_data.get('stat_convert_to', '?')}:\n"
-                    f"  Rate: {details['rate']:.4f}\n"
-                    f"  Original: {details['original_amount']:,.2f} {from_cur}\n"
-                    f"  Converted: {details['converted_amount']:,.2f} "
-                    f"{context.user_data.get('stat_convert_to', '?')}\n"
-                )
-            await update.message.reply_text("\n".join(lines))
-        else:
-            await update.message.reply_text("No conversion details available")
-
-    return await nav.go_home(update, context)
-
-
-async def show_statistics_result(update: Update, context: ContextTypes.DEFAULT_TYPE, ask_details: bool = False):
-    """Shows statistics result and optionally asks for details."""
-    cat = context.user_data.get("stat_cat", "All")
-    group_by_currency = context.user_data.get("stat_group_currency", True)
-    convert_to = context.user_data.get("stat_convert_to")
-
-    month = context.user_data.get("stat_month")
-    date_from = context.user_data.get("stat_date_from")
-    date_to = context.user_data.get("stat_date_to")
-
-    if month:
-        stats, conversion_details = compute_stats(
-            cat, month=month, group_by_currency=group_by_currency,
-            convert_to_currency=convert_to
-        )
-        period_text = f"for {month}"
-    elif date_from and date_to:
-        stats, conversion_details = compute_stats(
-            cat, date_from=date_from, date_to=date_to,
-            group_by_currency=group_by_currency, convert_to_currency=convert_to
-        )
-        period_text = f"from {date_from} to {date_to}"
-    else:
-        stats = "❌ Error: period not specified"
-        conversion_details = {}
-        period_text = ""
-
-    if conversion_details:
-        context.user_data["conversion_details"] = conversion_details
-
-    if convert_to:
-        stats_text = f"📊 Statistics {period_text}, category '{cat}' (in {convert_to}):\n{stats}"
-    else:
-        stats_text = f"📊 Statistics {period_text}, category '{cat}':\n{stats}"
-
-    await update.message.reply_text(stats_text)
-
-    if ask_details and conversion_details:
-        kb = [["Show details", "Done (thanks)"]]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "Would you like to see conversion details?",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-    else:
-        await nav.show_main_menu(update, context)
-
-
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows current categories."""
     if CATS:
@@ -1008,14 +723,7 @@ def main():
             CHOOSE_DT: [CallbackQueryHandler(choose_dt)],
             TYPING_DT: [MessageHandler(filters.TEXT & ~filters.COMMAND, type_dt)],
             CHOOSE_PRESET: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_preset)],
-            STAT_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_cat)],
-            STAT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_type)],
-            STAT_DATE_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_from)],
-            STAT_DATE_TO: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_date_to)],
-            STAT_MONTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_month)],
-            STAT_GROUP_CURRENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_group_currency)],
-            STAT_CONVERT_CURRENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_convert_currency)],
-            STAT_SHOW_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, stat_show_details)],
+            **STATS.states(),
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
