@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #17 header writes, RAW, amount separators)  
-**Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
+**Product code tip:** `bb8c7c8` (2026-11-19) — Data writes by header names, RAW, thousands-comma amounts  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
