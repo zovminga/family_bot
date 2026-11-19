@@ -15,6 +15,13 @@ those as project gaps, and do not report a file you did not finish reading as
 unknown — jump to the section the task needs (dashboard index is at the top of
 `dashboard/SPEC.md`).
 
+## Work tracking
+
+Planned work lives in GitHub Issues with the `ready-for-agent` label. Each issue
+has acceptance criteria and native "blocked by" links; start only an issue whose
+blockers are closed. One issue = one branch = one PR whose body says
+`Closes #<n>`. Source plan: [`docs/specs/2026-11-revision.md`](docs/specs/2026-11-revision.md).
+
 ## Doc map
 
 | Reach when… | File |
