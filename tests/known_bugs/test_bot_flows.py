@@ -1,0 +1,222 @@
+"""Known-bug reproductions for bot flows.
+
+Each test asserts the correct behaviour and is marked xfail(strict=True) with
+its finding id from docs/specs/2026-11-revision.md. A fix removes the marker.
+"""
+import asyncio
+import math
+import threading
+import time
+
+import pytest
+from telegram import Chat, Message, Update, User
+from telegram.ext import MessageHandler, filters
+from datetime import datetime, timezone
+
+import bot
+import draft_expense as draft
+import navigation as nav
+from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
+from conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
+
+ROWS = [
+    {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
+     "currency": "дин", "who": "Azat", "comment": ""},
+    {"date": "05.11.2026", "month": "2026-11", "category": "Food", "amount": 7.0,
+     "currency": "дин", "who": "Azat", "comment": ""},
+]
+
+
+def run(coro):
+    # A private loop: asyncio.run() would unset the main-thread loop that
+    # tests/test_navigation.py still reaches via asyncio.get_event_loop().
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.fixture(autouse=True)
+def _rows(monkeypatch):
+    monkeypatch.setattr(bot, "load_expense_rows", lambda: list(ROWS))
+
+
+def last_reply_texts(update):
+    return [t for t, _ in update.message.replies]
+
+
+# 1. Stats "Yes" path leaves stat_month → later custom period shows old month.
+@known_bug("R7")
+def test_custom_period_after_month_flow_uses_requested_period(ctx):
+    run(bot.stat_cat(make_update("All categories"), ctx))
+    run(bot.stat_type(make_update("📆 By months"), ctx))
+    run(bot.stat_month(make_update("2026-10"), ctx))
+    assert run(bot.stat_group_currency(make_update("Yes"), ctx)) == CHOOSE_ACTION
+    # second query from the main menu: custom period in November
+    run(bot.stat_cat(make_update("All categories"), ctx))
+    run(bot.stat_type(make_update("📅 Custom period"), ctx))
+    run(bot.stat_date_from(make_update("01.11.2026"), ctx))
+    run(bot.stat_date_to(make_update("30.11.2026"), ctx))
+    upd = make_update("Yes")
+    run(bot.stat_group_currency(upd, ctx))
+    result = last_reply_texts(upd)[0]
+    assert "from 01.11.2026 to 30.11.2026" in result, result  # actually: "for 2026-10 … 100.00"
+
+
+# 2. /start mid-flow keeps stale stat_convert_to → next "Yes" query is silently converted.
+@known_bug("R7")
+def test_start_clears_previous_flow_state(ctx):
+    ctx.user_data.update(stat_convert_to="€", stat_month="2026-10")
+    run(bot.start(make_update("/start"), ctx))
+    stale = [k for k in ctx.user_data if k.startswith("stat_")]
+    assert not stale, stale
+
+
+# 3. "No" grouping + convert to the only currency (or FX failure) → no details →
+#    main menu is shown but state stays STAT_SHOW_DETAILS → next menu tap is eaten.
+@known_bug("R8")
+def test_no_details_returns_to_menu_state(ctx):
+    ctx.user_data.update(stat_cat="All", stat_month="2026-10", stat_group_currency=False)
+    state = run(bot.stat_convert_currency(make_update("дин"), ctx))
+    assert state == CHOOSE_ACTION, f"state={state} (STAT_SHOW_DETAILS={STAT_SHOW_DETAILS})"
+
+
+@known_bug("R8")
+def test_menu_tap_after_no_details_is_not_swallowed(ctx):
+    ctx.user_data.update(stat_cat="All", stat_month="2026-10", stat_group_currency=False)
+    state = run(bot.stat_convert_currency(make_update("дин"), ctx))
+    handler = {STAT_SHOW_DETAILS: bot.stat_show_details, CHOOSE_ACTION: bot.choose_action}[state]
+    upd = make_update("💰 Add expense")
+    run(handler(upd, ctx))
+    assert "Choose category" in last_reply_texts(upd)[0], last_reply_texts(upd)
+
+
+# 4. Manual amount accepts nan / inf / negative / zero.
+@known_bug("R6")
+@pytest.mark.parametrize("text", ["nan", "inf", "-500", "0"])
+def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
+    run(bot.type_amount(make_update(text), ctx))
+    assert "amt" not in ctx.user_data, f"{text!r} accepted as {ctx.user_data.get('amt')}"
+
+
+# 5. "$" is not in bot.CURS → voice/photo dollars become dinars.
+@known_bug("R4")
+def test_dollar_currency_survives_snap():
+    import voice_input as vx
+    assert vx._snap_currency("$", bot.CURS, bot.DEFAULT_CURRENCY) == "$"
+
+
+# 6. A second voice draft silently replaces the first; the OLD card's Save saves the NEW items.
+@known_bug("R1")
+def test_old_card_save_does_not_save_other_draft(ctx):
+    a = draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
+                                   "date": "01.11.2026", "category": "Food"}],
+                                 who="Azat", transcript="chips")
+    a.store(ctx.user_data)
+    b = draft.session_from_voice([{"comment": "taxi", "amount": 900.0, "currency": "дин",
+                                   "date": "01.11.2026", "category": "Transport"}],
+                                 who="Azat", transcript="taxi")
+    b.store(ctx.user_data)
+    sheets = FakeSheets()
+    # user taps "Save" on card A (callback_data carries no draft id)
+    draft.apply_callback("save", draft.DraftSession.load(ctx.user_data), bot.CATS, bot.CURS, sheets)
+    assert [r[6] for r in sheets.rows] == ["chips"], sheets.rows
+
+
+# 7. go_home (/cancel, 🏠, finishing any manual/preset/stat flow) wipes an open voice draft.
+@known_bug("R9")
+def test_go_home_keeps_open_draft(ctx):
+    draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
+                               "date": "01.11.2026", "category": "Food"}],
+                             who="Azat", transcript="chips").store(ctx.user_data)
+    run(nav.go_home(make_update("🏠 To start"), ctx))
+    assert draft.DraftSession.load(ctx.user_data).items, "draft lost"
+
+
+# 8. Multi-item save fails half-way → session kept → retry duplicates saved items.
+@known_bug("R2")
+def test_partial_save_retry_does_not_duplicate(ctx, monkeypatch):
+    items = [{"comment": f"i{n}", "amount": 10.0, "currency": "дин",
+              "date": "01.11.2026", "category": "Food"} for n in range(3)]
+    draft.session_from_receipt(items, who="Azat").store(ctx.user_data)
+    sheets = FakeSheets(fail_on_call=3)
+    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    with pytest.raises(RuntimeError):
+        run(bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx))
+    run(bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx))  # user retries
+    comments = [r[6] for r in sheets.rows]
+    assert comments == ["i0", "i1", "i2"], comments
+
+
+# 9. Double tap on Save: second callback overwrites "✅ Сохранено" with "Нечего сохранять".
+@known_bug("R16")
+def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
+    draft.session_from_voice([{"comment": "chips", "amount": 100.0, "currency": "дин",
+                               "date": "01.11.2026", "category": "Food"}],
+                             who="Azat", transcript="chips").store(ctx.user_data)
+    sheets = FakeSheets()
+    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    q1, q2 = FakeQuery("vx:save"), FakeQuery("vx:save")
+    run(bot.vx_callback(make_update(query=q1), ctx))
+    run(bot.vx_callback(make_update(query=q2), ctx))
+    assert len(sheets.rows) == 1
+    assert not q2.edits or q2.edits[-1].startswith("✅"), q2.edits
+
+
+# 10. Blocking gspread call inside async handler stalls the event loop for everyone.
+@known_bug("R11")
+def test_save_does_not_block_event_loop(ctx, monkeypatch):
+    class SlowSheets(FakeSheets):
+        def append_data_row(self, row):
+            time.sleep(0.6)
+            super().append_data_row(row)
+
+    sheets = SlowSheets()
+    monkeypatch.setattr(bot, "get_sheets", lambda: sheets)
+    draft.session_from_voice([{"comment": "chips", "amount": 1.0, "currency": "дин",
+                               "date": "01.11.2026", "category": "Food"}],
+                             who="Azat", transcript="chips").store(ctx.user_data)
+
+    async def scenario():
+        ticks = 0
+
+        async def ticker():
+            nonlocal ticks
+            for _ in range(6):
+                await asyncio.sleep(0.1)
+                ticks += 1
+
+        t = asyncio.create_task(ticker())
+        await asyncio.sleep(0)
+        await bot.vx_callback(make_update(query=FakeQuery("vx:save")), ctx)
+        ticked_during_save = ticks
+        await t
+        return ticked_during_save
+
+    assert run(scenario()) >= 4, "event loop frozen during Sheets write"
+
+
+# 11. Edited messages are routed into the conversation like new input.
+@known_bug("R12")
+def test_edited_message_not_treated_as_new_input():
+    user = User(id=111, first_name="A", is_bot=False)
+    chat = Chat(id=111, type="private")
+    msg = Message(message_id=5, date=datetime.now(timezone.utc), chat=chat,
+                  from_user=user, text="5000")
+    upd = Update(update_id=1, edited_message=msg)
+    h = MessageHandler(filters.TEXT & ~filters.COMMAND, bot.type_amount)
+    assert not h.check_update(upd), "edited '5000' would be accepted as a new amount"
+
+
+# 12. Category index in callback_data goes stale after /reloadcats reorders Config.
+@known_bug("R15")
+def test_setcat_uses_category_shown_on_card():
+    old = ["Food", "Transport", "Other"]
+    new = ["Transport", "Food", "Other"]  # Config re-sorted, then /reloadcats
+    btn = draft.category_buttons(0, old)
+    label, cb = btn[0][1]  # user taps "Transport"
+    s = draft.DraftSession(items=[{"comment": "", "amount": 1.0, "currency": "дин",
+                                   "date": "01.11.2026", "category": "Food", "who": "A"}])
+    draft.apply_callback(cb[len("vx:"):], s, new, ["дин"], FakeSheets())
+    assert s.items[0]["category"] == label, s.items[0]["category"]
