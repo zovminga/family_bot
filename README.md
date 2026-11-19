@@ -18,14 +18,21 @@ own allowlist). Your finances never mix with someone else's install.
 
 ## Install from scratch
 
+You need: a computer with a terminal (macOS, Linux or Windows), a Telegram
+account, a Google account. Steps 1–4 run the bot on your computer. Step 6
+moves it to a server (Render) so it works when the computer is off.
+
 ### 1. Clone and Python deps
 
-Python 3.12 (pinned in `.python-version`). Dependencies live in `pyproject.toml`
-(groups `bot`, `dashboard`, `dev`) and are locked in `uv.lock`. Install
-[uv](https://docs.astral.sh/uv/getting-started/installation/), then:
+The bot runs on **Python 3.12** (pinned in `.python-version`). Dependencies live
+in `pyproject.toml` (groups `bot`, `dashboard`, `dev`) and are locked in `uv.lock`.
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/). You do
+not need to install Python yourself: `uv sync` downloads Python 3.12 if the
+computer does not have it.
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/zovminga/family_bot.git
 cd family_bot
 uv sync                    # creates .venv with Python 3.12 and all groups,
                            # installs the family_bot package (family-bot command)
@@ -33,7 +40,21 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 cp .env.example .env
 ```
 
-Checks (the same ones CI runs on every pull request, see `.github/workflows/ci.yml`):
+After `source .venv/bin/activate` the commands `python`, `family-bot` and
+`pytest` come from `.venv`. Run it again in every new terminal window.
+(On macOS there is no plain `python` outside `.venv`.)
+
+**Without uv** (bot only, no test tools): install Python 3.12 yourself, then
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install --no-deps -e .
+```
+
+Checks (the same ones CI runs on every pull request, see `.github/workflows/ci.yml`;
+they need the `uv sync` install):
 
 ```bash
 pytest
@@ -53,27 +74,57 @@ is in each file's header.
 
 ### 3. Google Sheet + service account
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → create a project
-2. Enable **Google Sheets API** and **Google Drive API**
-3. Create a **service account** → download JSON key
-4. Save it as `secrets/creds.json` (folder is gitignored)
-5. Create an empty Google Spreadsheet (any name, e.g. `FamilyExpenses`)
-6. **Share** the sheet with the service account email (Editor)
-7. In `.env`:
+The bot logs in to Google as a **service account** — a separate Google
+identity for programs. It has its own email and a JSON key file.
 
-```bash
-GOOGLE_CREDS_PATH=secrets/creds.json
-SHEET_NAME=FamilyExpenses
-```
+1. [Google Cloud Console](https://console.cloud.google.com/) → project list
+   at the top → **New project** → any name → **Create**. Select the new project.
+2. **APIs & Services → Library** → find and **Enable** both
+   **Google Sheets API** and **Google Drive API**
+   (the bot finds the spreadsheet by its title through Drive).
+3. **APIs & Services → Credentials → Create credentials → Service account** →
+   any name → **Create and continue** → skip the optional role and user steps → **Done**.
+4. In the **Service accounts** list click the new account → **Keys** tab →
+   **Add key → Create new key → JSON → Create**. The browser downloads a `.json` file.
+   Google gives this file only once; if you lose it, create a new key the same way.
+5. Move the file into the repo as `secrets/creds.json` (create the `secrets`
+   folder; it is gitignored, never commit it):
 
-8. Create the worksheets and headers:
+   ```bash
+   mkdir -p secrets
+   mv ~/Downloads/<downloaded-file>.json secrets/creds.json
+   ```
 
-```bash
-python scripts/bootstrap_sheet.py
-```
+6. Find the service account email. It is the `client_email` field in
+   `secrets/creds.json`, for example
+   `"client_email": "family-bot@my-project.iam.gserviceaccount.com"`.
+   The same email is on the service account page in the Console (**Email**).
+7. In [Google Sheets](https://sheets.google.com/) create an empty spreadsheet
+   and give it a title, e.g. `FamilyExpenses`.
+8. **Share** (top right) → paste the `client_email` → role **Editor** → **Send**.
+   Without this the bot cannot open the spreadsheet.
+9. In `.env`:
 
-This adds `Data`, `Config`, `Regular_expenses`, and `Meta` with defaults.
-Safe to run again — it will not wipe existing rows.
+   ```bash
+   GOOGLE_CREDS_PATH=secrets/creds.json
+   SHEET_NAME=FamilyExpenses
+   ```
+
+   `SHEET_NAME` must match the spreadsheet title exactly (letters, case,
+   spaces). The bot opens the spreadsheet by this title.
+   `GOOGLE_CREDS_PATH` is a path to the key file, not the file contents.
+   A relative path is read from the repo folder.
+
+10. Create the worksheets and headers:
+
+    ```bash
+    python scripts/bootstrap_sheet.py
+    ```
+
+    This adds `Data`, `Config`, `Regular_expenses`, and `Meta` with defaults
+    (these worksheet names are fixed in the code; do not rename them).
+    Safe to run again — it will not wipe existing rows.
+    To check the connection only: `python scripts/test_google_sheets.py`.
 
 ### 4. Allow your family (required)
 
@@ -86,6 +137,9 @@ family-bot                 # or: python -m family_bot.bot
 At startup the bot prints one line per setup problem: what is wrong and what to
 do (for example `⚠️ SHEET_NAME is not set — set it in .env …`). Until Google
 Sheets opens, `/whoami` works and every other message lists those problems.
+A wrong `BOT_TOKEN` stops the bot before these lines, with
+`telegram.error.InvalidToken` at the end of the output — copy the token from
+@BotFather again.
 
 In Telegram, open your bot → `/whoami` → copy your numeric ID.
 Add household members to `.env`:
@@ -94,33 +148,84 @@ Add household members to `.env`:
 ALLOWED_USERS=111111111:Azat,222222222:Lisa
 ```
 
-Restart the bot. Anyone not on this list is rejected (they cannot read or
-write your sheet). `/whoami` still works so new members can send you their ID.
+Restart the bot (Ctrl+C, then `family-bot`). Anyone not on this list is
+rejected (they cannot read or write your sheet). `/whoami` still works so new
+members can send you their ID.
 A name may contain a comma: `111111111:Иван, Петров` is one entry.
 
 ### 5. Optional: voice, typed text & receipt photos
 
-Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still work.
+These three ways to add an expense need a Claude API key: Claude turns the
+words or the photo into a Draft. Get a key at
+[console.anthropic.com](https://console.anthropic.com/) (paid by usage) and set it in `.env`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Without the key, manual entry by category and presets still work. A voice
+message is still turned into text, but the bot only shows the text and says it
+could not parse the expense.
+
+Voice is turned into text on the server by **Vosk** (offline, free). It needs
+the Russian speech model `vosk-model-small-ru-0.22` (about 46 MB download,
+about 90 MB unpacked) in `models/` (gitignored):
+
+- **Locally** the bot downloads it on the first voice message, so that reply
+  takes longer. To download it in advance:
+
+  ```bash
+  python -c "from family_bot.voice_input import ensure_model; ensure_model()"
+  ```
+
+- **On Render** the Build Command downloads it (step 6).
+- To use another model, set `VOSK_MODEL_PATH` to its folder.
 
 ### 6. Deploy (optional, e.g. Render)
 
-1. Connect the repo
-2. Set the same env vars (`BOT_TOKEN`, `GOOGLE_CREDS_PATH` contents or secret file,
-   `SHEET_NAME`, `ALLOWED_USERS`, …)
-3. Build command (installs the package and downloads the Vosk speech model
-   into `models/`, so the first voice message does not wait for it):
+On [Render](https://render.com/): **New → Web Service** → connect this repo
+(or your fork). Then fill in the fields below.
 
-   ```bash
-   pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"
-   ```
+**Build Command** (installs the package and downloads the Vosk speech model
+into `models/`, so the first voice message does not wait for it):
 
-   Keep `-e` (editable install): `.env`, `models/` and a relative
-   `GOOGLE_CREDS_PATH` resolve from the repo checkout, not from `site-packages`.
-   Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
-4. Start command: `family-bot`
-5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
-6. Optional: `TZ_NAME` — the family's IANA time zone (default `Europe/Belgrade`).
-   Render runs in UTC; the bot takes "today" and "yesterday" in this zone.
+```bash
+pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"
+```
+
+Keep `-e` (editable install): `.env`, `models/` and a relative
+`GOOGLE_CREDS_PATH` resolve from the repo checkout, not from `site-packages`.
+
+**Start Command:**
+
+```bash
+family-bot
+```
+
+**Python version:** Render takes it from `.python-version` (3.12) unless the
+service sets a `PYTHON_VERSION` env var. Do not set `PYTHON_VERSION`.
+
+**Secret File** (the Google key): service → **Environment → Secret Files →
+Add Secret File** → file name `creds.json` → paste the whole contents of your
+local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.json`.
+
+**Environment Variables** (service → **Environment**):
+
+| Variable | Value |
+|----------|-------|
+| `BOT_TOKEN` | token from @BotFather |
+| `GOOGLE_CREDS_PATH` | `/etc/secrets/creds.json` |
+| `SHEET_NAME` | exact spreadsheet title, as in `.env` |
+| `ALLOWED_USERS` | same line as in `.env` |
+| `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
+| `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
+
+Render sets `RENDER_EXTERNAL_URL` (the service address) by itself; when it is
+set, the bot runs in webhook mode (the log says `Running in webhook mode`;
+if it says `polling mode`, add `RENDER_EXTERNAL_URL` = the service address
+`https://<name>.onrender.com` to the table above). Do not put `RENDER_EXTERNAL_URL` in your
+local `.env`: without it the bot uses polling. Stop the local bot once the
+Render one runs — two copies with one token interfere.
 
 ## Commands
 
