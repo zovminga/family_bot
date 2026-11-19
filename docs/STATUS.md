@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #15 input checks)  
+**Updated by:** agent session (issue #15 input checks, merged after issues #12, #21, #37)  
 **Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -64,12 +64,25 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Statistics flow lives in `flows/stats.py` (issue #16): request state is one
   `StatQuery`, a new request never reuses the previous month or currency,
   `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
+- Error handler (issue #12): `errors.on_error` is registered in
+  `bot.build_application()`. A failing handler logs a masked traceback and the
+  user gets «❌ Не сохранилось. Попробуйте ещё раз»; a Vosk/Claude failure on
+  voice or photo gets «❌ Не разобрал, введите вручную». No raw exception text
+  reaches the user (R3, U5 fixed).
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
   comment with HTML or `</script>` stays text. A Telegram publish error masks
   `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
   A failed Claude batch is not cached, the next run retries it.
+- Failed dashboard build alert (issue #21): a non-trial `run.sh` build that
+  fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
+  exception type (`dashboard/failure_alert.py`, stdlib only). Details:
+  `dashboard/SPEC.md` §5.1.
+- Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
+  inside their card. «По каждой» with no Currency chosen shows sums per
+  Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
+  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
 
 ## Settled (do not re-open as unknowns)
 
@@ -110,6 +123,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Draft double-tap guard (issue #13) relies on save running with no `await`
   between the `closed` check and the Sheets write. When issue #18 moves the
   write into `asyncio.to_thread`, mark the Draft as saving before the await.
+- Logging is not configured: `errors` logs through the `family_bot.errors`
+  logger, which prints to stderr via Python's fallback handler (WARNING and
+  above). Other modules still `print` exception text to stdout without
+  masking (`bot.py`, `sheets.py`, `analytics.py`, `flows/stats.py`); none of
+  it reaches the user. Issue #26 switches to `logging`.
 - `go_home` still clears every other `user_data` key, not only its own flow's
   keys (spec §3.2 «Кнопка «домой»», plan item 2.2).
 - Drafts live only in bot memory: a restart drops them and old cards answer

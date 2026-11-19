@@ -25,6 +25,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── amount_input.py         typed/spoken amount checks
     ├── sheet_data.py           parse/normalize kernel
     ├── clock.py                "now" in the family time zone (TZ_NAME)
+    ├── errors.py               error handler, user texts, secret masking
     └── sheets.py  SheetsClient ──────────────────────────┐
                                                           ▼
                                               Google Spreadsheet
@@ -46,6 +47,7 @@ Finances never share across installs.
 | `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `bot.CURS`, voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps | List currencies anywhere else; adding one is one line in `CURRENCIES` |
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
+| `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py` | Duplicate parse rules (known gap below) |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
@@ -64,7 +66,7 @@ use `sheet_data.normalize_rows`.
 
 ## Conversation flows
 
-One `ConversationHandler` (`bot.py` `main()`), states in `conversation_states.py`.
+One `ConversationHandler` (`bot.py` `build_application()`), states in `conversation_states.py`.
 
 ```
 /start → CHOOSE_ACTION (main menu)
@@ -136,6 +138,13 @@ Drafts are kept per user, open ones are never pruned. An unknown id (card from
 before a restart) gets «Черновик уже не активен.». Drafts are not persisted:
 a restart drops them.
 
+**Errors:** `bot.build_application()` registers `errors.on_error` with
+`add_error_handler`. An exception a handler does not catch is logged (traceback,
+tokens and keys masked) and the user gets «❌ Не сохранилось. Попробуйте ещё раз».
+Voice and photo catch their own errors: a failed Vosk or Claude call shows
+«❌ Не разобрал, введите вручную», a failed download asks to try again. No
+handler sends exception text to the user.
+
 Voice/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
 
@@ -148,7 +157,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 
 ## Dashboard boundary
 
-Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or `run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. Full pipeline/formulas: `dashboard/SPEC.md`.
+Bot does **not** build the HTML. Laptop runs `dashboard/build_dashboard.py` (or `run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. A failed publishing build sends a short alert to the same chat (`dashboard/failure_alert.py`). Full pipeline/formulas: `dashboard/SPEC.md`.
 
 ## Tests
 

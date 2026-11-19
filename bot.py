@@ -20,6 +20,7 @@ import amount_input
 import auth
 import clock
 import currency
+import errors
 import voice_input as vx
 import photo_input as px
 import regular
@@ -172,7 +173,8 @@ async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             caption="Открой файл в браузере — актуальный дашборд трат. 💰",
         )
     except Exception as e:  # noqa: BLE001 - report failures to the user
-        await msg.reply_text(f"❌ Не удалось отправить дашборд: {e}")
+        errors.log_exception("Dashboard send", e)
+        await msg.reply_text("❌ Не удалось отправить дашборд. Попробуйте ещё раз")
 
 
 async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,14 +290,16 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tg_file = await context.bot.get_file(voice.file_id)
         buf = await tg_file.download_as_bytearray()
     except Exception as e:  # noqa: BLE001 - report to user
-        await status.edit_text(f"❌ Не смог скачать голосовое: {e}")
+        errors.log_exception("Voice download", e)
+        await status.edit_text("❌ Не смог скачать голосовое. Попробуйте ещё раз")
         return
 
     # STT + LLM parsing are blocking (CPU + network) — keep the event loop free.
     try:
         transcript = await asyncio.to_thread(vx.transcribe, bytes(buf))
     except Exception as e:  # noqa: BLE001
-        await status.edit_text(f"❌ Ошибка распознавания: {e}")
+        errors.log_exception("Voice transcribe", e)
+        await status.edit_text(errors.NOT_PARSED)
         return
     if not transcript:
         await status.edit_text("🤔 Не расслышал. Запиши ещё раз, чуть чётче.")
@@ -306,7 +310,8 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await asyncio.to_thread(
             vx.extract_expenses, transcript, CATS, CURS, today, who, DEFAULT_CURRENCY)
     except Exception as e:  # noqa: BLE001
-        await status.edit_text(f"🎧 «{transcript}»\n\n❌ Не смог разобрать: {e}")
+        errors.log_exception("Voice extract", e)
+        await status.edit_text(f"🎧 «{transcript}»\n\n{errors.NOT_PARSED}")
         return
 
     items = result.get("expenses", [])
@@ -349,7 +354,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tg_file = await context.bot.get_file(file_id)
         buf = await tg_file.download_as_bytearray()
     except Exception as e:  # noqa: BLE001 - report to user
-        await status.edit_text(f"❌ Не смог скачать фото: {e}")
+        errors.log_exception("Photo download", e)
+        await status.edit_text("❌ Не смог скачать фото. Попробуйте ещё раз")
         return
 
     today = clock.now().strftime(DATE_FMT)
@@ -358,7 +364,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             px.extract_receipt, bytes(buf), media_type, CATS, CURS,
             today, who, DEFAULT_CURRENCY)
     except Exception as e:  # noqa: BLE001
-        await status.edit_text(f"❌ Не смог распознать чек: {e}")
+        errors.log_exception("Receipt extract", e)
+        await status.edit_text(errors.NOT_PARSED)
         return
 
     items = result.get("expenses", [])
@@ -686,8 +693,9 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text = "⚠️  Connection works, but categories not found in Config sheet"
         else:
             text = "❌ Google Sheets connection error"
-    except Exception as e:
-        text = f"❌ Error: {str(e)}"
+    except Exception as e:  # noqa: BLE001 - details go to the log
+        errors.log_exception("Connection test", e)
+        text = "❌ Google Sheets connection error"
     
     await update.message.reply_text(text)
 
@@ -721,26 +729,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------- Main ----------
-def main():
-    # Get token from environment variables
-    bot_token = os.getenv("BOT_TOKEN")
-    if not bot_token:
-        raise RuntimeError("Environment variable BOT_TOKEN not found.")
-
-    global ALLOWED_USERS
-    ALLOWED_USERS = auth.load_allowed_users()
-    if not ALLOWED_USERS:
-        print(
-            "⚠️  ALLOWED_USERS is empty — nobody can use the bot except /whoami. "
-            "Set ALLOWED_USERS in .env (see .env.example)."
-        )
-    else:
-        print(f"✅ Allowlist: {len(ALLOWED_USERS)} user(s)")
-
-    # Initialize Google Sheets connection
-    global sheets
-    sheets = open_client()
-
+def build_application(bot_token: str) -> Application:
+    """Build the Telegram Application with all handlers and the error handler."""
     app = Application.builder().token(bot_token).build()
 
     # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
@@ -784,6 +774,31 @@ def main():
     app.add_handler(CommandHandler("test_connection", test_connection))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("register", allowlist_hint))
+    app.add_error_handler(errors.on_error)
+    return app
+
+
+def main():
+    # Get token from environment variables
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token:
+        raise RuntimeError("Environment variable BOT_TOKEN not found.")
+
+    global ALLOWED_USERS
+    ALLOWED_USERS = auth.load_allowed_users()
+    if not ALLOWED_USERS:
+        print(
+            "⚠️  ALLOWED_USERS is empty — nobody can use the bot except /whoami. "
+            "Set ALLOWED_USERS in .env (see .env.example)."
+        )
+    else:
+        print(f"✅ Allowlist: {len(ALLOWED_USERS)} user(s)")
+
+    # Initialize Google Sheets connection
+    global sheets
+    sheets = open_client()
+
+    app = build_application(bot_token)
 
     # --- Webhook setup ---
     # Port for Render.com
