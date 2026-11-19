@@ -47,7 +47,8 @@ CSV-экспорт. На выходе — один самодостаточны�
 ├── secrets/creds.json             # service account Google  (gitignored)
 ├── family_bot/                    # Python-пакет
 │   ├── bot.py                     # Telegram wiring; валюты/спендеры через sheet_data + auth
-│   ├── sheets.py / sheet_data.py  # общий Sheets-шов и парсинг строк Data
+│   ├── sheets.py / sheet_data.py  # общий Sheets-шов и разбор строк Data в Row
+│   ├── fx.py / llm.py             # общие курсы валют и разбор JSON из ответа Claude
 │   └── dashboard/                 # python -m family_bot.dashboard
 │       ├── __main__.py            # вызывает build_dashboard.main()
 │       ├── build_dashboard.py     # пайплайн: данные → JSON → HTML
@@ -104,7 +105,10 @@ CSV-экспорт. На выходе — один самодостаточны�
 - любая другая запятая — разделитель тысяч (`1,234` → 1234, `12,500` → 12500);
 - есть и `.`, и `,` — десятичный тот, что правее (`1.234,56`, `1,234.56`).
 
-Нечисло → строка пропускается (`skipped`).
+Строки разбирает `sheet_data.parse_rows` (тот же код, что у статистики бота).
+Нечисло → строка пропускается (`skipped`). Дата читается в форматах
+`ДД.ММ.ГГГГ`, `ГГГГ-ММ-ДД`, `ДД/ММ/ГГГГ` и попадает в JSON как `ДД.ММ.ГГГГ`;
+дата в другом виде → пустая строка.
 
 #### Исключение снятия наличных (`EXCLUDE_COMMENT_RE`)
 Снятие наличных / обнал — это **перевод между счетами, а не трата**. Такие
@@ -119,11 +123,13 @@ CSV-экспорт. На выходе — один самодостаточны�
 ⚠️ **Риск двойного счёта**: если ту же аренду внести и в таблицу, и сюда — задвоится.
 Защиты по дедупу пока нет (только предупреждение в доке).
 
-### 3.5 Валюты (`fetch_rates`, `to_base`)
-- Символы → ISO: `дин→RSD, €→EUR, ₽→RUB, ¥→JPY, £→GBP, $→USD, CNY→CNY` — из
-  `sheet_data.SYMBOL_TO_ISO`, которая строится из реестра `currency.py` (общий с ботом). Неизвестное значение берётся
-  как ISO-код в верхнем регистре; пустое — как базовая валюта.
-- Курсы — live с `https://api.exchangerate-api.com/v4/latest/<BASE>` (без ключа).
+### 3.5 Валюты (`fx.fetch_rates`, `to_base`)
+- Символы → ISO: `дин→RSD, €→EUR, ₽→RUB, ¥→JPY, £→GBP, $→USD, CNY→CNY` — через
+  `currency.to_iso` (реестр `currency.py`, общий с ботом; понимает и русские слова
+  вроде «евро»). Неизвестный трёхбуквенный код берётся в верхнем регистре; пустое
+  значение — как базовая валюта.
+- Курсы — live с `https://api.exchangerate-api.com/v4/latest/<BASE>` (без ключа),
+  функция `family_bot/fx.py` `fetch_rates` (общая с ботом).
   Формат: «сколько единиц валюты за 1 базовую». Перевод: `amount / rate`.
 - Базовая валюта по умолчанию — **RSD** (динар). Поле `amount_base` = сумма в базовой.
 - Валюта без курса останавливает сборку. После фильтра периода (§3.7)
@@ -550,7 +556,9 @@ plist `com.zovminga.familybot.dashboard.plist` (генерится с абсол
 |---|---|
 | правило группировки темы | `THEME_RULES` в `build_dashboard.py` (+ обнови `CLASSIFY_SELFTEST`) |
 | сменить LLM-провайдера/модель | `--provider` / `--model`; дефолты в `DEFAULT_LLM_MODELS` |
-| добавить нового LLM-провайдера | `LLM_PROVIDERS` + функция `_classify_batch_*` в `build_dashboard.py` |
+| добавить нового LLM-провайдера | `LLM_PROVIDERS` + функция `_classify_batch_*` в `build_dashboard.py`; JSON из ответа — `llm.extract_json_object` |
+| разбор строк Data, форматы даты | `family_bot/sheet_data.py` (`Row`, `parse_rows`, `READ_DATE_FMTS`) — общий с ботом |
+| источник курсов | `family_bot/fx.py` — общий с ботом |
 | отнести категорию к другому тиру | `TIER_OF` в `template.html` |
 | цвета темы (тёмной / светлой) | переменные `:root` и `@media (prefers-color-scheme: light)` в `template.html` (§4) |
 | цвета категорий | `PALETTE` / `paletteColor()`; порядок — лист Config (`DATA.categories`) |

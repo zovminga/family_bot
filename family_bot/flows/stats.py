@@ -22,7 +22,7 @@ from family_bot import clock
 from family_bot import errors
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
-from family_bot.sheet_data import DATE_FMT, MONTH_FMT
+from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
 
 QUERY_KEY = "stat_query"
 ALL_CATEGORIES = "All"
@@ -89,23 +89,23 @@ class StatsFlow:
     ----------
     categories : Source[list[str]]
         Current category list (re-read on every call so /reloadcats applies).
-    load_rows : Source[list[dict]]
-        Normalized Data-sheet rows.
+    load_rows : Source[list[Row]]
+        Parsed Data-sheet rows.
     fallback_currencies : Source[list[str]]
         Currencies offered when the sheet has none.
 
     Each source takes the handler's context, so it can read the bot's Config.
     get_rate : analytics.GetRate
-        FX rate source for conversion.
+        FX rate source for conversion (``fx.rate`` in the bot).
     """
 
     def __init__(
         self,
         *,
         categories: Source[list[str]],
-        load_rows: Source[list[dict]],
+        load_rows: Source[list[Row]],
         fallback_currencies: Source[list[str]],
-        get_rate: analytics.GetRate = analytics.http_exchange_rate,
+        get_rate: analytics.GetRate,
     ) -> None:
         self._categories = categories
         self._load_rows = load_rows

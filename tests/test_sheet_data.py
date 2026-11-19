@@ -2,14 +2,17 @@
 """Tests for the shared sheet_data parsing kernel."""
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from family_bot.sheet_data import (
+    Row,
     normalize_month,
-    normalize_rows,
     parse_amount,
+    parse_date,
+    parse_rows,
     resolve_columns,
-    to_iso,
 )
 
 
@@ -59,21 +62,48 @@ def test_normalize_month_from_date():
     assert normalize_month("07.08.2026", "2026-07") == "2026-07"
 
 
-def test_normalize_rows_skips_bad_amounts():
+def test_parse_rows_skips_bad_amounts():
     headers = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"]
     rows = [
         ["07.08.2026", "2026-08", "Food", "7,65", "дин", "Azat", "lunch"],
         ["08.08.2026", "", "Transport", "", "€", "Lisa", "bus"],
         ["09.08.2026", "", "Rent", "850", "€", "Both", "rent"],
     ]
-    out = normalize_rows(headers, rows)
-    assert len(out) == 2
-    assert out[0]["amount"] == 7.65
-    assert out[0]["currency"] == "дин"
-    assert out[1]["month"] == "2026-08"
-    assert out[1]["category"] == "Rent"
+    out = parse_rows(headers, rows)
+    assert out == [
+        Row(date=date(2026, 8, 7), month="2026-08", category="Food", amount=7.65,
+            currency="дин", who="Azat", comment="lunch"),
+        Row(date=date(2026, 8, 9), month="2026-08", category="Rent", amount=850.0,
+            currency="€", who="Both", comment="rent"),
+    ]
 
 
-def test_to_iso():
-    assert to_iso("дин") == "RSD"
-    assert to_iso("EUR") == "EUR"
+def test_parse_rows_typed_fields_and_short_rows():
+    headers = ["Сумма", "Дата", "Категория", "Валюта", "Кто", "Комментарий"]
+    out = parse_rows(headers, [["1 200", " 2026-08-07 "], ["", "01.01.2026"]])
+    assert out == [Row(date=date(2026, 8, 7), month="2026-08", category="", amount=1200.0,
+                       currency="", who="", comment="")]
+    assert isinstance(out[0].amount, float)
+
+
+def test_parse_rows_without_amount_column():
+    assert parse_rows(["Date", "Category"], [["01.01.2026", "Food"]]) == []
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("07.08.2026", date(2026, 8, 7)),
+    ("2026-08-07", date(2026, 8, 7)),
+    ("07/08/2026", date(2026, 8, 7)),
+    ("", None),
+    ("вчера", None),
+])
+def test_parse_date(raw, expected):
+    assert parse_date(raw) == expected
+
+
+def test_row_date_text():
+    row = Row(date=date(2026, 8, 7), month="2026-08", category="", amount=1.0,
+              currency="", who="", comment="")
+    assert row.date_text == "07.08.2026"
+    assert Row(date=None, month="", category="", amount=1.0, currency="", who="",
+               comment="").date_text == ""

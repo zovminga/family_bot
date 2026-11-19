@@ -25,13 +25,10 @@ import base64
 import os
 from typing import Optional
 
-from family_bot import currency
+from family_bot import currency, llm
 
-# Reuse the JSON/snap helpers from voice_input to avoid duplicating logic.
+# Reuse the snap helpers from voice_input to avoid duplicating logic.
 from family_bot.voice_input import (
-    LLM_MAX_RETRIES,
-    LLM_TIMEOUT_SEC,
-    _extract_json_object,
     _snap_amount,
     _snap_category,
     _snap_currency,
@@ -160,9 +157,7 @@ def extract_receipt(image_bytes: bytes, media_type: Optional[str],
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY is not set — cannot read the receipt.")
 
-    import anthropic
-
-    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SEC, max_retries=LLM_MAX_RETRIES)
+    client = llm.client()
     prompt = _build_prompt(categories, currencies, today, who, default_currency)
     b64 = base64.standard_b64encode(image_bytes).decode("ascii")
     resp = client.messages.create(
@@ -180,8 +175,7 @@ def extract_receipt(image_bytes: bytes, media_type: Optional[str],
             ],
         }],
     )
-    text = "".join(block.text for block in resp.content if block.type == "text")
-    parsed = _extract_json_object(text)
+    parsed = llm.extract_json_object(llm.reply_text(resp))
 
     merchant = (parsed.get("merchant") or "").strip()
     note = (parsed.get("note") or "").strip()

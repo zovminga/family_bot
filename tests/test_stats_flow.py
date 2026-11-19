@@ -2,18 +2,20 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
 from family_bot import conversation_states as states
 from family_bot.flows import stats
+from family_bot.sheet_data import Row
 from tests.known_bugs.fakes import make_update
 
 ROWS = [
-    {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
-     "currency": "дин", "who": "Azat", "comment": ""},
-    {"date": "06.10.2026", "month": "2026-10", "category": "Transport", "amount": 10.0,
-     "currency": "€", "who": "Azat", "comment": ""},
+    Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
+    currency="дин", who="Azat", comment=""),
+    Row(date=date(2026, 10, 6), month="2026-10", category="Transport", amount=10.0,
+    currency="€", who="Azat", comment=""),
 ]
 
 
@@ -67,7 +69,7 @@ def test_conversion_details_then_home() -> None:
 
 
 def test_last_records_error_hides_raw_text() -> None:
-    def broken_rows(_ctx: object) -> list[dict]:
+    def broken_rows(_ctx: object) -> list[Row]:
         raise RuntimeError("APIError: [503] secret details")
 
     flow = stats.StatsFlow(

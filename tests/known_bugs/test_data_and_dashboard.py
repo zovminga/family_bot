@@ -11,7 +11,7 @@ from tests.known_bugs.fakes import FakeSheets
 
 from family_bot.dashboard import build_dashboard as bd
 from family_bot.expense import ExpenseRecord, append_expense
-from family_bot.sheet_data import normalize_rows, parse_amount
+from family_bot.sheet_data import parse_amount, parse_rows
 from family_bot import voice_input as vx
 
 
@@ -27,8 +27,8 @@ def test_append_respects_header_order():
     sheets = FakeSheets(headers=headers)
     append_expense(sheets, ExpenseRecord(date="01.11.2026", category="Food",
                                          amount=250.0, currency="дин", who="Azat"))
-    rec = normalize_rows(headers, sheets.rows)[0]
-    assert rec["category"] == "Food" and rec["month"] == "2026-11", rec
+    rec = parse_rows(headers, sheets.rows)[0]
+    assert rec.category == "Food" and rec.month == "2026-11", rec
 
 
 # 15. Voice path kept negative / zero amounts (R6).
