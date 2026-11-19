@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from draft_expense import (
+from family_bot.draft_expense import (
     CALLBACK_DATA_MAX_BYTES,
     MAX_CLOSED_DRAFTS,
     DraftSession,

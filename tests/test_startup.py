@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from telegram.ext import ApplicationHandlerStop
 
-import bot
-import config
+from family_bot import bot
+from family_bot import config
 from tests.conftest import FakeSheetsClient, bot_context, settings_of
 from tests.known_bugs.fakes import make_update
 

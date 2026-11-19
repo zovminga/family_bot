@@ -27,7 +27,8 @@ Python 3.12 (pinned in `.python-version`). Dependencies live in `pyproject.toml`
 ```bash
 git clone <this-repo>
 cd family_bot
-uv sync                    # creates .venv with Python 3.12 and all groups
+uv sync                    # creates .venv with Python 3.12 and all groups,
+                           # installs the family_bot package (family-bot command)
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 cp .env.example .env
 ```
@@ -79,7 +80,7 @@ Safe to run again — it will not wipe existing rows.
 Start the bot once (even with empty allowlist, even before Google Sheets works):
 
 ```bash
-python bot.py
+family-bot                 # or: python -m family_bot.bot
 ```
 
 At startup the bot prints one line per setup problem: what is wrong and what to
@@ -106,8 +107,15 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
 1. Connect the repo
 2. Set the same env vars (`BOT_TOKEN`, `GOOGLE_CREDS_PATH` contents or secret file,
    `SHEET_NAME`, `ALLOWED_USERS`, …)
-3. Build command: `pip install -r requirements.txt`. Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
-4. Start command: `python bot.py`
+3. Build command (installs the package and downloads the Vosk speech model
+   into `models/`, so the first voice message does not wait for it):
+
+   ```bash
+   pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"
+   ```
+
+   Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
+4. Start command: `family-bot`
 5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
 6. Optional: `TZ_NAME` — the family's IANA time zone (default `Europe/Belgrade`).
    Render runs in UTC; the bot takes "today" and "yesterday" in this zone.

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
 sys.path.insert(0, str(ROOT))
 
-from sheets import open_client
+from family_bot.sheets import open_client
 
 
 def main():

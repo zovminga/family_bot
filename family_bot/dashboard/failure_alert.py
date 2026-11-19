@@ -8,7 +8,7 @@ type, never the exception text: build errors can quote sheet rows.
 Standard library only, and Python 3.9 syntax: run.sh also calls this file with
 the system python3 when the venv could not be built.
 
-CLI (used by run.sh):  python3 failure_alert.py "<reason>"
+CLI (used by run.sh):  python3 -m family_bot.dashboard.failure_alert "<reason>"
 """
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
 
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+# .env sits in the repo root: family_bot/dashboard/ is two levels below it.
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 # build_dashboard.py exits with this code after it has tried to send the alert,
 # so run.sh does not send a second one.
 ALERT_HANDLED_EXIT_CODE = 3

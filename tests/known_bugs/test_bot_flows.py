@@ -13,13 +13,13 @@ import pytest
 from telegram import Chat, Message, Update, User
 from datetime import datetime, timezone
 
-import bot
-import draft_expense as draft
-import navigation as nav
-from flows import stats as flow_stats
+from family_bot import bot
+from family_bot import draft_expense as draft
+from family_bot import navigation as nav
+from family_bot.flows import stats as flow_stats
 from tests.conftest import settings_of
 from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
-from conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
+from family_bot.conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
 
 ROWS = [
     {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
@@ -100,7 +100,7 @@ def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
 
 # 5. "$" must be on the Currency buttons so voice/photo dollars stay dollars (R4).
 def test_dollar_currency_survives_snap(ctx: SimpleNamespace) -> None:
-    import voice_input as vx
+    from family_bot import voice_input as vx
     assert vx._snap_currency("$", settings_of(ctx).currencies, bot.DEFAULT_CURRENCY) == "$"
 
 

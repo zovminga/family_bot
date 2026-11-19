@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #30 typed text → Draft, merged after issues #22, #38)  
+**Updated by:** agent session (issue #23 package `family_bot/`, `family-bot` command)  
 **Product code tip:** `7495d06` (2026-11-19) — typed text «кофе 350» in the main menu → Draft card (issue #30)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -29,6 +29,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «❌ Не разобрал, введите вручную».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
+- Package layout (issue #23): all Python code is the `family_bot/` package.
+  `uv sync` installs it; `family-bot` (`[project.scripts]` →
+  `family_bot.bot:main`) starts the bot, `python -m family_bot.dashboard`
+  builds the dashboard. `.env`, a relative `GOOGLE_CREDS_PATH`, `models/`
+  (Vosk) and `dashboard/` (template, output) still resolve from the repo
+  root. `dashboard/run.sh` puts the repo root on `PYTHONPATH`; the launchd
+  agent still calls `run.sh`, so an installed agent needs no reinstall.
 - Python 3.12 (`.python-version`); deps in `pyproject.toml` groups `bot` /
   `dashboard` / `dev`, locked in `uv.lock`, install with `uv sync`.
   `requirements.txt` and `dashboard/requirements.txt` are exports of the lock
@@ -128,6 +135,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Render still has the old commands until the owner changes them (issue #23
+  PR, README «Deploy»): Build Command
+  `pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"`,
+  Start Command `family-bot`. Open check (Q16): after the first deploy, the
+  runtime log has no «Downloading Vosk model» line on the first voice message
+  (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
   conversation: after a bot restart the user needs `/start` first (menu texts
   in `entry_points` are plan §3.2 «Состояние»). Text without a digit

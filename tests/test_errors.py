@@ -11,8 +11,8 @@ import pytest
 from telegram import Chat, Message, Update, User
 from telegram.ext import Application, ExtBot, MessageHandler, filters
 
-import bot
-import errors
+from family_bot import bot
+from family_bot import errors
 from tests.conftest import bot_context
 from tests.known_bugs.fakes import FakeMessage, FakeQuery, make_update
 

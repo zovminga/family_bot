@@ -11,8 +11,8 @@ import math
 import re
 from typing import Any, Optional
 
-import currency
-from sheet_data import parse_amount
+from family_bot import currency
+from family_bot.sheet_data import parse_amount
 
 # Groups: Currency text before the number, the number (starts with a digit,
 # may hold spaces, dots, commas, apostrophes), Currency text after it.

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-import currency
+from family_bot import currency
 
 # Header aliases (English + Russian), matched case-insensitively.
 HEADER_ALIASES: dict[str, list[str]] = {

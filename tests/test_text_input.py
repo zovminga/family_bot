@@ -9,11 +9,11 @@ from typing import Any, Callable, Coroutine, Optional
 
 import pytest
 
-import bot
-import draft_expense as draft
-import errors
-import text_input
-from conversation_states import CHOOSE_ACTION
+from family_bot import bot
+from family_bot import draft_expense as draft
+from family_bot import errors
+from family_bot import text_input
+from family_bot.conversation_states import CHOOSE_ACTION
 from tests.conftest import FakeSheetsClient, bot_context
 from tests.known_bugs.fakes import FakeMessage, make_update
 

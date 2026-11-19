@@ -15,27 +15,27 @@ from telegram.ext import (
     TypeHandler, ApplicationHandlerStop,
 )
 
-import amount_input
-import auth
-import clock
-import config
-import currency
-import errors
-import voice_input as vx
-import photo_input as px
-import text_input
-import draft_expense as draft
-import flow_preset
-import navigation as nav
-from flows import stats as flow_stats
-from conversation_states import (
+from family_bot import amount_input
+from family_bot import auth
+from family_bot import clock
+from family_bot import config
+from family_bot import currency
+from family_bot import errors
+from family_bot import voice_input as vx
+from family_bot import photo_input as px
+from family_bot import text_input
+from family_bot import draft_expense as draft
+from family_bot import flow_preset
+from family_bot import navigation as nav
+from family_bot.flows import stats as flow_stats
+from family_bot.conversation_states import (
     CHOOSE_ACTION, CHOOSE_CAT, TYPING_AMT, CHOOSE_CUR, TYPING_CMNT, CHOOSE_DT, TYPING_DT,
     CHOOSE_PRESET,
 )
-from expense import ExpenseRecord, append_expense
-from sheet_data import normalize_rows, DATE_FMT
-from sheets import SheetsClient
-import analytics
+from family_bot.expense import ExpenseRecord, append_expense
+from family_bot.sheet_data import normalize_rows, DATE_FMT
+from family_bot.sheets import SheetsClient
+from family_bot import analytics
 
 
 # ---------- Settings (Config in bot_data) ----------

@@ -22,10 +22,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-import currency
-from amount_input import positive_amount
+from family_bot import currency
+from family_bot.amount_input import positive_amount
 
-BOT_DIR = Path(__file__).resolve().parent
+# Repo root (family_bot/ lives one level below): the model goes to <repo>/models.
+BOT_DIR = Path(__file__).resolve().parent.parent
 MODELS_DIR = BOT_DIR / "models"
 
 # Small Russian model (~45 MB): good enough for short expense phrases, light on
