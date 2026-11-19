@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #19 family time zone)  
-**Product code tip:** issue #19 PR (2026-11-19) — "today" in `TZ_NAME` zone via `clock.py`  
+**Updated by:** agent session (issue #19 family time zone, merged after issue #20)  
+**Product code tip:** `09c8b14` (2026-11-19) — "today" in `TZ_NAME` zone via `clock.py`  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -51,6 +51,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `mypy` (library modules) and `pip-audit` on every pull request and push to
   `main`, installing with `uv sync --locked` on Python 3.12.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
+- Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
+  `template.html`) and data JSON is embedded with `json_for_script()`, so a
+  comment with HTML or `</script>` stays text. A Telegram publish error masks
+  `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
+  A failed Claude batch is not cached, the next run retries it.
 
 ## Settled (do not re-open as unknowns)
 
