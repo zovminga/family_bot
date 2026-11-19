@@ -12,7 +12,7 @@ from draft_expense import (
     session_from_receipt,
     session_from_voice,
 )
-from tests.test_sheets import FakeSheetsClient
+from tests.conftest import FakeSheetsClient
 
 
 def _item(**overrides):

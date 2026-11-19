@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #11 dashboard build on Python 3.12)  
+**Updated by:** agent session (issue #11 dashboard build on Python 3.12, merged after issue #10 CI)  
 **Product code tip:** `edb7e15` (2026-11-19) — dashboard `run.sh` on Python 3.12, venv rebuilt on dependency change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -33,7 +33,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   venv is recreated when `dashboard/requirements.txt` changes (stamp file
   `venv/.deps-stamp`). `./run.sh --trial --csv <file>` builds without Claude
   and Telegram.
-- Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
+- Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …);
+  `FakeSheetsClient` lives in `tests/conftest.py`.
+- CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
+  `mypy` (library modules) and `pip-audit` on every pull request and push to
+  `main`, installing with `uv sync --locked` on Python 3.12.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
 ## Settled (do not re-open as unknowns)
@@ -59,6 +63,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Lint and type checks are relaxed so CI passed without product-code edits
+  (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
+  per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips
+  `bot.py`, does not use `--strict`, and disables named error codes in
+  `analytics`, `flow_preset`, `navigation`, `photo_input`, `voice_input`. Both
+  lists are in `pyproject.toml`; shrink them as modules are cleaned up.
+- `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
+  before the move still import it. Drop the re-export once no branch imports
+  the fake from `tests.test_sheets`.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
   recorded as open: stats not returning home (R7, R8, see
   `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see

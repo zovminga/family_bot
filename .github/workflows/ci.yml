@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # uv reads the Python version from .python-version.
+
+      - name: Install dependencies from uv.lock
+        run: uv sync --locked
+
+      - name: pytest
+        run: uv run pytest -rx
+
+      - name: ruff check
+        if: ${{ !cancelled() }}
+        run: uv run ruff check .
+
+      - name: mypy (library modules)
+        if: ${{ !cancelled() }}
+        run: uv run mypy
+
+      - name: pip-audit
+        if: ${{ !cancelled() }}
+        run: uv run pip-audit --local
