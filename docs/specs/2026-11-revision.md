@@ -320,7 +320,7 @@ dashboard/          импортирует общие модули как пак
 - [ ] 2.4 `logging` вместо `print`. *(C7)*
 - [ ] 2.5 Лист `Users` для Recent currencies. Кнопки меню в `entry_points`. Ответ старой
   карточки Draft после деплоя. *(R17, Q15)*
-- [ ] 2.6 Webhook: `secret_token`, путь без токена. *(R20)*
+- [x] 2.6 Webhook: `secret_token`, путь без токена. *(R20)*
 - [x] 2.7 Пакет `family_bot/` и команда `family-bot` в `pyproject.toml`. Build Command
   скачивает модель Vosk. Дать владельцу новые Build Command и Start Command для Render.
   `run.sh` и `launchd` вызывают `python -m family_bot.dashboard`. *(Q14, Q16)*
