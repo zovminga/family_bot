@@ -99,8 +99,11 @@ Date format: `DD.MM.YYYY` (`sheet_data.DATE_FMT`). Month key: derived on write.
 Writes lay a row out by the Data header names (`resolve_columns` aliases), so
 column order in the sheet is free; a sheet without a Date, Category, Amount,
 Currency, Who or Comment column rejects the write. An empty header row falls
-back to the default order above. Values are written `RAW`: text such as
-`=…` or `2026-11` stays text, amounts are numbers.
+back to the default order above. Each append first reads the header row
+(one extra Sheets call per row). Values are written `RAW`: text such as `=…`
+or `2026-11` stays text, amounts are numbers. Date `DD.MM.YYYY` is stored as
+text too, not as a Sheets date value; Python readers use `get_all_values` and
+are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
