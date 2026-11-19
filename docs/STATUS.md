@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #23 package `family_bot/`, merged after issue #39)  
+**Updated by:** agent session (issue #40 README for first install; docs only)  
 **Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -143,6 +143,12 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- README «Install from scratch» (issue #40) was walked in a clean clone with
+  fake keys: `uv sync`, the pip route, `family-bot` and the setup lines work.
+  Two rough edges stay in code: a wrong `BOT_TOKEN` ends in a
+  `telegram.error.InvalidToken` traceback, and the setup lines print only after
+  Telegram accepts the token (`post_init`); `scripts/bootstrap_sheet.py` prints a
+  traceback instead of one line when the key or sheet is wrong.
 - Render still has the old commands until the owner changes them (issue #23
   PR, README «Deploy»): Build Command
   `pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"`,
