@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #12 error handler)  
-**Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
+**Product code tip:** `6c26d59` (2026-11-19) — bot-wide error handler, no raw exception text to users (issue #12)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
