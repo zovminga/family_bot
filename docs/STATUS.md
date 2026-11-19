@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #15 input checks)  
-**Product code tip:** `2f7c35b` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
+**Product code tip:** `9c18040` (2026-11-19) — amount, Category and Currency checks; edited messages ignored (issue #15)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -34,7 +34,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   accepts symbol, ISO code or Russian word. Adding a Currency is one line,
   except the `sheets.REGULAR_HEADERS` bootstrap list (still open).
 - Manual input checks (issue #15): the amount must be a finite number above
-  zero (`amount_input.py`, built on `parse_amount`); «1 200» and «350 дин» work,
+  zero with at most two decimals (`amount_input.py`, built on `parse_amount`);
+  «1 200» and «350 дин» work,
   a Currency typed with the amount skips the Currency step. A Category or
   Currency not on the list re-asks with the buttons. Voice/receipt amounts
   ≤ 0 are dropped. Edited Telegram messages are ignored (handler group -2).
