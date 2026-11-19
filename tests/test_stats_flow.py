@@ -64,3 +64,20 @@ def test_conversion_details_then_home() -> None:
     assert run(flow.on_show_details(upd, ctx)) == states.CHOOSE_ACTION
     assert "€ → дин" in replies(upd)[0], replies(upd)
     assert stats.QUERY_KEY not in ctx.user_data
+
+
+def test_last_records_error_hides_raw_text() -> None:
+    def broken_rows() -> list[dict]:
+        raise RuntimeError("APIError: [503] secret details")
+
+    flow = stats.StatsFlow(
+        categories=lambda: ["Food"],
+        load_rows=broken_rows,
+        fallback_currencies=lambda: ["дин"],
+        get_rate=lambda src, dst: 1.0,
+    )
+    ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(category="Food")})
+    upd = make_update("📜 Last 3 records")
+    run(flow.on_type(upd, ctx))
+    text = replies(upd)[0]
+    assert text.startswith("❌") and "503" not in text, text
