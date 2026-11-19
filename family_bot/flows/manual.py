@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Manual add-expense conversation flow.
 
-Category → amount → Currency → comment → date → save. Step values live in
-``user_data`` (``cat``, ``amt``, ``cur``, ``spender``, ``comment``) until the
-save; every exit goes through ``navigation.go_home``. The home button is not
-checked here: ``navigation.home_fallbacks()`` handles it for every state.
+Category → amount → Currency → comment → date → save. On the comment step
+«✅ Сегодня, без комментария» saves at once with today's date and no comment.
+Step values live in ``user_data`` (``cat``, ``amt``, ``cur``, ``spender``,
+``comment``) until the save; every exit goes through ``navigation.go_home``.
+The home button is not checked here: ``navigation.home_fallbacks()`` handles
+it for every state.
 """
 from __future__ import annotations
 
@@ -30,6 +32,8 @@ from family_bot.sheets import SheetsClient
 T = TypeVar("T")
 Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
 Who = Callable[[Update, ContextTypes.DEFAULT_TYPE], str]
+
+TODAY_NO_COMMENT = "today_no_comment"
 
 
 async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
@@ -93,6 +97,7 @@ class ManualFlow:
             State.TYPING_CMNT: [
                 *text(self.type_comment),
                 CallbackQueryHandler(self.type_comment, pattern="^skip$"),
+                CallbackQueryHandler(self.today_no_comment, pattern=f"^{TODAY_NO_COMMENT}$"),
             ],
             State.CHOOSE_DT: [CallbackQueryHandler(self.choose_dt, pattern=nav.NOT_HOME_CALLBACK)],
             State.TYPING_DT: text(self.type_dt),
@@ -159,11 +164,12 @@ class ManualFlow:
 
         # Go to comment
         buttons = [
+            [InlineKeyboardButton("✅ Сегодня, без комментария", callback_data=TODAY_NO_COMMENT)],
             [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
             [nav.home_inline_button()]
         ]
         await update.message.reply_text(
-            f"👤 Кто: {user_name}\n\n💬 Напишите комментарий или нажмите «Пропустить»",
+            f"👤 Кто: {user_name}\n\n💬 Напишите комментарий или нажмите кнопку",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return State.TYPING_CMNT
@@ -189,6 +195,13 @@ class ManualFlow:
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return State.CHOOSE_DT
+
+    async def today_no_comment(self, update: Update,
+                               context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Comment-step button: save with today's date and an empty comment."""
+        await update.callback_query.answer()
+        context.user_data["comment"] = ""
+        return await self.save_row(update, context, clock.now().strftime(DATE_FMT))
 
     async def choose_dt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         query = update.callback_query

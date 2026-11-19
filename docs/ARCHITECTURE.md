@@ -65,14 +65,14 @@ Finances never share across installs.
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller | Mix Sheets or HTTP into stats |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
-| `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
+| `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `THIS_MONTH`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
 | `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `comment`); data sources injected from `bot.py` | Add manual-input handlers to `bot.py` |
-| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
+| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`; `this_month` answers «📅 Этот месяц» from the menu without a conversation state; request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
 | `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
 | `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
@@ -91,8 +91,10 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
 ```
 /start → CHOOSE_ACTION (main menu)
            ├─ other text → text_expense → Draft card (stays in CHOOSE_ACTION)
+           ├─ 📅 this month → StatsFlow.this_month → summary (stays in CHOOSE_ACTION)
            ├─ manual add → CHOOSE_CAT → TYPING_AMT → CHOOSE_CUR
            │                 → TYPING_CMNT → CHOOSE_DT [| TYPING_DT] → save → home
+           │                   TYPING_CMNT ─ «✅ Сегодня, без комментария» → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
@@ -163,7 +165,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 

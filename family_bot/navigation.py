@@ -32,6 +32,7 @@ NOT_HOME_CALLBACK = f"^(?!{HOME_CALLBACK}$)"
 # Main-menu buttons; bot.choose_action matches on these.
 ADD_EXPENSE = "💰 Добавить трату"
 ADD_PRESET = "🧾 Заготовка"
+THIS_MONTH = "📅 Этот месяц"
 SHOW_STATS = "📊 Статистика"
 DASHBOARD = "📈 Дашборд"
 
@@ -47,7 +48,8 @@ def home_inline_button() -> InlineKeyboardButton:
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     kb = [
         [ADD_EXPENSE, ADD_PRESET],
-        [SHOW_STATS, DASHBOARD],
+        [THIS_MONTH, SHOW_STATS],
+        [DASHBOARD],
         home_row(),
     ]
     return ReplyKeyboardMarkup(kb, resize_keyboard=True)
