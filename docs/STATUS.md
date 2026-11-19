@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #42 doc/code mismatches, merged after issue #9)  
-**Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
+**Updated by:** agent session (issue #11 dashboard build on Python 3.12)  
+**Product code tip:** `edb7e15` (2026-11-19) — dashboard `run.sh` on Python 3.12, venv rebuilt on dependency change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
