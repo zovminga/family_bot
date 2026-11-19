@@ -2,7 +2,7 @@
 import os
 import json
 import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
 from typing import Optional
@@ -18,6 +18,7 @@ from telegram.ext import (
 )
 
 import auth
+import clock
 import currency
 import voice_input as vx
 import photo_input as px
@@ -319,7 +320,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text("🤔 Не расслышал. Запиши ещё раз, чуть чётче.")
         return
 
-    today = datetime.now().strftime(DATE_FMT)
+    today = clock.now().strftime(DATE_FMT)
     try:
         result = await asyncio.to_thread(
             vx.extract_expenses, transcript, CATS, CURS, today, who, DEFAULT_CURRENCY)
@@ -370,7 +371,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text(f"❌ Не смог скачать фото: {e}")
         return
 
-    today = datetime.now().strftime(DATE_FMT)
+    today = clock.now().strftime(DATE_FMT)
     try:
         result = await asyncio.to_thread(
             px.extract_receipt, bytes(buf), media_type, CATS, CURS,
@@ -570,10 +571,10 @@ async def choose_dt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await nav.go_home(update, context)
 
     if query.data == "today":
-        date_str = datetime.now().strftime(DATE_FMT)
+        date_str = clock.now().strftime(DATE_FMT)
         return await save_row(update, context, date_str)
     elif query.data == "yesterday":
-        date_str = (datetime.now() - timedelta(days=1)).strftime(DATE_FMT)
+        date_str = (clock.now() - timedelta(days=1)).strftime(DATE_FMT)
         return await save_row(update, context, date_str)
     else:
         await query.edit_message_text("📅 Enter date in format DD.MM.YYYY:")
@@ -681,7 +682,7 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif text == "📆 By months":
         # Show list of months
-        now = datetime.now()
+        now = clock.now()
         months = [(now.replace(day=1) - relativedelta(months=i)).strftime(MONTH_FMT) for i in range(12)]
         kb = [[m] for m in months]
         kb.append(nav.home_row())

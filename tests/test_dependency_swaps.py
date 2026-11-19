@@ -15,16 +15,10 @@ import sheets
 from tests.known_bugs.fakes import make_update
 
 
-class _FrozenDatetime(datetime):
-    @classmethod
-    def now(cls, tz: Any = None) -> "_FrozenDatetime":
-        return cls(2026, 3, 31, 12, 0)
-
-
 def test_by_months_lists_last_twelve_months_newest_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(bot, "datetime", _FrozenDatetime)
+    monkeypatch.setattr(bot.clock, "now", lambda: datetime(2026, 3, 31, 12, 0))
     update = make_update("📆 By months")
 
     # A private loop: asyncio.run() would unset the main-thread loop that

@@ -2,7 +2,7 @@
 """Preset expense flow: pick a ⚡ template and save immediately."""
 from __future__ import annotations
 
-from datetime import datetime
+import clock
 
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -58,7 +58,7 @@ async def choose_preset(
         return CHOOSE_PRESET
 
     who = preset.get("who") or resolve_who(update)
-    date_str = datetime.now().strftime(date_fmt)
+    date_str = clock.now().strftime(date_fmt)
     append_expense(sheets, ExpenseRecord(
         date=date_str,
         category=preset["category"],
