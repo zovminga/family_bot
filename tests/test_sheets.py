@@ -29,7 +29,7 @@ def test_fake_dashboard_file_id():
     assert client.get_dashboard_file_id() == "AgADBAAD..."
 
 
-def test_regular_load_defaults_uses_client(monkeypatch):
+def test_regular_load_presets_uses_client(monkeypatch):
     import regular
 
     fake = FakeSheetsClient(regular_values=[
@@ -40,7 +40,7 @@ def test_regular_load_defaults_uses_client(monkeypatch):
         ["баня", "3850", "", "", "", "Beauty", "Both"],
     ])
 
-    items = regular.load_defaults(fake)
+    items = regular.load_presets(fake)
     assert len(items) == 2
     assert items[0]["name"] == "Rent"
     assert items[0]["section"] == "monthly"

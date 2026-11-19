@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Default (preset) expenses: parse the 'Regular_expenses' sheet.
+"""Presets: parse the 'Regular_expenses' sheet.
 
 The sheet is human-friendly (one row per item; the amount lives in a
 per-currency column) and split into two sections by divider rows:
@@ -86,7 +86,7 @@ def parse_regular(values: list[list[str]]) -> dict:
     return result
 
 
-def load_defaults(client: SheetsClient | None = None) -> list[dict]:
+def load_presets(client: SheetsClient | None = None) -> list[dict]:
     """Return all presets (monthly first, then one-off) as a flat list.
 
     Each item carries a 'section' key ('monthly'|'oneoff') for optional grouping.
