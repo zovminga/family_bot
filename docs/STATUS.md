@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #13 Draft ids)  
-**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
+**Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
