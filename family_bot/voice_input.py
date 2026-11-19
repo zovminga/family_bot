@@ -36,6 +36,9 @@ MODEL_URL = f"https://alphacephei.com/vosk/models/{DEFAULT_MODEL_NAME}.zip"
 
 SAMPLE_RATE = 16000
 DEFAULT_LLM_MODEL = os.getenv("VX_LLM_MODEL", "claude-sonnet-5")
+# Claude client limits for bot calls: a hung request fails fast instead of holding the user.
+LLM_TIMEOUT_SEC = 30.0
+LLM_MAX_RETRIES = 1
 
 # Known merchants/brands → category hints for the LLM. Vosk often mangles brand
 # names (especially Latin ones like "DM"), so we also list phonetic ASR variants.
@@ -245,7 +248,7 @@ def extract_expenses(transcript: str, categories: list[str], currencies: list[st
 
     import anthropic
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SEC, max_retries=LLM_MAX_RETRIES)
     prompt = _build_prompt(transcript, categories, currencies, today, who, default_currency)
     resp = client.messages.create(
         model=model,

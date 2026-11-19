@@ -171,7 +171,6 @@ def test_double_tap_save_keeps_success_text(ctx, monkeypatch):
 
 
 # 10. Blocking gspread call inside async handler stalls the event loop for everyone.
-@known_bug("R11")
 def test_save_does_not_block_event_loop(ctx, monkeypatch):
     class SlowSheets(FakeSheets):
         def append_data_rows(self, rows):

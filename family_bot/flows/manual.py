@@ -8,6 +8,7 @@ checked here: ``navigation.home_fallbacks()`` handles it for every state.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import Any, Callable, Optional, TypeVar
 
@@ -217,7 +218,7 @@ class ManualFlow:
         cur = context.user_data["cur"]
         who = context.user_data["spender"]
         cmnt = context.user_data.get("comment", "")
-        append_expense(self._sheets(context), ExpenseRecord(
+        await asyncio.to_thread(append_expense, self._sheets(context), ExpenseRecord(
             date=date_str,
             category=cat,
             amount=amt,

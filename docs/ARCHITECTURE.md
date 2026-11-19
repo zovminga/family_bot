@@ -67,7 +67,8 @@ Finances never share across installs.
 | `navigation.py` | «return home» labels/callbacks; `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
 | `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `comment`); data sources injected from `bot.py` | Add manual-input handlers to `bot.py` |
 | `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
-| `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
+| `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
+| `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
@@ -175,6 +176,8 @@ Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
 
+The bot's Claude clients (`voice_input`, `photo_input`) use a 30 s timeout and 1 retry (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`).
+
 Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.
 
@@ -183,7 +186,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 | Mode | When | How |
 |------|------|-----|
 | Polling | `RENDER_EXTERNAL_URL` unset | `app.run_polling()` — local default |
-| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path = bot token |
+| Webhook | `RENDER_EXTERNAL_URL` set | `run_webhook` on `PORT` (default 8443), path `/telegram` (`config.WEBHOOK_PATH`), `secret_token` from `WEBHOOK_SECRET` (random per start when unset; invalid value → one-line exit). python-telegram-bot answers 403 to requests without the `X-Telegram-Bot-Api-Secret-Token` header |
 
 ## Dashboard boundary
 
