@@ -21,11 +21,12 @@ class Currency:
     stems: tuple[str, ...]  # lower-case prefixes that recognise the word in text
 
 
-# Order is the button order. The first six are stored as symbols, newer ones as ISO codes.
+# Order is the button order. Long-standing Currencies are stored as symbols,
+# any newer one as its ISO code (owner decision Q8 in the revision spec).
 CURRENCIES: tuple[Currency, ...] = (
+    Currency("₽", "RUB", ("рубль", "рублей"), ("рубл",)),
     Currency("дин", "RSD", ("динар", "динаров"), ("динар",)),
     Currency("€", "EUR", ("евро",), ("евро",)),
-    Currency("₽", "RUB", ("рубль", "рублей"), ("рубл",)),
     Currency("¥", "JPY", ("иена", "йен"), ("иен", "йен")),
     Currency("£", "GBP", ("фунт", "фунтов", "фунт стерлингов"), ("фунт",)),
     Currency("$", "USD", ("доллар", "долларов"), ("доллар",)),
@@ -36,6 +37,11 @@ CURRENCIES: tuple[Currency, ...] = (
 def symbols() -> list[str]:
     """Stored values of all registered Currencies, in button order."""
     return [c.symbol for c in CURRENCIES]
+
+
+def registered(values: list[str]) -> list[Currency]:
+    """Registry entries whose stored symbol is in values, in registry order."""
+    return [c for c in CURRENCIES if c.symbol in values]
 
 
 def find(value: str | None) -> Currency | None:
