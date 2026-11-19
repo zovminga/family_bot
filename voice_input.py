@@ -156,7 +156,7 @@ def _merchant_hints_block() -> str:
 def _spoken_currencies(currencies: list[str]) -> str:
     """'доллар/долларов→$, юань/юаней→CNY, …' for the allowed registry Currencies."""
     return ", ".join(f"{'/'.join(c.words)}→{c.symbol}"
-                     for c in currency.CURRENCIES if c.symbol in currencies)
+                     for c in currency.registered(currencies))
 
 
 def _build_prompt(transcript: str, categories: list[str], currencies: list[str],

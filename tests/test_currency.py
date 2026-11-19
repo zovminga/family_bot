@@ -16,7 +16,9 @@ import voice_input as vx
 
 
 def test_legacy_currencies_keep_their_symbols() -> None:
-    assert [c.symbol for c in currency.CURRENCIES][:6] == ["дин", "€", "₽", "¥", "£", "$"]
+    stored = {c.code: c.symbol for c in currency.CURRENCIES}
+    assert stored == {"RSD": "дин", "EUR": "€", "RUB": "₽", "JPY": "¥", "GBP": "£",
+                      "USD": "$", "CNY": "CNY"}
 
 
 @pytest.mark.parametrize("value, symbol", [
@@ -129,3 +131,11 @@ def test_regular_currency_columns_come_from_registry() -> None:
     ]
     items = regular.parse_regular(grid)["monthly"]
     assert [i["currency"] for i in items] == ["€", "$", "CNY"]
+
+
+def test_regular_header_word_containing_a_stem_is_not_a_currency() -> None:
+    grid = [
+        ["название", "клиенты", "евро", "категория", "кто"],
+        ["Gift", "7", "", "Other", "Both"],
+    ]
+    assert regular.parse_regular(grid)["monthly"] == []

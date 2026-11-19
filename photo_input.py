@@ -69,8 +69,7 @@ def _build_prompt(categories: list[str], currencies: list[str],
                   today: str, who: str, default_currency: str) -> str:
     cats = "\n".join(f"- {c}" for c in categories)
     curs = ", ".join(currencies)
-    codes = ", ".join(f"{c.code}→{c.symbol}" for c in currency.CURRENCIES
-                      if c.symbol in currencies)
+    codes = ", ".join(f"{c.code}→{c.symbol}" for c in currency.registered(currencies))
     return (
         "На фото — кассовый чек. Распознай его и верни СТРОГО JSON.\n\n"
         f"Сегодня: {today} (формат ДД.ММ.ГГГГ). Пользователь: {who}.\n\n"

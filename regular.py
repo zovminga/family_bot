@@ -18,10 +18,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from currency import CURRENCIES
+from currency import find as find_currency
 from sheets import SheetsClient, open_client
 from sheet_data import parse_amount
-
 
 
 def _find_col(header: list[str], substr: str) -> Optional[int]:
@@ -41,13 +40,15 @@ def parse_regular(values: list[list[str]]) -> dict:
     if not values:
         return {"monthly": [], "oneoff": []}
     header = values[0]
-    # Currency column header contains a registry word stem -> stored symbol.
+    # A header word the currency registry recognises ("доллары", "€", "CNY")
+    # makes that column a Currency column. Whole words only, so "клиенты"
+    # is not read as yen. The first column wins per Currency.
     cur_cols: dict[int, str] = {}
-    for cur in CURRENCIES:
-        for stem in cur.stems:
-            i = _find_col(header, stem)
-            if i is not None:
-                cur_cols.setdefault(i, cur.symbol)
+    for i, h in enumerate(header):
+        for word in str(h).strip().split():
+            found = find_currency(word)
+            if found is not None and found.symbol not in cur_cols.values():
+                cur_cols[i] = found.symbol
                 break
     cat_col = _find_col(header, "категор")
     who_col = _find_col(header, "кто")

@@ -31,7 +31,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   for pip-only hosts (Render Build Command, `dashboard/run.sh`).
 - Currency registry `currency.py` (issue #14): `$` is back on the buttons and
   in voice/receipt snapping, `¥` is yen (JPY), yuan is stored as `CNY`. Lookup
-  accepts symbol, ISO code or Russian word. Adding a Currency is one line.
+  accepts symbol, ISO code or Russian word. Adding a Currency is one line,
+  except the `sheets.REGULAR_HEADERS` bootstrap list (left to issue #17).
 - Unit tests under `tests/` (auth, expense, draft, sheets seam, analytics, …)
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 
