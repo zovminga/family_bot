@@ -257,9 +257,7 @@ def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
     ])
 
 
-async def _apply_draft_outcome(query, user_data: dict, outcome: draft.CallbackOutcome) -> None:
-    if outcome.clear_session:
-        draft.DraftSession.clear(user_data)
+async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
     if outcome.markup_only and outcome.buttons is not None:
         await query.edit_message_reply_markup(reply_markup=_inline_markup(outcome.buttons))
         return
@@ -312,7 +310,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = draft.session_from_voice(
         items, who=who, transcript=transcript, note=result.get("note", ""))
-    session.store(context.user_data)
+    draft.add_draft(context.user_data, session)
     await status.edit_text(
         draft.card_text(session),
         reply_markup=_inline_markup(draft.main_buttons(session)),
@@ -368,7 +366,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         merchant=result.get("merchant", ""),
         note=result.get("note", ""),
     )
-    session.store(context.user_data)
+    draft.add_draft(context.user_data, session)
     await status.edit_text(
         draft.card_text(session),
         reply_markup=_inline_markup(draft.main_buttons(session)),
@@ -379,13 +377,14 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the confirmation-card buttons (callback_data starts with 'vx:')."""
     query = update.callback_query
     await query.answer()
-    data = query.data[len(draft.CALLBACK_PREFIX):]
-    session = draft.DraftSession.load(context.user_data)
+    draft_id, data = draft.parse_callback(query.data)
+    session = draft.get_draft(context.user_data, draft_id)
+    if session is None:
+        await query.edit_message_text("Черновик уже не активен.")
+        return
     outcome = draft.apply_callback(
         data, session, CATS, CURS, get_sheets())
-    if not outcome.clear_session:
-        session.store(context.user_data)
-    await _apply_draft_outcome(query, context.user_data, outcome)
+    await _apply_draft_outcome(query, outcome)
 
 
 # ---------- Conversation steps ----------

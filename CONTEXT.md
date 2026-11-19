@@ -32,6 +32,7 @@ _Avoid_: Historical rate, exchange (as a noun)
 
 **Draft**:
 An Expense proposed from voice or receipt photo, shown for review before it is saved.
+Each Draft card has its own short id; several can be open at once.
 _Avoid_: Pending expense, suggestion
 
 **Preset**:

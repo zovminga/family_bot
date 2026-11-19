@@ -88,7 +88,7 @@ details to show. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
 - Allowlist: `TypeHandler` in group `-1` (`enforce_allowlist`); `/whoami` exempt
 
 Fallbacks: `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
-Home: `navigation.go_home` → `CHOOSE_ACTION`.
+Home: `navigation.go_home` → `CHOOSE_ACTION`. Clears flow keys in `user_data`, keeps open Drafts.
 
 ## Sheet schema
 
@@ -117,7 +117,20 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Photo** (`photo_input.py`): image bytes → Claude Vision line items + semantic buckets → Python grouping/sums → `session_from_receipt`. No fiscal QR / zbar (Render-friendly).
 
-**Draft save:** `draft_expense.save_drafts` → `append_expense` per item.
+**Draft save:** `draft_expense.save_drafts` → `expense.append_expenses` → one
+`SheetsClient.append_data_rows` call (gspread `append_rows`, `RAW`): all items
+land or none do, so a retry after a Sheets error writes no duplicates.
+
+**Drafts in memory:** `user_data["drafts"]` maps a 4-hex-char Draft id to a
+`DraftSession`; several cards stay usable at once. Callback data is
+`vx:<id>:<action>[:<item>[:<arg>]]` (`draft_expense.parse_callback`). The
+category button carries the category name (`setcat:<i>:<name>`); a name that
+would push callback data past Telegram's 64 bytes is carried as an 8-char
+hash of the name (`setcathash:<i>:<hash>`), matched against current categories. Save or cancel marks the Draft `closed`; later taps on
+that card do nothing, so a double tap keeps «✅ Сохранено». Up to 20 closed
+Drafts are kept per user, open ones are never pruned. An unknown id (card from
+before a restart) gets «Черновик уже не активен.». Drafts are not persisted:
+a restart drops them.
 
 Voice/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.

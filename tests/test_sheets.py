@@ -95,3 +95,23 @@ def test_gspread_append_writes_values_raw():
     row = ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "=1+1"]
     GspreadSheetsClient(FakeSpreadsheet()).append_data_row(row)
     assert calls == [(row, {"value_input_option": "RAW"})]
+
+
+def test_gspread_append_data_rows_is_one_raw_request():
+    calls = []
+
+    class FakeWorksheet:
+        def append_rows(self, rows, **kw):
+            calls.append((rows, kw))
+
+    class FakeSpreadsheet:
+        def worksheet(self, name):
+            assert name == "Data"
+            return FakeWorksheet()
+
+    rows = [
+        ["07.08.2026", "2026-08", "Food", 1.0, "€", "Azat", "a"],
+        ["07.08.2026", "2026-08", "Food", 2.0, "€", "Azat", "b"],
+    ]
+    GspreadSheetsClient(FakeSpreadsheet()).append_data_rows(rows)
+    assert calls == [(rows, {"value_input_option": "RAW"})]
