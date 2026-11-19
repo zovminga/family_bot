@@ -88,6 +88,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
   navigation.py       go_home / home button (one handler in fallbacks)
   per_user.py         Update order: users in parallel, one user's updates in order
+  undo.py             «↩️ Отменить»: the User's last save, deleted by its values
   conversation_states.py  ConversationHandler states (IntEnum State)
   dashboard/          build_dashboard.py, failure_alert.py, __main__.py
 dashboard/            run.sh, schedule.sh (launchd), template.html, SPEC, output/ (gitignored)
