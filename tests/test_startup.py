@@ -151,7 +151,7 @@ def test_webhook_without_secret_env_generates_one(monkeypatch: pytest.MonkeyPatc
                                                   capsys: pytest.CaptureFixture[str]) -> None:
     kw = run_main_in_webhook_mode(monkeypatch, None)
     assert config.is_valid_webhook_secret(kw["secret_token"])
-    assert len(kw["secret_token"]) >= 32
+    assert len(kw["secret_token"]) >= config.WEBHOOK_SECRET_BYTES
     assert config.WEBHOOK_SECRET_ENV in capsys.readouterr().out
 
 
