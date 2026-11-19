@@ -767,13 +767,19 @@ def main():
         print("RENDER_EXTERNAL_URL variable not found, running in polling mode for local development.")
         app.run_polling()
     else:
-        print(f"Running in webhook mode, URL: {render_url}")
-        # Start webhook. Token is used as secret path in URL.
+        raw_secret = os.getenv(config.WEBHOOK_SECRET_ENV)
+        secret = config.webhook_secret(raw_secret)
+        if not raw_secret:
+            print(f"{config.WEBHOOK_SECRET_ENV} is not set, using a random secret for this run.")
+        webhook_url = f"{render_url}/{config.WEBHOOK_PATH}"
+        print(f"Running in webhook mode, URL: {webhook_url}")
+        # The path is public; Telegram proves itself with the secret_token header instead.
         app.run_webhook(
             listen="0.0.0.0",
             port=port,
-            url_path=bot_token,
-            webhook_url=f"{render_url}/{bot_token}"
+            url_path=config.WEBHOOK_PATH,
+            webhook_url=webhook_url,
+            secret_token=secret,
         )
 
 

@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #18 slow calls do not freeze the bot)  
+**Updated by:** agent session (issue #18 slow calls, merged after issue #28)  
 **Product code tip:** `7226bcc` (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -29,6 +29,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «❌ Не разобрал, введите вручную».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
+- Webhook (issue #28): Telegram posts to `<RENDER_EXTERNAL_URL>/telegram`, the
+  bot token is not in the URL. `run_webhook` gets `secret_token` from
+  `WEBHOOK_SECRET`; requests without the header get 403. Unset → random secret
+  per start (still works); a value with characters Telegram rejects → one-line
+  exit. Render needs `WEBHOOK_SECRET` set by the owner (recommended, not blocking).
 - Package layout (issue #23): all Python code is the `family_bot/` package.
   `uv sync` installs it; `family-bot` (`[project.scripts]` →
   `family_bot.bot:main`) starts the bot, `python -m family_bot.dashboard`
