@@ -13,7 +13,6 @@ from family_bot.analytics import (
     format_month_summary,
     last_n,
     month_summary,
-    unique_currencies,
 )
 from family_bot.sheet_data import Row
 
@@ -32,11 +31,6 @@ ROWS = [
         amount=5.0, currency="дин", who="Azat", comment="c",
     ),
 ]
-
-
-def test_unique_currencies():
-    assert unique_currencies(ROWS) == ["дин", "€"]
-    assert unique_currencies([], fallback=["₽"]) == ["₽"]
 
 
 def test_last_n_sheet_order_newest_first():
@@ -97,8 +91,16 @@ def test_aggregate_missing_rate():
         convert_to_currency="дин",
         get_rate=lambda *_: None,
     )
-    assert text == "❌ Не удалось получить курс € → дин"
+    assert text == "❌ Нет курса для пересчёта в дин: €."
     assert details == {}
+
+
+def test_aggregate_names_every_missing_currency():
+    rows = [*ROWS, Row(date=date(2026, 8, 3), month="2026-08", category="Food", amount=5.0,
+                       currency="GEL", who="Ann", comment="")]
+    text, _ = aggregate(rows, month="2026-08", convert_to_currency="дин",
+                        get_rate=lambda src, dst: 100.0 if src == "€" else None)
+    assert text == "❌ Нет курса для пересчёта в дин: GEL."
 
 
 def test_format_last_n_shows_date_text():
@@ -183,3 +185,14 @@ def test_month_summary_blank_category_and_spender_get_labels():
     din = month_summary(rows, "2026-11").by_currency["дин"]
     assert din.categories == [("Без категории", 10.0)]
     assert din.spenders == [("Не указан", 10.0)]
+
+
+def test_aggregate_same_currency_as_code_and_symbol_needs_no_rate():
+    rows = [Row(date=date(2026, 8, 3), month="2026-08", category="Food", amount=5.0,
+                currency="EUR", who="Ann", comment=""),
+            Row(date=date(2026, 8, 4), month="2026-08", category="Food", amount=2.5,
+                currency="€", who="Ann", comment="")]
+    text, details = aggregate(rows, month="2026-08", group_by_currency=False,
+                              convert_to_currency="€", get_rate=lambda *_: None)
+    assert text == "💰 Итого: 7,50 €"
+    assert details == {}

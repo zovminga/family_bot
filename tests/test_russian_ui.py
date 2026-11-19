@@ -158,7 +158,9 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     s = flow_stats.StatsFlow(
         categories=lambda _ctx: list(CATEGORIES),
         load_rows=lambda _ctx: list(ROWS),
-        fallback_currencies=lambda _ctx: ["дин"],
+        sheets=lambda _ctx: None,
+        who=lambda _upd, _ctx: "Аня",
+        all_codes=lambda: ["RSD", "EUR"],
         get_rate=lambda src, dst: 1.0 if src == dst else 117.0,
     )
     run(s.begin(seen.update(nav.SHOW_STATS), ctx))

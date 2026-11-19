@@ -207,7 +207,9 @@ def load_expense_rows(sheets: SheetsClient) -> list[Row]:
 STATS = flow_stats.StatsFlow(
     categories=lambda context: cfg(context).categories,
     load_rows=lambda context: load_expense_rows(cfg(context).sheets),
-    fallback_currencies=lambda context: cfg(context).currencies,
+    sheets=lambda context: cfg(context).sheets,
+    who=lambda update, context: get_user_info(update, context)[0],
+    all_codes=lambda: picker.CATALOG.codes(),
     get_rate=fx.rate,
 )
 
