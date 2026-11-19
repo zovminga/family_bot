@@ -414,7 +414,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        await _ask_category(update, "📂 Choose category:")
+        await _ask_from_list(update, "📂 Choose category:", CATS)
         return CHOOSE_CAT
 
     if text in (
@@ -445,17 +445,9 @@ async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ----- Manual add-expense flow -----
-async def _ask_category(update: Update, prompt: str) -> None:
-    kb = [[c] for c in CATS]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        prompt,
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
-
-
-async def _ask_currency(update: Update, prompt: str) -> None:
-    kb = [[c] for c in CURS]
+async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
+    """Reply with prompt and one button per option, plus the home button."""
+    kb = [[c] for c in options]
     kb.append(nav.home_row())
     await update.message.reply_text(
         prompt,
@@ -469,9 +461,8 @@ def _known_category(text: str) -> Optional[str]:
     return next((c for c in CATS if c.casefold() == key), None)
 
 
-def _known_currency(text: Optional[str]) -> Optional[str]:
-    """Stored Currency symbol for a symbol, ISO code or word, if it is on the buttons."""
-    found = currency.find(text)
+def _on_buttons(found: Optional[currency.Currency]) -> Optional[str]:
+    """Stored symbol of a registered Currency if this install offers it (CURS)."""
     return found.symbol if found is not None and found.symbol in CURS else None
 
 
@@ -483,7 +474,7 @@ async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cat = _known_category(text)
     if cat is None:
-        await _ask_category(update, "❌ No such category. Choose one from the list:")
+        await _ask_from_list(update, "❌ No such category. Choose one from the list:", CATS)
         return CHOOSE_CAT
 
     context.user_data["cat"] = cat
@@ -505,14 +496,14 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parsed = amount_input.parse_amount_text(text)
     if parsed is None:
         await update.message.reply_text(
-            "❌ Need an amount above zero, e.g. 1 200 or 350 дин. Try again:")
+            "❌ Need an amount above zero with at most 2 decimals, e.g. 1 200 or 350 дин. Try again:")
         return TYPING_AMT
     amt, typed_currency = parsed
     context.user_data["amt"] = amt
-    cur = typed_currency.symbol if typed_currency and typed_currency.symbol in CURS else None
+    cur = _on_buttons(typed_currency)
     if cur is not None:
         return await _set_currency_and_ask_comment(update, context, cur)
-    await _ask_currency(update, "💱 Currency?")
+    await _ask_from_list(update, "💱 Currency?", CURS)
     return CHOOSE_CUR
 
 
@@ -523,9 +514,9 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
     
-    cur = _known_currency(text)
+    cur = _on_buttons(currency.find(text))
     if cur is None:
-        await _ask_currency(update, "❌ No such currency. Choose one from the list:")
+        await _ask_from_list(update, "❌ No such currency. Choose one from the list:", CURS)
         return CHOOSE_CUR
     return await _set_currency_and_ask_comment(update, context, cur)
 

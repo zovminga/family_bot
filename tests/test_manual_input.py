@@ -108,6 +108,18 @@ def test_currency_typo_asks_to_pick_from_list(ctx, text):
 
 # --- Edited messages (R12) ---
 
+def test_main_registers_edit_drop_before_allowlist(monkeypatch):
+    apps = []
+    monkeypatch.setenv("BOT_TOKEN", "123:abc")
+    monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
+    monkeypatch.setattr(bot, "sheets", bot.sheets)  # main() rebinds it, restore after
+    monkeypatch.setattr(bot, "open_client", lambda: None)
+    monkeypatch.setattr(bot.Application, "run_polling", lambda self, **kw: apps.append(self))
+    bot.main()
+    groups = apps[0].handlers
+    assert bot.EDITED_MESSAGES in groups[-2], groups
+    assert min(groups) == -2, "something runs before the edit drop"
+
 def _message(text):
     return Message(message_id=5, date=datetime.now(timezone.utc),
                    chat=Chat(id=111, type="private"),
