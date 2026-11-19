@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #12 error handler)  
+**Updated by:** agent session (issue #12 error handler, merged after issues #21, #37)  
 **Product code tip:** `6c26d59` (2026-11-19) — bot-wide error handler, no raw exception text to users (issue #12)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -69,6 +69,14 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   comment with HTML or `</script>` stays text. A Telegram publish error masks
   `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
   A failed Claude batch is not cached, the next run retries it.
+- Failed dashboard build alert (issue #21): a non-trial `run.sh` build that
+  fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
+  exception type (`dashboard/failure_alert.py`, stdlib only). Details:
+  `dashboard/SPEC.md` §5.1.
+- Dashboard on a phone (issue #37): the page fits 375 px, wide tables scroll
+  inside their card. «По каждой» with no Currency chosen shows sums per
+  Currency (`sumText()` in `template.html`) and never adds дин + € + ₽;
+  charts then use the base currency. Plan 4.3 V2/V4 remain (#38).
 
 ## Settled (do not re-open as unknowns)
 
