@@ -44,7 +44,7 @@ def test_voice_amount_must_be_positive(raw):
     assert vx._snap_amount(raw) is None
 
 
-# 16. A transient LLM failure is cached forever as "Прочее" and never retried.
+# 16. A transient LLM failure must not be cached as "Прочее" — the next run retries it.
 def test_failed_llm_batch_is_retried_next_run(tmp_path, monkeypatch):
     monkeypatch.setattr(bd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
@@ -62,7 +62,7 @@ def test_failed_llm_batch_is_retried_next_run(tmp_path, monkeypatch):
     assert cache["Такси домой"] == "Такси", cache
 
 
-# 17. Publish error text contains the bot token (goes to build.log / launchd.log via tee).
+# 17. Publish error text must not contain the bot token (it goes to build.log / launchd.log via tee).
 def test_publish_error_does_not_leak_token(tmp_path, monkeypatch):
     token = "123456:SECRET-TOKEN"
     monkeypatch.setenv("BOT_TOKEN", token)
