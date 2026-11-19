@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #19 family time zone, merged after issue #20)  
-**Product code tip:** `09c8b14` (2026-11-19) — "today" in `TZ_NAME` zone via `clock.py`  
+**Updated by:** agent session (issue #16 stats flow module, merged after issues #19, #20)  
+**Product code tip:** `75fe288` (2026-11-19) — statistics flow in `flows/stats.py`, R7 and R8 fixed  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -50,6 +50,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - CI: GitHub Actions (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`,
   `mypy` (library modules) and `pip-audit` on every pull request and push to
   `main`, installing with `uv sync --locked` on Python 3.12.
+- Statistics flow lives in `flows/stats.py` (issue #16): request state is one
+  `StatQuery`, a new request never reuses the previous month or currency,
+  `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
@@ -89,10 +92,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - `tests/test_sheets.py` re-exports `FakeSheetsClient` so branches started
   before the move still import it. Drop the re-export once no branch imports
   the fake from `tests.test_sheets`.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
-  recorded as open: stats not returning home (R7, R8, see
-  `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`), and Preset code names (`DEFAULTS`, `load_defaults`,
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
+  recorded as open: the dashboard's own row parsing (C3, see
+  `docs/ARCHITECTURE.md`) and Preset code names (`DEFAULTS`, `load_defaults`,
   see `CONTEXT.md`).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live

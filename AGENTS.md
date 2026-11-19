@@ -73,6 +73,7 @@ voice_input.py      Vosk STT + Claude extract
 photo_input.py      Claude Vision receipt → drafts
 regular.py          Regular_expenses → presets
 flow_preset.py      ⚡ preset conversation steps
+flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
 navigation.py       go_home / home button
 conversation_states.py  ConversationHandler state ints
 dashboard/          Offline HTML build + SPEC
