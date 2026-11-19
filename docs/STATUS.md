@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #13 Draft ids, merged after issues #16, #19, #20)  
-**Product code tip:** `57e81e8` (2026-11-19) — Draft ids, one `append_rows` per save (issue #13)  
+**Updated by:** agent session (issue #21 build failure alert)  
+**Product code tip:** `786cd63` (2026-11-19) — Telegram alert when a dashboard build fails (issue #21)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
