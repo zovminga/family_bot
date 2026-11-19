@@ -72,6 +72,7 @@ files = [
     "draft_expense.py",
     "expense.py",
     "flow_preset.py",
+    "flows",
     "navigation.py",
     "photo_input.py",
     "regular.py",
@@ -81,7 +82,7 @@ files = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["vosk"]
+module = ["vosk", "dateutil", "dateutil.*"]
 ignore_missing_imports = true
 
 # Existing type errors, relaxed per module so CI is green without touching
