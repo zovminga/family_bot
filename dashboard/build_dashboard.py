@@ -239,6 +239,34 @@ def to_base(amount: float, iso: str, base_iso: str, rates: dict[str, float]) -> 
     return amount / rate
 
 
+def unconvertible_rows_error(rows: list[dict]) -> Optional[str]:
+    """Describe rows whose Currency has no FX rate, or None when all converted.
+
+    Such a row would count as 0 in every base-currency total, so the build stops
+    instead of publishing a dashboard that silently undercounts.
+    """
+    missing = [r for r in rows if r["amount_base"] is None]
+    if not missing:
+        return None
+    lines = [f"  {r['date'] or '(no date)'} · {r['amount']:g} {r['currency_symbol']} "
+             f"({r['currency']}) · {r['who']} · {r['comment'] or '(no comment)'}"
+             for r in missing]
+    return (f"{len(missing)} row(s) have a Currency with no FX rate. Fix the Currency "
+            "cell in the sheet or add the currency to currency.py:\n" + "\n".join(lines))
+
+
+# Characters that must not appear raw inside an inline <script>: "<" could
+# start "</script>" or "<!--", U+2028/U+2029 break older JS parsers.
+_SCRIPT_UNSAFE = {"<": "\\u003c", ">": "\\u003e", "&": "\\u0026",
+                  "\u2028": "\\u2028", "\u2029": "\\u2029"}
+
+
+def json_for_script(data: object) -> str:
+    """Serialize `data` as JSON that is safe to paste inside a <script> element."""
+    payload = json.dumps(data, ensure_ascii=False)
+    return "".join(_SCRIPT_UNSAFE.get(ch, ch) for ch in payload)
+
+
 # ---------------------------------------------------------------------------
 # LLM comment grouping
 # ---------------------------------------------------------------------------
@@ -362,12 +390,14 @@ def group_comments_llm(comments: list[str], provider: str, model: str) -> dict[s
             batch = pending[start:start + batch_size]
             try:
                 mapping = classify_batch(build_grouping_prompt(batch), model)
-                for comment in batch:
-                    cache[comment] = _snap_to_canonical(mapping.get(comment))
             except Exception as exc:  # noqa: BLE001 - degrade gracefully
-                print(f"⚠️  {provider} grouping failed for a batch: {exc}", file=sys.stderr)
-                for comment in batch:
-                    cache.setdefault(comment, "Прочее")
+                # Not cached: the build falls back to rules for these comments
+                # and the next run asks the LLM again.
+                print(f"⚠️  {provider} grouping failed for a batch, will retry next run: {exc}",
+                      file=sys.stderr)
+                continue
+            for comment in batch:
+                cache[comment] = _snap_to_canonical(mapping.get(comment))
         save_cache(path, cache)
     elif pending:
         print(f"⚠️  {env_var} not set — comments left ungrouped ('Без темы').",
@@ -487,6 +517,10 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         rows = [r for r in rows if r["month"] and r["month"] >= from_month]
         print(f"→ Filtered to months >= {from_month}: kept {len(rows)}, hid {before - len(rows)}.")
 
+    rate_error = unconvertible_rows_error(rows)
+    if rate_error:
+        raise RuntimeError(rate_error)
+
     if use_llm:
         print(f"→ Grouping comments into themes via LLM ({provider}, model={model})…")
         theme_map = group_comments_llm(comments, provider, model)
@@ -530,10 +564,10 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     }
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    payload = json.dumps(data, ensure_ascii=False)
-    html = template.replace(DATA_PLACEHOLDER, payload)
     # Inline Chart.js so the file is self-contained (works offline / in-app browsers).
-    html = html.replace(CHARTJS_PLACEHOLDER, get_chartjs())
+    # Chart.js goes in first: data inserted last is never scanned for placeholders.
+    html = template.replace(CHARTJS_PLACEHOLDER, get_chartjs())
+    html = html.replace(DATA_PLACEHOLDER, json_for_script(data))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / "expenses_dashboard.html"
@@ -567,15 +601,21 @@ def publish_to_telegram(html_path: Path) -> None:
         return
 
     print("→ Publishing dashboard to Telegram…")
-    with html_path.open("rb") as fh:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{token}/sendDocument",
-            data={"chat_id": chat_id,
-                  "caption": "🔄 Актуальный дашборд трат обновлён."},
-            files={"document": ("expenses_dashboard.html", fh, "text/html")},
-            timeout=120,
-        )
-    resp.raise_for_status()
+    try:
+        with html_path.open("rb") as fh:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{token}/sendDocument",
+                data={"chat_id": chat_id,
+                      "caption": "🔄 Актуальный дашборд трат обновлён."},
+                files={"document": ("expenses_dashboard.html", fh, "text/html")},
+                timeout=120,
+            )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        # The request URL holds the token and requests puts it into the error
+        # text, which run.sh tees into build.log / launchd.log. Re-raise a copy
+        # with the token masked and without the original chained traceback.
+        raise type(exc)(str(exc).replace(token, "<BOT_TOKEN>")) from None
     result = resp.json()
     if not result.get("ok"):
         print(f"⚠️  Telegram publish failed: {result}", file=sys.stderr)

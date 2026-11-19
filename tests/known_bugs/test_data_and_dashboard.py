@@ -45,7 +45,6 @@ def test_voice_amount_must_be_positive(raw):
 
 
 # 16. A transient LLM failure is cached forever as "Прочее" and never retried.
-@known_bug("D4")
 def test_failed_llm_batch_is_retried_next_run(tmp_path, monkeypatch):
     monkeypatch.setattr(bd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
@@ -64,7 +63,6 @@ def test_failed_llm_batch_is_retried_next_run(tmp_path, monkeypatch):
 
 
 # 17. Publish error text contains the bot token (goes to build.log / launchd.log via tee).
-@known_bug("D2")
 def test_publish_error_does_not_leak_token(tmp_path, monkeypatch):
     token = "123456:SECRET-TOKEN"
     monkeypatch.setenv("BOT_TOKEN", token)
@@ -86,8 +84,25 @@ def test_publish_error_does_not_leak_token(tmp_path, monkeypatch):
 
 
 # 18. Currency missing from FX table → amount_base None → template treats it as 0.
-@known_bug("D3")
-def test_unknown_currency_is_not_silently_zero():
-    rates = {"RSD": 1.0, "EUR": 0.0085}
-    iso = bd.SYMBOL_TO_ISO.get("руб", "руб".upper())
-    assert bd.to_base(1000.0, iso, "RSD", rates) is not None
+# The build must stop and name the offending rows instead.
+def test_unknown_currency_stops_build(tmp_path, monkeypatch):
+    monkeypatch.setattr(bd, "OUTPUT_DIR", tmp_path / "output")
+    monkeypatch.setattr(bd, "DASHBOARD_DIR", tmp_path)
+    monkeypatch.setattr(bd, "fetch_rates", lambda base: {"RSD": 1.0, "EUR": 0.0085})
+    monkeypatch.setattr(bd, "get_chartjs", lambda: "")
+    csv_path = tmp_path / "data.csv"
+    csv_path.write_text(
+        "Date,Category,Amount,Currency,Who,Comment\n"
+        "01.11.2026,Food,100,дин,Azat,ok\n"
+        "02.11.2026,Food,1000,руб,Azat,Пятёрочка\n"
+        "03.11.2026,Food,7,XYZ,Lisa,mystery\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError) as exc:
+        bd.build(base_iso="RSD", model="m", use_llm=False,
+                 csv_path=str(csv_path), from_month=None)
+    msg = str(exc.value)
+    assert "02.11.2026" in msg and "руб" in msg and "Пятёрочка" in msg, msg
+    assert "03.11.2026" in msg and "XYZ" in msg, msg
+    assert "01.11.2026" not in msg, msg
+    assert not (tmp_path / "output" / "expenses_dashboard.html").exists()
