@@ -69,7 +69,7 @@ One `ConversationHandler` (`bot.py` `main()`), states in `conversation_states.py
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
-                             → [STAT_SHOW_DETAILS] → result → CHOOSE_ACTION
+                             → result → [STAT_SHOW_DETAILS] → CHOOSE_ACTION
 ```
 
 Stats (`flows/stats.py`): the menu tap and the category step each start a new
