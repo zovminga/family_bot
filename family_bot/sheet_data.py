@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Shared parsing kernel for Data-sheet rows.
 
-One locality for amount parsing, header aliases, month keys, and the currency
-symbol ↔ ISO maps (derived from currency.py) used by the bot and dashboard.
+One locality for amount parsing, header aliases, month keys, the typed ``Row``
+and the currency symbol ↔ ISO maps (derived from currency.py) used by the bot
+and the dashboard.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Optional
 
 from family_bot import currency
@@ -28,6 +30,45 @@ ISO_TO_SYMBOL: dict[str, str] = {iso: sym for sym, iso in SYMBOL_TO_ISO.items()}
 
 DATE_FMT = "%d.%m.%Y"
 MONTH_FMT = "%Y-%m"
+# Date cell formats read from the sheet: the bot writes DATE_FMT, the rest are hand edits.
+READ_DATE_FMTS = (DATE_FMT, "%Y-%m-%d", "%d/%m/%Y")
+
+
+@dataclass(frozen=True)
+class Row:
+    """
+    One Data-sheet expense with typed fields.
+
+    Parameters
+    ----------
+    date : Optional[date]
+        Date cell; None when it is empty or not in a known format.
+    month : str
+        ``YYYY-MM`` from the Month cell, or derived from the date; "" when neither.
+    category : str
+        Category cell as stored.
+    amount : float
+        Amount cell parsed by ``parse_amount``.
+    currency : str
+        Currency cell as stored (symbol such as «дин», or an ISO code).
+    who : str
+        Spender cell as stored.
+    comment : str
+        Comment cell as stored.
+    """
+
+    date: Optional[date]
+    month: str
+    category: str
+    amount: float
+    currency: str
+    who: str
+    comment: str
+
+    @property
+    def date_text(self) -> str:
+        """Date in ``DATE_FMT``, or "" when the row has no date."""
+        return self.date.strftime(DATE_FMT) if self.date else ""
 
 
 def resolve_columns(headers: list[str]) -> dict[str, int]:
@@ -78,18 +119,23 @@ def parse_amount(raw: Any) -> Optional[float]:
         return None
 
 
+def parse_date(raw: str) -> Optional[date]:
+    """Parse a Date cell in one of ``READ_DATE_FMTS``; None when it does not match."""
+    text = str(raw).strip()
+    for fmt in READ_DATE_FMTS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def normalize_month(date_str: str, month_str: str = "") -> str:
     """Return a YYYY-MM month key, deriving it from the date when needed."""
     if month_str and len(month_str.strip()) >= 7:
         return month_str.strip()[:7]
-    if not date_str:
-        return ""
-    for fmt in (DATE_FMT, "%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(str(date_str).strip(), fmt).strftime(MONTH_FMT)
-        except (ValueError, AttributeError):
-            continue
-    return ""
+    parsed = parse_date(date_str) if date_str else None
+    return parsed.strftime(MONTH_FMT) if parsed else ""
 
 
 def cell(row: list, columns: dict[str, int], field: str) -> str:
@@ -99,40 +145,28 @@ def cell(row: list, columns: dict[str, int], field: str) -> str:
     return str(row[idx]).strip()
 
 
-def normalize_row(row: list, columns: dict[str, int]) -> Optional[dict]:
-    """Normalize one Data-sheet row into a dict, or None if amount is missing."""
+def parse_row(row: list, columns: dict[str, int]) -> Optional[Row]:
+    """Parse one Data-sheet row, or None when the amount is missing or not a number."""
     if "amount" not in columns:
         return None
     idx = columns["amount"]
     amount = parse_amount(row[idx] if idx < len(row) else "")
     if amount is None:
         return None
-    date = cell(row, columns, "date")
-    month = normalize_month(date, cell(row, columns, "month"))
-    return {
-        "date": date,
-        "month": month,
-        "category": cell(row, columns, "category"),
-        "amount": amount,
-        "currency": cell(row, columns, "currency"),
-        "who": cell(row, columns, "who"),
-        "comment": cell(row, columns, "comment"),
-    }
+    date_cell = cell(row, columns, "date")
+    return Row(
+        date=parse_date(date_cell),
+        month=normalize_month(date_cell, cell(row, columns, "month")),
+        category=cell(row, columns, "category"),
+        amount=amount,
+        currency=cell(row, columns, "currency"),
+        who=cell(row, columns, "who"),
+        comment=cell(row, columns, "comment"),
+    )
 
 
-def normalize_rows(headers: list[str], raw_rows: list[list]) -> list[dict]:
-    """Normalize a full Data sheet (headers + body rows). Skips unparseable amounts."""
+def parse_rows(headers: list[str], raw_rows: list[list]) -> list[Row]:
+    """Parse a full Data sheet (headers + body rows). Skips rows without a numeric amount."""
     columns = resolve_columns(headers)
-    if "amount" not in columns:
-        return []
-    out: list[dict] = []
-    for row in raw_rows:
-        rec = normalize_row(row, columns)
-        if rec is not None:
-            out.append(rec)
-    return out
-
-
-def to_iso(value: str) -> str:
-    """Map a sheet currency symbol (or ISO) to an ISO code."""
-    return currency.to_iso(value)
+    rows = (parse_row(raw, columns) for raw in raw_rows)
+    return [r for r in rows if r is not None]

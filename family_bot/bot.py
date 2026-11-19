@@ -18,6 +18,7 @@ from family_bot import auth
 from family_bot import clock
 from family_bot import config
 from family_bot import errors
+from family_bot import fx
 from family_bot import voice_input as vx
 from family_bot import photo_input as px
 from family_bot import text_input
@@ -27,7 +28,7 @@ from family_bot import navigation as nav
 from family_bot.flows import manual as flow_manual
 from family_bot.flows import stats as flow_stats
 from family_bot.conversation_states import State
-from family_bot.sheet_data import normalize_rows, DATE_FMT
+from family_bot.sheet_data import parse_rows, DATE_FMT, Row
 from family_bot.per_user import PerUserUpdateProcessor
 from family_bot.sheets import SheetsClient
 from family_bot import analytics
@@ -182,12 +183,12 @@ async def _reply_not_set_up(update: Update, settings: config.Config) -> None:
         await update.effective_message.reply_text(text)
 
 
-def load_expense_rows(sheets: SheetsClient) -> list[dict]:
-    """Read and normalize Data-sheet rows for analytics."""
+def load_expense_rows(sheets: SheetsClient) -> list[Row]:
+    """Read and parse Data-sheet rows for analytics."""
     all_values = sheets.read_data_values()
     if not all_values or len(all_values) < 2:
         return []
-    return normalize_rows(all_values[0], all_values[1:])
+    return parse_rows(all_values[0], all_values[1:])
 
 
 # Statistics conversation; data sources are read per request from Config so
@@ -196,6 +197,7 @@ STATS = flow_stats.StatsFlow(
     categories=lambda context: cfg(context).categories,
     load_rows=lambda context: load_expense_rows(cfg(context).sheets),
     fallback_currencies=lambda context: cfg(context).currencies,
+    get_rate=fx.rate,
 )
 
 # Manual add-expense conversation; sources read per request like STATS.

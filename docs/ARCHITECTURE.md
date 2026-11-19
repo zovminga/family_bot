@@ -31,10 +31,12 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── photo_input.py          image → Claude Vision → draft items
     ├── text_input.py           «кофе 350» → voice_input.extract_expenses → Draft
     ├── regular.py              Regular_expenses → preset dicts
-    ├── analytics.py            stats on normalized rows
+    ├── analytics.py            stats on parsed rows (no I/O)
+    ├── fx.py                   exchange rates (bot + dashboard)
+    ├── llm.py                  Claude client limits, JSON from replies
     ├── expense.py              ExpenseRecord → row
     ├── amount_input.py         typed/spoken amount checks
-    ├── sheet_data.py           parse/normalize kernel
+    ├── sheet_data.py           Data row parsing → Row (bot + dashboard)
     ├── clock.py                "now" in the family time zone (TZ_NAME)
     ├── errors.py               error handler, user texts, secret masking
     └── sheets.py  SheetsClient ──────────────────────────┐
@@ -59,9 +61,11 @@ Finances never share across installs.
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
-| `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py` | Duplicate parse rules (known gap below) |
+| `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
-| `analytics.py` | Aggregations + FX adapter hook; also holds the HTTP adapter `http_exchange_rate` | Mix Sheets I/O into stats |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller | Mix Sheets or HTTP into stats |
+| `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
+| `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
 | `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
@@ -72,12 +76,10 @@ Finances never share across installs.
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
-**Known gap until issue #25 closes (finding C3, plan 2.3):** `family_bot/dashboard/build_dashboard.py`
-imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
-maps from `sheet_data`, but runs its own row loop: its own `cell()`, symbol → ISO
-fallback, and its own FX fetch (`fetch_rates`). Category repair runs after the
-loop (`repair_category()`, names from the Config sheet and Data). It does not
-use `sheet_data.normalize_rows`.
+The dashboard build (`family_bot/dashboard/build_dashboard.py`) reads rows with
+`sheet_data.parse_rows`, rates with `fx.fetch_rates` and model replies with
+`llm.extract_json_object`. Its own steps on top: cash-withdrawal exclusion,
+empty Currency → base currency, spender names, `repair_category()`.
 
 ## Conversation flows
 
@@ -182,7 +184,7 @@ Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
 
-The bot's Claude clients (`voice_input`, `photo_input`) use a 30 s timeout and 1 retry (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`).
+The bot's Claude clients (`voice_input`, `photo_input`) come from `llm.client()`, with the timeout and retry limits `llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`. The dashboard's grouping client keeps the SDK defaults.
 
 Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.

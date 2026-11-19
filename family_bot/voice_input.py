@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from family_bot import currency
+from family_bot import currency, llm
 from family_bot.amount_input import positive_amount
 
 # Repo root (family_bot/ lives one level below): the model goes to <repo>/models.
@@ -36,9 +36,6 @@ MODEL_URL = f"https://alphacephei.com/vosk/models/{DEFAULT_MODEL_NAME}.zip"
 
 SAMPLE_RATE = 16000
 DEFAULT_LLM_MODEL = os.getenv("VX_LLM_MODEL", "claude-sonnet-5")
-# Claude client limits for bot calls: a hung request fails fast instead of holding the user.
-LLM_TIMEOUT_SEC = 30.0
-LLM_MAX_RETRIES = 1
 
 # Known merchants/brands → category hints for the LLM. Vosk often mangles brand
 # names (especially Latin ones like "DM"), so we also list phonetic ASR variants.
@@ -128,18 +125,6 @@ def transcribe(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 # Structured extraction (Claude): transcript -> list of expenses
 # ---------------------------------------------------------------------------
-def _extract_json_object(text: str) -> dict:
-    """Parse a JSON object from a model reply, tolerating ```json fences."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1] if "\n" in text else text
-        text = text.rsplit("```", 1)[0].strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
-    return json.loads(text)
-
-
 def _merchant_hints_block() -> str:
     """Render the MERCHANT_HINTS table as a prompt section (empty if none)."""
     if not MERCHANT_HINTS:
@@ -246,17 +231,14 @@ def extract_expenses(transcript: str, categories: list[str], currencies: list[st
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY is not set — cannot parse the expense.")
 
-    import anthropic
-
-    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SEC, max_retries=LLM_MAX_RETRIES)
+    client = llm.client()
     prompt = _build_prompt(transcript, categories, currencies, today, who, default_currency)
     resp = client.messages.create(
         model=model,
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
-    text = "".join(block.text for block in resp.content if block.type == "text")
-    parsed = _extract_json_object(text)
+    parsed = llm.extract_json_object(llm.reply_text(resp))
 
     raw_items = parsed.get("expenses") or []
     note = (parsed.get("note") or "").strip()

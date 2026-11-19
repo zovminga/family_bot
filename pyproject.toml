@@ -87,6 +87,8 @@ files = [
     "family_bot/expense.py",
     "family_bot/flow_preset.py",
     "family_bot/flows",
+    "family_bot/fx.py",
+    "family_bot/llm.py",
     "family_bot/navigation.py",
     "family_bot/per_user.py",
     "family_bot/photo_input.py",
@@ -103,10 +105,6 @@ ignore_missing_imports = true
 
 # Existing type errors, relaxed per module so CI is green without touching
 # product code. Remove a code once the module no longer trips it.
-[[tool.mypy.overrides]]
-module = ["family_bot.analytics"]
-disable_error_code = ["type-var", "return-value", "arg-type", "misc", "operator", "index"]
-
 [[tool.mypy.overrides]]
 module = ["family_bot.flow_preset"]
 disable_error_code = ["union-attr"]
