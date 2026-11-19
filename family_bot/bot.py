@@ -18,6 +18,7 @@ from telegram.ext import (
 from family_bot import auth
 from family_bot import clock
 from family_bot import config
+from family_bot import currency_picker as picker
 from family_bot import errors
 from family_bot import fx
 from family_bot import voice_input as vx
@@ -216,6 +217,7 @@ MANUAL = flow_manual.ManualFlow(
     currencies=lambda context: cfg(context).currencies,
     sheets=lambda context: cfg(context).sheets,
     who=lambda update, context: get_user_info(update, context)[0],
+    all_codes=lambda: picker.CATALOG.codes(),
 )
 
 
@@ -231,11 +233,12 @@ BAD_DRAFT_AMOUNT = (
 
 @dataclass(frozen=True)
 class AmountEdit:
-    """A Draft item waiting for a typed amount, and the card message to redraw."""
+    """A Draft item waiting for a typed amount (or Currency), and the card to redraw."""
 
     draft_id: str
     index: int
     card: Message
+    currency: bool = False  # waits for a Currency code or name, not an amount
 
 
 def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
@@ -413,13 +416,27 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     settings = cfg(context)
     spenders = list(dict.fromkeys(settings.allowed_users.values()))
+    who, _ = get_user_info(update, context)
+    user_id = update.effective_user.id
+
+    def apply() -> draft.CallbackOutcome:
+        recent = picker.load_recent(context.user_data, settings.sheets, user_id)
+        result = draft.apply_callback(
+            data, session, settings.categories, recent, settings.sheets,
+            spenders=spenders, all_codes=lambda: picker.CATALOG.codes())
+        if result.picked:
+            picker.remember(context.user_data, settings.sheets, user_id, who, result.picked)
+        return result
+
     # A save writes to Sheets, so the whole callback runs in a worker thread.
-    outcome = await asyncio.to_thread(
-        draft.apply_callback, data, session, settings.categories, settings.currencies,
-        settings.sheets, spenders=spenders)
+    outcome = await asyncio.to_thread(apply)
     if outcome.await_amount is not None:
         context.user_data[KEY_AMOUNT_EDIT] = AmountEdit(
             draft_id=session.id, index=outcome.await_amount, card=query.message)
+    if outcome.await_currency is not None:
+        context.user_data[KEY_AMOUNT_EDIT] = AmountEdit(
+            draft_id=session.id, index=outcome.await_currency, card=query.message,
+            currency=True)
     if outcome.saved:
         buttons = undo.remember(context.user_data, list(outcome.saved), clock.now())
         outcome = draft.CallbackOutcome(text=outcome.text, buttons=buttons)
@@ -437,6 +454,9 @@ async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     edit = context.user_data.get(KEY_AMOUNT_EDIT)
     if not isinstance(edit, AmountEdit):
         return
+    if edit.currency:
+        await _draft_currency_text(update, context, edit)
+        return
     text = (update.message.text or "").strip()
     session = draft.get_draft(context.user_data, edit.draft_id)
     moved_on = text.startswith("/") or not any(ch.isdigit() for ch in text)
@@ -449,6 +469,34 @@ async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data.pop(KEY_AMOUNT_EDIT, None)
     await edit.card.edit_text(
         draft.card_text(session), reply_markup=_inline_markup(draft.main_buttons(session)))
+    raise ApplicationHandlerStop
+
+
+async def _draft_currency_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                               edit: AmountEdit) -> None:
+    """Typed Currency after «🌍 Другая» in a Draft card («GEL», «юань»).
+
+    Text with a digit, a command or a menu button means the User moved on: the
+    wait ends and the text goes to the conversation.
+    """
+    text = (update.message.text or "").strip()
+    session = draft.get_draft(context.user_data, edit.draft_id)
+    moved_on = (text.startswith("/") or any(ch.isdigit() for ch in text)
+                or nav.is_menu_text(text))
+    if session is None or session.closed or moved_on:
+        context.user_data.pop(KEY_AMOUNT_EDIT, None)
+        return
+    codes = await asyncio.to_thread(picker.CATALOG.codes)
+    outcome = draft.search_currency(session, edit.index, text, codes)
+    if outcome.picked:
+        context.user_data.pop(KEY_AMOUNT_EDIT, None)
+        who, _ = get_user_info(update, context)
+        await asyncio.to_thread(
+            picker.remember, context.user_data, cfg(context).sheets,
+            update.effective_user.id, who, outcome.picked)
+    if outcome.text is not None:
+        await edit.card.edit_text(outcome.text,
+                                  reply_markup=_inline_markup(outcome.buttons or []))
     raise ApplicationHandlerStop
 
 

@@ -115,3 +115,75 @@ def test_amount_edit_runs_after_allowlist_and_before_conversation():
     amount = next(g for g, hs in groups.items()
                   if any(getattr(h, "callback", None) is bot.draft_amount_text for h in hs))
     assert min(groups) < allowlist < amount < 0
+
+
+# --- «💱 Валюта»: Recent currencies, «🌍 Другая», search (issue #33) ---
+
+def _labels(markup):
+    return {b.text: b.callback_data for row in markup.inline_keyboard for b in row}
+
+
+def test_currency_button_shows_recent_currencies_of_this_user(ctx):
+    from tests.conftest import settings_of
+
+    settings_of(ctx).sheets.users[111] = ["CNY", "дин", "€"]
+    session = _open_draft(ctx)
+    query = _tap(ctx, session, "cur:0")
+    assert "введите код" in query.edits[0]
+    rows = [[b.text for b in row] for row in query.markups[0].inline_keyboard]
+    assert rows == [["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"], ["🌍 Другая"], ["⬅️ Назад"]]
+
+
+def test_typed_currency_on_recent_step_sets_it(ctx):
+    session = _open_draft(ctx)
+    _tap(ctx, session, "cur:0")
+    with pytest.raises(ApplicationHandlerStop):
+        run(bot.draft_amount_text(make_update("лари"), ctx))
+    assert session.items[0]["currency"] == "GEL"
+
+
+def test_other_page_then_pick_sets_iso_code_and_recent(ctx):
+    from tests.conftest import settings_of
+
+    session = _open_draft(ctx)
+    query = _tap(ctx, session, "cur:0:page:0")
+    assert "Все валюты" in query.edits[0]
+    pick = _labels(query.markups[0])["🇬🇪 GEL"]
+    query = _tap(ctx, session, pick.split(":", 2)[2])
+    assert session.items[0]["currency"] == "GEL"
+    assert "350 GEL" in query.edits[0]
+    assert settings_of(ctx).sheets.users[111] == ["GEL", "дин", "€"]
+
+
+@pytest.mark.parametrize("text, stored", [("юань", "CNY"), ("GEL", "GEL"), ("фунт", "£")])
+def test_typed_currency_after_other_sets_it(ctx, text, stored):
+    from tests.conftest import settings_of
+
+    session = _open_draft(ctx)
+    query = _tap(ctx, session, "cur:0:page:0")
+    with pytest.raises(ApplicationHandlerStop):
+        run(bot.draft_amount_text(make_update(text), ctx))
+    assert session.items[0]["currency"] == stored
+    card, _ = query.message.edits[-1]
+    assert f"350 {stored}" in card
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
+    assert settings_of(ctx).sheets.users[111][0] == stored
+
+
+def test_typed_unknown_currency_is_asked_again(ctx):
+    session = _open_draft(ctx)
+    query = _tap(ctx, session, "cur:0:page:0")
+    with pytest.raises(ApplicationHandlerStop):
+        run(bot.draft_amount_text(make_update("тугрик"), ctx))
+    assert session.items[0]["currency"] == "дин"
+    assert "Не нашёл" in query.message.edits[-1][0]
+    assert bot.KEY_AMOUNT_EDIT in ctx.user_data
+
+
+@pytest.mark.parametrize("text", [nav.ADD_EXPENSE, nav.HOME_BUTTON, "/start", "кофе 350"])
+def test_menu_command_or_expense_text_ends_currency_wait(ctx, text):
+    session = _open_draft(ctx)
+    _tap(ctx, session, "cur:0:page:0")
+    assert run(bot.draft_amount_text(make_update(text), ctx)) is None
+    assert bot.KEY_AMOUNT_EDIT not in ctx.user_data
+    assert session.items[0]["currency"] == "дин"

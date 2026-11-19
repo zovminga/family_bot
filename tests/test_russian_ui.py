@@ -4,7 +4,8 @@ there is no English word in it.
 
 Category and Spender names come from the sheet as they are, so the test data
 uses Russian ones. Technical names the User must type or look for stay Latin
-(commands, ``ALLOWED_USERS``, ``.env``, Telegram, Google Sheets, sheet names, ``ID``).
+(commands, ``ALLOWED_USERS``, ``.env``, Telegram, Google Sheets, sheet names, ``ID``,
+ISO currency codes such as ``CNY`` and ``GEL`` — owner decision Q12).
 """
 from __future__ import annotations
 
@@ -39,9 +40,11 @@ ROWS = [
 ]
 PRESETS = [{"name": "Аренда", "amount": 500.0, "currency": "€", "category": "Еда",
             "who": "Анна"}]
-# Latin words the User is meant to see: commands, settings, services, sheet names.
+# Latin words the User is meant to see: commands, settings, services, sheet names,
+# ISO currency codes.
 ALLOWED_LATIN = re.compile(
-    r"/\w+|ALLOWED_USERS|\.env|Telegram|Google|Sheets|Config|Regular_expenses|\bID\b")
+    r"/\w+|ALLOWED_USERS|\.env|Telegram|Google|Sheets|Config|Regular_expenses|\bID\b"
+    r"|\b[A-Z]{3}\b")
 LATIN_WORD = re.compile(r"[A-Za-z]{2,}")
 
 
@@ -89,6 +92,8 @@ class Seen:
                     out += [text, *markup_labels(kw.get("reply_markup"))]
             if upd.callback_query is not None:
                 out += [e for e in upd.callback_query.edits if isinstance(e, str)]
+                for markup in upd.callback_query.markups:
+                    out += markup_labels(markup)
         return out
 
 
@@ -133,6 +138,8 @@ def test_manual_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(m.type_amount(seen.update("ноль"), ctx))
     run(m.type_amount(seen.update("1234.5"), ctx))
     run(m.choose_cur(seen.update("нет такой"), ctx))
+    run(m.choose_cur(seen.update("долл"), ctx))
+    run(m.on_currency_button(seen.update(query=FakeQuery("cur:page:0")), ctx))
     run(m.choose_cur(seen.update("дин"), ctx))
     run(m.type_comment(seen.update(query=FakeQuery("skip")), ctx))
     run(m.choose_dt(seen.update(query=FakeQuery("custom")), ctx))
@@ -197,6 +204,13 @@ def test_draft_card() -> None:
     grids = [draft.main_buttons(session), draft.item_edit_buttons(session, 0),
              draft.category_buttons(session, 0, CATEGORIES),
              draft.currency_buttons(session, 0, ["дин"]), draft.date_buttons(session, 0)]
+    codes = ["CNY", "EUR", "GEL", "RSD", "USD", "CAD"]
+    views = [draft.apply_callback("cur:0:page:0", session, CATEGORIES, ["дин"],
+                                  FakeSheetsClient(), all_codes=lambda: codes),
+             draft.search_currency(session, 0, "тугрик", codes),
+             draft.search_currency(session, 0, "долл", codes)]
+    texts += [v.text or "" for v in views]
+    grids += [v.buttons or [] for v in views]
     texts += [label for grid in grids for row in grid for label, _ in row]
     outcome = draft.apply_callback("save", session, CATEGORIES, ["дин"], FakeSheetsClient())
     texts.append(outcome.text or "")
