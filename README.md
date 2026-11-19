@@ -11,7 +11,7 @@ own allowlist). Your finances never mix with someone else's install.
 ## Features
 
 - Add expenses by category (manual, voice, receipt photo)
-- Multi-currency (₽, дин, €, ¥, £)
+- Multi-currency (дин, €, ₽, ¥, £, $, CNY; list in `currency.py`)
 - Statistics and optional HTML dashboard
 - Categories and presets loaded from Google Sheets
 - Allowlist so only your family can use *your* bot

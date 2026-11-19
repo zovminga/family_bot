@@ -100,8 +100,7 @@ def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
     assert "amt" not in ctx.user_data, f"{text!r} accepted as {ctx.user_data.get('amt')}"
 
 
-# 5. "$" is not in bot.CURS → voice/photo dollars become dinars.
-@known_bug("R4")
+# 5. "$" must be in bot.CURS so voice/photo dollars stay dollars (R4).
 def test_dollar_currency_survives_snap():
     import voice_input as vx
     assert vx._snap_currency("$", bot.CURS, bot.DEFAULT_CURRENCY) == "$"
