@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (known-bug reproductions in tests/known_bugs)  
+**Updated by:** agent session (plan split into GitHub issues)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -57,6 +57,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - 24 known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open.
+- The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
+  with native "blocked by" links. #9 (Python 3.12 + pyproject) and #42 (doc
+  mismatches) have no blockers.
 
 ## Only a person knows
 
