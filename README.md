@@ -114,6 +114,8 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
    pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"
    ```
 
+   Keep `-e` (editable install): `.env`, `models/` and a relative
+   `GOOGLE_CREDS_PATH` resolve from the repo checkout, not from `site-packages`.
    Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
 4. Start command: `family-bot`
 5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)

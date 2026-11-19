@@ -69,7 +69,7 @@ Finances never share across installs.
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
-**Known gap until issue #25 closes (finding C3, plan 2.3):** `dashboard/build_dashboard.py`
+**Known gap until issue #25 closes (finding C3, plan 2.3):** `family_bot/dashboard/build_dashboard.py`
 imports `resolve_columns`, `parse_amount`, `normalize_month` and the currency
 maps from `sheet_data`, but runs its own row loop: its own `cell()`, category
 repair, symbol → ISO fallback, and its own FX fetch (`fetch_rates`). It does not

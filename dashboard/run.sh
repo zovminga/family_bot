@@ -93,7 +93,7 @@ else
   # --llm --provider anthropic: classify comments into themes with Claude.
   # --publish: after building, upload to Telegram + store file_id so the bot can
   #            re-send the latest dashboard on demand.
-  # Data source defaults to Google Sheets (needs family_bot/secrets/creds.json).
+  # Data source defaults to Google Sheets (needs secrets/creds.json in the repo root).
   build_flags=(--llm --provider anthropic --publish)
   log "Building dashboard (Google Sheets + Claude classification)…"
 fi

@@ -50,7 +50,7 @@ def main() -> int:
     print(f"   {url}")
     print(
         "\nNext: set ALLOWED_USERS in .env (use /whoami in Telegram), "
-        "then run: python bot.py"
+        "then run: family-bot"
     )
     return 0
 
