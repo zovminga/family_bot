@@ -132,8 +132,9 @@ cd family_bot/dashboard
 RUN_DAY=1 RUN_HOUR=8 RUN_MINUTE=30 ./schedule.sh install
 ```
 
-Имя агента — `local.family-bot.dashboard`. Другое имя задаёт `LAUNCHD_LABEL`;
-передавай его в каждую команду: `LAUNCHD_LABEL=my.label ./schedule.sh status`.
+Имя агента — `local.family-bot.dashboard`. Другое имя задаёт строка
+`LAUNCHD_LABEL=...` в `.env` (без кавычек) или переменная окружения при запуске
+`schedule.sh`. Сменил имя — сначала `./schedule.sh uninstall` со старым именем.
 
 Логи сборки: `output/build.log` (ручной запуск) и `output/launchd.log`
 (по расписанию). Если сборка без `--trial` упала, в тот же чат
