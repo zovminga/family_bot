@@ -7,10 +7,13 @@ stems that recognise it in free text and in Regular_expenses column headers.
 Buttons (`bot.CURS`), voice/receipt prompts and snapping, preset columns and the
 symbol ↔ ISO maps in `sheet_data` are all derived from `CURRENCIES`. Adding a
 Currency is one line there.
+
+``format_amount`` is the one way the bot shows an amount: «1 234 дин».
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 
 
 @dataclass(frozen=True)
@@ -65,3 +68,20 @@ def to_iso(value: str) -> str:
     if found is not None:
         return found.code
     return value.upper() if len(value) == 3 else value
+
+
+CENT = Decimal("0.01")
+
+
+def format_amount(amount: float, symbol: str | None = None) -> str:
+    """Amount as the bot shows it: «1 234 дин», «12,50 €».
+
+    Thousands are split by a space, the decimal mark is a comma, and the two
+    decimals appear only when they are not zero. Rounds half up to cents.
+    """
+    cents = int(Decimal(str(amount)).quantize(CENT, rounding=ROUND_HALF_UP) * 100)
+    whole, frac = divmod(abs(cents), 100)
+    text = ("-" if cents < 0 else "") + f"{whole:,}".replace(",", " ")
+    if frac:
+        text += f",{frac:02d}"
+    return f"{text} {symbol}" if symbol else text

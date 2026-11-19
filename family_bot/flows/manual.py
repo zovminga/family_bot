@@ -19,6 +19,7 @@ from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, Messag
 from family_bot import amount_input
 from family_bot import clock
 from family_bot import currency
+from family_bot.currency import format_amount
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
 from family_bot.expense import ExpenseRecord, append_expense
@@ -98,7 +99,7 @@ class ManualFlow:
 
     async def begin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Main-menu entry: ask for the Category."""
-        await _ask_from_list(update, "📂 Choose category:", self._categories(context))
+        await _ask_from_list(update, "📂 Выберите категорию:", self._categories(context))
         return State.CHOOSE_CAT
 
     async def choose_cat(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -107,13 +108,13 @@ class ManualFlow:
         categories = self._categories(context)
         cat = _known_category(text, categories)
         if cat is None:
-            await _ask_from_list(update, "❌ No such category. Choose one from the list:", categories)
+            await _ask_from_list(update, "❌ Такой категории нет. Выберите из списка:", categories)
             return State.CHOOSE_CAT
 
         context.user_data["cat"] = cat
         kb = [nav.home_row()]
         await update.message.reply_text(
-            "💵 Enter amount:",
+            "💵 Введите сумму:",
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
         )
         return State.TYPING_AMT
@@ -124,7 +125,8 @@ class ManualFlow:
         parsed = amount_input.parse_amount_text(text)
         if parsed is None:
             await update.message.reply_text(
-                "❌ Need an amount above zero with at most 2 decimals, e.g. 1 200 or 350 дин. Try again:")
+                "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
+                "Например: 1 200 или 350 дин. Попробуйте ещё раз:")
             return State.TYPING_AMT
         amt, typed_currency = parsed
         context.user_data["amt"] = amt
@@ -132,7 +134,7 @@ class ManualFlow:
         cur = _on_buttons(typed_currency, currencies)
         if cur is not None:
             return await self._set_currency_and_ask_comment(update, context, cur)
-        await _ask_from_list(update, "💱 Currency?", currencies)
+        await _ask_from_list(update, "💱 Валюта?", currencies)
         return State.CHOOSE_CUR
 
     async def choose_cur(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -141,7 +143,7 @@ class ManualFlow:
         currencies = self._currencies(context)
         cur = _on_buttons(currency.find(text), currencies)
         if cur is None:
-            await _ask_from_list(update, "❌ No such currency. Choose one from the list:", currencies)
+            await _ask_from_list(update, "❌ Такой валюты нет. Выберите из списка:", currencies)
             return State.CHOOSE_CUR
         return await self._set_currency_and_ask_comment(update, context, cur)
 
@@ -156,11 +158,11 @@ class ManualFlow:
 
         # Go to comment
         buttons = [
-            [InlineKeyboardButton("⏭️ Skip", callback_data="skip")],
+            [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
             [nav.home_inline_button()]
         ]
         await update.message.reply_text(
-            f"👤 Auto-detected: {user_name}\n\n💬 Add comment or press «Skip»",
+            f"👤 Кто: {user_name}\n\n💬 Напишите комментарий или нажмите «Пропустить»",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return State.TYPING_CMNT
@@ -175,14 +177,14 @@ class ManualFlow:
 
         # Choose date
         buttons = [
-            [InlineKeyboardButton("📅 Today", callback_data="today"),
-             InlineKeyboardButton("📆 Yesterday", callback_data="yesterday")],
-            [InlineKeyboardButton("📆 Enter date", callback_data="custom")],
+            [InlineKeyboardButton("📅 Сегодня", callback_data="today"),
+             InlineKeyboardButton("📆 Вчера", callback_data="yesterday")],
+            [InlineKeyboardButton("📆 Другая дата", callback_data="custom")],
             [nav.home_inline_button()]
         ]
         # Use update.effective_message for reply, as it can be both Message and CallbackQuery
         await update.effective_message.reply_text(
-            "📅 Expense date:",
+            "📅 Дата траты:",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return State.CHOOSE_DT
@@ -198,7 +200,7 @@ class ManualFlow:
             date_str = (clock.now() - timedelta(days=1)).strftime(DATE_FMT)
             return await self.save_row(update, context, date_str)
         else:
-            await query.edit_message_text("📅 Enter date in format DD.MM.YYYY:")
+            await query.edit_message_text("📅 Введите дату в формате ДД.ММ.ГГГГ:")
             return State.TYPING_DT
 
     async def type_dt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -207,7 +209,7 @@ class ManualFlow:
         try:
             date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
         except Exception:
-            await update.message.reply_text("❌ Cannot parse date, try 13.07.2025")
+            await update.message.reply_text("❌ Не понял дату. Пример: 13.07.2025")
             return State.TYPING_DT
         return await self.save_row(update, context, date_str)
 
@@ -227,7 +229,7 @@ class ManualFlow:
             comment=cmnt,
         ))
 
-        text = f"✅ Saved: {cat} – {amt:.2f} {cur} on {date_str}"
+        text = f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}"
 
         # Reply to chat depending on whether it was a message or button press
         if update.callback_query:

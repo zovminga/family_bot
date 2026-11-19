@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from telegram.ext import ApplicationHandlerStop
+from telegram.ext import ApplicationHandlerStop, CommandHandler, ConversationHandler
 
 from family_bot import bot
 from family_bot import config
@@ -34,7 +35,7 @@ def test_whoami_answers_without_google() -> None:
     run(bot.enforce_allowlist(upd, ctx))  # does not stop the update
     run(bot.whoami(upd, ctx))
     assert "ID: 111" in replies(upd)[0]
-    assert "Allowed as: Azat" in replies(upd)[0]
+    assert "В списке как: Azat" in replies(upd)[0]
 
 
 def test_stranger_whoami_without_google_gives_id() -> None:
@@ -72,7 +73,7 @@ def test_allowed_user_with_sheets_passes() -> None:
 def test_post_init_puts_config_in_bot_data(monkeypatch: pytest.MonkeyPatch,
                                            capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("ALLOWED_USERS", "111:Иван, Петров")
-    app = SimpleNamespace(bot_data={})
+    app = SimpleNamespace(bot_data={}, bot=FakeBot())
     run(bot.post_init(app))  # type: ignore[arg-type]
     settings = settings_of(app)
     assert settings.sheets is None
@@ -81,6 +82,42 @@ def test_post_init_puts_config_in_bot_data(monkeypatch: pytest.MonkeyPatch,
     assert "Traceback" not in out
     assert any(line.startswith("⚠️ GOOGLE_CREDS_PATH") and " — " in line
                for line in out.splitlines()), out
+
+
+class FakeBot:
+    """Records set_my_commands calls; can fail like a Telegram outage."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.commands: list[Any] = []
+        self.error = error
+
+    async def set_my_commands(self, commands: list[Any]) -> bool:
+        if self.error is not None:
+            raise self.error
+        self.commands = list(commands)
+        return True
+
+
+def test_post_init_fills_command_menu_in_russian() -> None:
+    app = SimpleNamespace(bot_data={}, bot=FakeBot())
+    run(bot.post_init(app))  # type: ignore[arg-type]
+    names = {c.command for c in app.bot.commands}
+    handlers = list(bot.build_application("123:abc").handlers[0])
+    for h in list(handlers):
+        if isinstance(h, ConversationHandler):
+            handlers += [*h.entry_points, *h.fallbacks]
+    registered = {name for h in handlers if isinstance(h, CommandHandler) for name in h.commands}
+    assert {"start", "dashboard", "whoami"} <= names <= registered
+    for c in app.bot.commands:
+        assert re.search("[а-яё]", c.description, re.IGNORECASE), c
+
+
+def test_post_init_survives_command_menu_failure(capsys: pytest.CaptureFixture[str]) -> None:
+    from telegram.error import NetworkError
+
+    app = SimpleNamespace(bot_data={}, bot=FakeBot(error=NetworkError("down")))
+    run(bot.post_init(app))  # type: ignore[arg-type]
+    assert config.KEY in app.bot_data
 
 
 def test_reloadcats_rereads_categories() -> None:
@@ -97,7 +134,7 @@ def test_reloadcats_shows_problems_to_the_user() -> None:
     upd = make_update("/reloadcats")
     run(bot.reload_cats(upd, ctx))
     text = replies(upd)[0]
-    assert "Config sheet has no categories" in text
+    assert "в листе Config нет категорий" in text
 
 
 def test_main_without_bot_token_is_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
