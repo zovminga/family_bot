@@ -314,7 +314,7 @@ dashboard/          импортирует общие модули как пак
 ### Этап 2 — устройство кода
 
 - [x] 2.1 `Config` в `bot_data` через `post_init`. Импорт модулей без сети. *(C2, I3, I4)*
-- [ ] 2.2 Вынести `flows/stats.py` и `flows/manual.py`. Кнопка «домой» — в `fallbacks`.
+- [x] 2.2 Вынести `flows/stats.py` и `flows/manual.py`. Кнопка «домой» — в `fallbacks`.
   Состояния — `IntEnum`. Тест: у каждого состояния есть обработчик. *(C1)*
 - [ ] 2.3 Общие `sheet_data.Row`, `fx.py`, `llm.py` для бота и Dashboard. *(C3, C5)*
 - [ ] 2.4 `logging` вместо `print`. *(C7)*

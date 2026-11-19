@@ -19,7 +19,9 @@ from family_bot import navigation as nav
 from family_bot.flows import stats as flow_stats
 from tests.conftest import settings_of
 from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
-from family_bot.conversation_states import CHOOSE_ACTION, STAT_SHOW_DETAILS
+from family_bot.conversation_states import State
+
+CHOOSE_ACTION, STAT_SHOW_DETAILS = State.CHOOSE_ACTION, State.STAT_SHOW_DETAILS
 
 ROWS = [
     {"date": "05.10.2026", "month": "2026-10", "category": "Food", "amount": 100.0,
@@ -94,7 +96,7 @@ def test_menu_tap_after_no_details_is_not_swallowed(ctx):
 # 4. Manual amount accepted nan / inf / negative / zero (R6).
 @pytest.mark.parametrize("text", ["nan", "inf", "-500", "0"])
 def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
-    run(bot.type_amount(make_update(text), ctx))
+    run(bot.MANUAL.type_amount(make_update(text), ctx))
     assert "amt" not in ctx.user_data, f"{text!r} accepted as {ctx.user_data.get('amt')}"
 
 

@@ -79,9 +79,10 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   text_input.py       Typed «кофе 350» → Draft via voice_input.extract_expenses
   regular.py          Regular_expenses → presets
   flow_preset.py      ⚡ preset conversation steps
+  flows/manual.py     Manual add conversation (ManualFlow)
   flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
-  navigation.py       go_home / home button
-  conversation_states.py  ConversationHandler state ints
+  navigation.py       go_home / home button (one handler in fallbacks)
+  conversation_states.py  ConversationHandler states (IntEnum State)
   dashboard/          build_dashboard.py, failure_alert.py, __main__.py
 dashboard/            run.sh, schedule.sh (launchd), template.html, SPEC, output/ (gitignored)
 scripts/              bootstrap_sheet.py, connectivity check

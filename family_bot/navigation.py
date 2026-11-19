@@ -5,23 +5,25 @@ go_home is the single locality for «return to main menu» behaviour.
 """
 from __future__ import annotations
 
-from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+import re
 
-from family_bot.conversation_states import CHOOSE_ACTION
+from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
+from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+
+from family_bot.conversation_states import State
 from family_bot.draft_expense import KEY_DRAFTS
 
 HOME_BUTTON = "🏠 To start"
 HOME_LABELS = {HOME_BUTTON, "To start"}
 HOME_CALLBACK = "to_start"
 
-
-def is_home_text(text: str | None) -> bool:
-    return (text or "").strip() in HOME_LABELS
-
-
-def is_home_callback(data: str | None) -> bool:
-    return data == HOME_CALLBACK
+# Home button text, outer spaces ignored.
+HOME_TEXT = filters.Regex(
+    r"^\s*(?:" + "|".join(re.escape(label) for label in HOME_LABELS) + r")\s*$")
+# Text a conversation state reads: not a command, not the home button.
+INPUT_TEXT = filters.TEXT & ~filters.COMMAND & ~HOME_TEXT
+# Callback data a state reads: anything except the home button.
+NOT_HOME_CALLBACK = f"^(?!{HOME_CALLBACK}$)"
 
 
 def home_row() -> list[str]:
@@ -62,4 +64,19 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if drafts:
         context.user_data.update({KEY_DRAFTS: drafts})
     await show_main_menu(update, context)
-    return CHOOSE_ACTION
+    return State.CHOOSE_ACTION
+
+
+async def on_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Home button (reply or inline) from any conversation state."""
+    if update.callback_query:
+        await update.callback_query.answer()
+    return await go_home(update, context)
+
+
+def home_fallbacks() -> list[BaseHandler]:
+    """ConversationHandler fallbacks: the one place the home button is handled."""
+    return [
+        MessageHandler(HOME_TEXT, on_home),
+        CallbackQueryHandler(on_home, pattern=f"^{HOME_CALLBACK}$"),
+    ]
