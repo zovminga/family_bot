@@ -63,7 +63,7 @@ Finances never share across installs.
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller | Mix Sheets or HTTP into stats |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
@@ -89,6 +89,7 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
 ```
 /start → CHOOSE_ACTION (main menu)
            ├─ other text → text_expense → Draft card (stays in CHOOSE_ACTION)
+           ├─ 📅 this month → StatsFlow.this_month → summary (stays in CHOOSE_ACTION)
            ├─ manual add → CHOOSE_CAT → TYPING_AMT → CHOOSE_CUR
            │                 → TYPING_CMNT → CHOOSE_DT [| TYPING_DT] → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home

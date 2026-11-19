@@ -6,6 +6,8 @@ exchange-rate function (fx.rate in the bot) when converting.
 """
 from __future__ import annotations
 
+from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Optional
 
@@ -14,6 +16,11 @@ from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
 NO_DATA = "Нет данных 🤷"
+TOP_CATEGORIES = 3
+NO_CATEGORY = "Без категории"
+NO_SPENDER = "Не указан"
+MONTH_NAMES = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль",
+               "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
 
 
 def unique_currencies(rows: list[Row], fallback: Optional[list[str]] = None) -> list[str]:
@@ -163,3 +170,122 @@ def aggregate(
         else (working[0]["currency"] if working else "?")
     )
     return f"💰 Итого: {format_amount(total, currency)}", conversion_details
+
+
+@dataclass(frozen=True)
+class CurrencySummary:
+    """
+    Month totals in one Currency (never mixed with other Currencies).
+
+    Parameters
+    ----------
+    total : float
+        Sum of all expenses in this Currency.
+    categories : list[tuple[str, float]]
+        (Category, sum), largest first.
+    spenders : list[tuple[str, float]]
+        (Spender, sum), largest first.
+    """
+
+    total: float
+    categories: list[tuple[str, float]]
+    spenders: list[tuple[str, float]]
+
+
+@dataclass(frozen=True)
+class MonthSummary:
+    """
+    One month of expenses, split by Currency.
+
+    Parameters
+    ----------
+    month : str
+        ``YYYY-MM``.
+    by_currency : dict[str, CurrencySummary]
+        Currency → its totals; the Currency with the most expenses comes first.
+    """
+
+    month: str
+    by_currency: dict[str, CurrencySummary]
+
+
+def _ranked(sums: dict[str, float]) -> list[tuple[str, float]]:
+    return sorted(sums.items(), key=lambda item: (-item[1], item[0]))
+
+
+def month_summary(rows: list[Row], month: str) -> MonthSummary:
+    """
+    Total, Category and Spender sums for one month, per Currency.
+
+    Parameters
+    ----------
+    rows : list[Row]
+        Parsed Data rows.
+    month : str
+        ``YYYY-MM`` (``MONTH_FMT``), matched against ``Row.month``.
+
+    Returns
+    -------
+    MonthSummary
+        Empty ``by_currency`` when the month has no expenses.
+    """
+    month_rows = [r for r in rows if r.month == month]
+    counts = Counter(r.currency for r in month_rows)
+    by_currency: dict[str, CurrencySummary] = {}
+    for cur, _ in counts.most_common():
+        categories: dict[str, float] = defaultdict(float)
+        spenders: dict[str, float] = defaultdict(float)
+        for r in month_rows:
+            if r.currency == cur:
+                categories[r.category or NO_CATEGORY] += r.amount
+                spenders[r.who or NO_SPENDER] += r.amount
+        by_currency[cur] = CurrencySummary(
+            total=sum(categories.values()),
+            categories=_ranked(categories),
+            spenders=_ranked(spenders),
+        )
+    return MonthSummary(month=month, by_currency=by_currency)
+
+
+def month_title(month: str) -> str:
+    """«Ноябрь 2026» for ``2026-11``."""
+    year, number = month.split("-")
+    return f"{MONTH_NAMES[int(number) - 1]} {year}"
+
+
+def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> str:
+    """
+    Telegram text for a month summary: total, top Categories, Spenders.
+
+    Each Currency gets its own block; amounts in different Currencies are
+    never added together.
+
+    Parameters
+    ----------
+    summary : MonthSummary
+        Result of ``month_summary``.
+    top : int
+        How many Categories to list per Currency.
+
+    Returns
+    -------
+    str
+        Message text.
+    """
+    lines = [f"📅 {month_title(summary.month)}"]
+    if not summary.by_currency:
+        return "\n".join([*lines, NO_DATA])
+
+    lines.append("💰 Итого: " + " · ".join(
+        format_amount(s.total, cur) for cur, s in summary.by_currency.items()))
+    several = len(summary.by_currency) > 1
+    for cur, s in summary.by_currency.items():
+        lines.append("")
+        if several:
+            lines += [f"— {cur} —", ""]
+        lines.append("🏷 Топ категорий:")
+        lines += [f"{i}. {name} — {format_amount(amount, cur)}"
+                  for i, (name, amount) in enumerate(s.categories[:top], 1)]
+        lines += ["", "👤 По людям:"]
+        lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in s.spenders]
+    return "\n".join(lines)
