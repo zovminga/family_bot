@@ -100,6 +100,7 @@ def test_menu_label_inside_a_flow_goes_to_that_state() -> None:
     """Entry points only start a conversation; a running flow keeps its own reading."""
     conv = fresh_conversation()
     update = text_update(nav.DASHBOARD)
+    # PTB keeps per-User state in private fields: set it as if mid-flow.
     key = conv._get_key(update)
     conv._conversations[key] = State.TYPING_CMNT
     checked = conv.check_update(update)
@@ -107,18 +108,32 @@ def test_menu_label_inside_a_flow_goes_to_that_state() -> None:
     assert checked[2] in conv.states[State.TYPING_CMNT]
 
 
+class AlertQuery(FakeQuery):
+    """FakeQuery that also records whether an answer is an alert."""
+
+    def __init__(self, data: str) -> None:
+        super().__init__(data)
+        self.alerts: list[bool] = []
+
+    async def answer(self, *args: Any, **kw: Any) -> None:
+        await super().answer(*args, **kw)
+        self.alerts.append(bool(kw.get("show_alert")))
+
+
 def test_old_draft_card_after_restart_says_draft_is_stale() -> None:
     ctx = bot_context(sheets=FakeSheetsClient())  # no Drafts: memory was wiped
-    tap = FakeQuery("vx:ab12:save")
+    tap = AlertQuery("vx:ab12:save")
     run(bot.vx_callback(make_update(query=tap), ctx))
     assert tap.answers == [(draft.STALE_TEXT,)]
+    assert tap.alerts == [True]
     assert tap.edits == [("markup", {"reply_markup": None})]  # card text stays, buttons go
 
 
 def test_old_undo_button_after_restart_explains_in_an_alert() -> None:
     ctx = bot_context(sheets=FakeSheetsClient())  # no last save: memory was wiped
-    tap = FakeQuery(undo.CALLBACK_PREFIX + "deadbeef")
+    tap = AlertQuery(undo.CALLBACK_PREFIX + "deadbeef")
     run(bot.undo_callback(make_update(query=tap), ctx))
     assert tap.edits == []
+    assert tap.alerts == [True]
     [(text,)] = tap.answers
     assert "пока бот не перезапускался" in text
