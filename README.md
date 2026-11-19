@@ -94,7 +94,7 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
 1. Connect the repo
 2. Set the same env vars (`BOT_TOKEN`, `GOOGLE_CREDS_PATH` contents or secret file,
    `SHEET_NAME`, `ALLOWED_USERS`, …)
-3. Build command: `pip install -r requirements.txt`. Render reads `.python-version`, so it uses Python 3.12
+3. Build command: `pip install -r requirements.txt`. Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
 4. Start command: `python bot.py`
 5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
 

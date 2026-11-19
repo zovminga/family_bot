@@ -62,8 +62,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
   `pytest -rx` lists what is still open.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
-  with native "blocked by" links. #9 (Python 3.12 + pyproject) and #42 (doc
-  mismatches) have no blockers.
+  with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
+  blocked can start once it merges.
 
 ## Only a person knows
 
