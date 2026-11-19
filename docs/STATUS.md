@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #16 stats flow module)  
-**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
+**Product code tip:** `e474106` (2026-11-19) — statistics flow in `flows/stats.py`, R7 and R8 fixed  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
