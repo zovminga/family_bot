@@ -28,6 +28,8 @@ dashboard = [
 dev = [
     "pytest>=8.0",
     "pip-audit>=2.7",
+    "ruff>=0.8",
+    "mypy>=1.13",
 ]
 
 [tool.uv]
@@ -43,3 +45,63 @@ required-environments = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["dashboard/output"]
+
+[tool.ruff.lint]
+# Ruff's default set. Wider rules (I, UP, B) are open work in docs/STATUS.md.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Existing findings left in place so CI is green without touching product code.
+# Remove an entry once its file is cleaned up.
+"bot.py" = ["F401"]
+"voice_input.py" = ["F401"]
+"tests/known_bugs/test_bot_flows.py" = ["F401"]
+"scripts/test_google_sheets.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+# Library modules only. bot.py and the dashboard/scripts entry points are not checked.
+files = [
+    "analytics.py",
+    "auth.py",
+    "conversation_states.py",
+    "draft_expense.py",
+    "expense.py",
+    "flow_preset.py",
+    "navigation.py",
+    "photo_input.py",
+    "regular.py",
+    "sheet_data.py",
+    "sheets.py",
+    "voice_input.py",
+]
+
+[[tool.mypy.overrides]]
+module = ["vosk"]
+ignore_missing_imports = true
+
+# Existing type errors, relaxed per module so CI is green without touching
+# product code. Each list names only the error codes that module trips today.
+[[tool.mypy.overrides]]
+module = ["analytics"]
+disable_error_code = ["type-var", "return-value", "arg-type", "misc", "operator", "index"]
+
+[[tool.mypy.overrides]]
+module = ["flow_preset"]
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+module = ["navigation"]
+disable_error_code = ["assignment", "union-attr"]
+
+[[tool.mypy.overrides]]
+module = ["photo_input"]
+disable_error_code = ["list-item"]
+
+[[tool.mypy.overrides]]
+module = ["voice_input"]
+disable_error_code = ["union-attr"]

@@ -32,7 +32,14 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 cp .env.example .env
 ```
 
-Run tests with `pytest`, check dependencies with `pip-audit --local`.
+Checks (the same ones CI runs on every pull request, see `.github/workflows/ci.yml`):
+
+```bash
+pytest
+ruff check .
+mypy                       # library modules listed in pyproject.toml
+pip-audit --local
+```
 
 `requirements.txt` (bot) and `dashboard/requirements.txt` are generated from
 `uv.lock` for pip-only hosts. Do not edit them by hand; the regenerate command

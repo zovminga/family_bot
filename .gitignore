@@ -8,3 +8,7 @@ creds.json
 .pytest_cache/
 # Offline speech-to-text model (downloaded at runtime, ~45MB)
 models/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
