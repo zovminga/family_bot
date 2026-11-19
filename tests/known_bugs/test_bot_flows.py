@@ -7,6 +7,7 @@ import asyncio
 import math
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from telegram import Chat, Message, Update, User
@@ -98,7 +99,7 @@ def test_type_amount_rejects_non_positive_or_non_finite(ctx, text):
 
 
 # 5. "$" must be on the Currency buttons so voice/photo dollars stay dollars (R4).
-def test_dollar_currency_survives_snap(ctx):
+def test_dollar_currency_survives_snap(ctx: SimpleNamespace) -> None:
     import voice_input as vx
     assert vx._snap_currency("$", settings_of(ctx).currencies, bot.DEFAULT_CURRENCY) == "$"
 

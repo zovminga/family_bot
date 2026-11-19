@@ -643,14 +643,15 @@ async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reloads categories (and presets) from Google Sheets."""
     settings = cfg(context)
     old_cats = settings.categories.copy()
-    for line in config.reload(settings):
-        print(line)
+    problems = config.reload(settings)
     cats = settings.categories
 
     if old_cats == cats:
         text = f"✅ Categories already up to date ({len(cats)}):\n{', '.join(cats)}"
     else:
         text = f"🔄 Categories updated ({len(cats)}):\n{', '.join(cats)}"
+    if problems:
+        text = "\n".join([text, "", *problems])
 
     await update.message.reply_text(text)
 
