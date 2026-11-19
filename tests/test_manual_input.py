@@ -120,7 +120,7 @@ def test_skip_comment_then_today_saves_and_goes_home(ctx, monkeypatch):
     assert run(bot.MANUAL.choose_dt(make_update(query=query), ctx)) == State.CHOOSE_ACTION
     assert sheets.appended_rows[0][:7] == ["19.11.2026", "2026-11", "Food", 350.0, "дин",
                                            "Azat", ""]
-    assert query.edits == ["✅ Saved: Food – 350.00 дин on 19.11.2026"]
+    assert query.edits == ["✅ Сохранено: Food — 350 дин, 19.11.2026"]
     assert "cat" not in ctx.user_data
 
 
@@ -131,7 +131,7 @@ def test_typed_date_saves(ctx):
     ctx.user_data.update(cat="Food", amt=5.0, cur="€", spender="Azat", comment="x")
     upd = make_update("13.07.2025")
     assert run(bot.MANUAL.type_dt(upd, ctx)) == State.CHOOSE_ACTION
-    assert replies(upd)[0] == "✅ Saved: Food – 5.00 € on 13.07.2025"
+    assert replies(upd)[0] == "✅ Сохранено: Food — 5 €, 13.07.2025"
 
 
 # --- Edited messages (R12) ---

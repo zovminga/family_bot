@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from family_bot import clock
+from family_bot.currency import format_amount
 from family_bot.expense import ExpenseRecord, append_expenses
 from family_bot.sheet_data import DATE_FMT
 from family_bot.sheets import SheetsClient
@@ -105,7 +106,7 @@ def card_text(session: DraftSession) -> str:
         lines += [
             "📝 Черновик траты",
             f"• Товар/коммент: {it['comment'] or '—'}",
-            f"• Сумма: {it['amount']:,.2f} {it['currency']}",
+            f"• Сумма: {format_amount(it['amount'], it['currency'])}",
             f"• Категория: {it['category']}",
             f"• Дата: {it['date']}",
             f"• Кто: {it['who']}",
@@ -114,7 +115,7 @@ def card_text(session: DraftSession) -> str:
         lines.append(f"📝 Черновик: {len(items)} трат(ы)")
         for i, it in enumerate(items, 1):
             lines.append(
-                f"{i}. {it['comment'] or '—'} — {it['amount']:,.2f} {it['currency']}"
+                f"{i}. {it['comment'] or '—'} — {format_amount(it['amount'], it['currency'])}"
                 f" · {it['category']} · {it['date']}"
             )
     if session.note:
@@ -305,7 +306,7 @@ def apply_callback(
             it = items[0]
             text = (
                 f"✅ Сохранено: {it['comment'] or it['category']} — "
-                f"{it['amount']:,.2f} {it['currency']} · {it['date']}"
+                f"{format_amount(it['amount'], it['currency'])} · {it['date']}"
             )
         else:
             text = f"✅ Сохранено трат: {len(items)}"

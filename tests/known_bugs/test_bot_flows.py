@@ -52,21 +52,21 @@ def last_reply_texts(update):
 
 # 1. Stats "Yes" path left the month behind → a later custom period showed the old month.
 def test_custom_period_after_month_flow_uses_requested_period(ctx):
-    run(bot.choose_action(make_update("📊 Show statistics"), ctx))
-    run(bot.STATS.on_category(make_update("All categories"), ctx))
-    run(bot.STATS.on_type(make_update("📆 By months"), ctx))
+    run(bot.choose_action(make_update(nav.SHOW_STATS), ctx))
+    run(bot.STATS.on_category(make_update(flow_stats.ALL_BUTTON), ctx))
+    run(bot.STATS.on_type(make_update(flow_stats.MONTHS_BUTTON), ctx))
     run(bot.STATS.on_month(make_update("2026-10"), ctx))
-    assert run(bot.STATS.on_group_currency(make_update("Yes"), ctx)) == CHOOSE_ACTION
+    assert run(bot.STATS.on_group_currency(make_update(flow_stats.YES_BUTTON), ctx)) == CHOOSE_ACTION
     # second query from the main menu: custom period in November
-    run(bot.choose_action(make_update("📊 Show statistics"), ctx))
-    run(bot.STATS.on_category(make_update("All categories"), ctx))
-    run(bot.STATS.on_type(make_update("📅 Custom period"), ctx))
+    run(bot.choose_action(make_update(nav.SHOW_STATS), ctx))
+    run(bot.STATS.on_category(make_update(flow_stats.ALL_BUTTON), ctx))
+    run(bot.STATS.on_type(make_update(flow_stats.PERIOD_BUTTON), ctx))
     run(bot.STATS.on_date_from(make_update("01.11.2026"), ctx))
     run(bot.STATS.on_date_to(make_update("30.11.2026"), ctx))
-    upd = make_update("Yes")
+    upd = make_update(flow_stats.YES_BUTTON)
     run(bot.STATS.on_group_currency(upd, ctx))
     result = last_reply_texts(upd)[0]
-    assert "from 01.11.2026 to 30.11.2026" in result, result
+    assert "с 01.11.2026 по 30.11.2026" in result, result
 
 
 # 2. /start mid-flow kept a stale conversion currency → next "Yes" query was converted.
@@ -88,9 +88,9 @@ def test_menu_tap_after_no_details_is_not_swallowed(ctx):
     ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", group_by_currency=False)
     state = run(bot.STATS.on_convert_currency(make_update("дин"), ctx))
     handler = {STAT_SHOW_DETAILS: bot.STATS.on_show_details, CHOOSE_ACTION: bot.choose_action}[state]
-    upd = make_update("💰 Add expense")
+    upd = make_update(nav.ADD_EXPENSE)
     run(handler(upd, ctx))
-    assert "Choose category" in last_reply_texts(upd)[0], last_reply_texts(upd)
+    assert "Выберите категорию" in last_reply_texts(upd)[0], last_reply_texts(upd)
 
 
 # 4. Manual amount accepted nan / inf / negative / zero (R6).
@@ -136,7 +136,7 @@ def test_go_home_keeps_open_draft(ctx):
     a = draft.add_draft(ctx.user_data, draft.session_from_voice(
         [dict(CHIPS)], who="Azat", transcript="chips"))
     ctx.user_data["amt"] = 5.0  # manual-flow key: still cleared
-    run(nav.go_home(make_update("🏠 To start"), ctx))
+    run(nav.go_home(make_update(nav.HOME_BUTTON), ctx))
     kept = draft.get_draft(ctx.user_data, a.id)
     assert kept is not None and kept.items, "draft lost"
     assert "amt" not in ctx.user_data
