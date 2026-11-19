@@ -6,7 +6,6 @@
 **Last updated:** 2026-11-18  
 **Updated by:** agent session (close false unknowns from a cold read)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
-**Docs on main:** through `4fd26a3` (PR #4). This note lands in the next docs commit.  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -72,7 +71,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 When finishing work, rewrite facts that changed:
 
-1. Bump **Last updated** / **Updated by**. Set **Product code tip** to the last commit that changed behaviour (a docs-only commit does not move it). Note a docs merge under **Docs on main** when handoff files land.
+1. Bump **Last updated** / **Updated by**. Set **Product code tip** to the last commit that changed behaviour (a docs-only commit does not move it).
 2. Move finished items out of **Open** into **What works** (or delete).
 3. Add new risks, deploy notes, or follow-ups under **Open / unknown**.
 4. One short bullet under a dated subsection if the change needs a breadcrumb.
