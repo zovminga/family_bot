@@ -65,7 +65,8 @@ Finances never share across installs.
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
 | `navigation.py` | «return home» labels/callbacks | Fork home behaviour per flow |
 | `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
-| `bot.py` | Telegram I/O adapters + wiring | Grow new domain logic here |
+| `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
+| `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
 Prefer extracting a library module over adding another hundred lines to `bot.py`.
 
@@ -165,6 +166,8 @@ tokens and keys masked) and the user gets «❌ Не сохранилось. П�
 Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
 «❌ Не разобрал, введите вручную», a failed download asks to try again. No
 handler sends exception text to the user.
+
+The bot's Claude clients (`voice_input`, `photo_input`) use a 30 s timeout and 1 retry (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`).
 
 Voice/text/photo need `ANTHROPIC_API_KEY`. Without it, manual + presets still work.
 Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `docs/STATUS.md`). Override with `VX_LLM_MODEL` / `PX_LLM_MODEL`. Dashboard grouping uses the same default via `--model`.

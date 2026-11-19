@@ -293,8 +293,14 @@ def apply_callback(
         if not items:
             session.closed = True
             return CallbackOutcome(text="Нечего сохранять — черновик пуст.")
-        save_drafts(client, items)
+        # Close before the write: the save runs in a worker thread, so a tap that
+        # arrives meanwhile must already see a closed Draft. Reopen on failure.
         session.closed = True
+        try:
+            save_drafts(client, items)
+        except Exception:
+            session.closed = False
+            raise
         if len(items) == 1:
             it = items[0]
             text = (
