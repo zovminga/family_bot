@@ -153,7 +153,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Render still has the old commands until the owner changes them (issue #23
   PR, README «Deploy»): Build Command
   `pip install -r requirements.txt && pip install --no-deps -e . && python -c "from family_bot.voice_input import ensure_model; ensure_model()"`,
-  Start Command `family-bot`. Open check (Q16): after the first deploy, the
+  Start Command `family-bot`. Render ignored `.python-version` on the owner's
+  service (built with 3.11.5); env var `PYTHON_VERSION=3.12.12` fixed the build.
+  Open check (Q16): after the first deploy, the
   runtime log has no «Downloading Vosk model» line on the first voice message
   (the build log should have it).
 - Typed text (issue #30) reaches `bot.text_expense` only inside the
