@@ -70,7 +70,6 @@ def _authorize_spreadsheet(
 ):
     """Open the configured spreadsheet via gspread (production adapter)."""
     import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
 
     creds_file = resolve_creds_path(creds_path)
     if not creds_file.exists():
@@ -80,8 +79,7 @@ def _authorize_spreadsheet(
     if not name:
         raise RuntimeError("Environment variable SHEET_NAME not found.")
 
-    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_file), SCOPE)
-    return gspread.authorize(creds).open(name)
+    return gspread.service_account(filename=str(creds_file), scopes=SCOPE).open(name)
 
 
 @runtime_checkable

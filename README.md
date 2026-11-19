@@ -20,14 +20,23 @@ own allowlist). Your finances never mix with someone else's install.
 
 ### 1. Clone and Python deps
 
+Python 3.12 (pinned in `.python-version`). Dependencies live in `pyproject.toml`
+(groups `bot`, `dashboard`, `dev`) and are locked in `uv.lock`. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/), then:
+
 ```bash
 git clone <this-repo>
 cd family_bot
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+uv sync                    # creates .venv with Python 3.12 and all groups
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 cp .env.example .env
 ```
+
+Run tests with `pytest`, check dependencies with `pip-audit --local`.
+
+`requirements.txt` (bot) and `dashboard/requirements.txt` are generated from
+`uv.lock` for pip-only hosts. Do not edit them by hand; the regenerate command
+is in each file's header.
 
 ### 2. Telegram bot
 
@@ -85,8 +94,9 @@ Set `ANTHROPIC_API_KEY` in `.env`. Without it, manual entry and presets still wo
 1. Connect the repo
 2. Set the same env vars (`BOT_TOKEN`, `GOOGLE_CREDS_PATH` contents or secret file,
    `SHEET_NAME`, `ALLOWED_USERS`, …)
-3. Start command: `python bot.py`
-4. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
+3. Build command: `pip install -r requirements.txt`. Render takes the Python version from `.python-version` unless the service sets a `PYTHON_VERSION` env var
+4. Start command: `python bot.py`
+5. Set `RENDER_EXTERNAL_URL` for webhook mode (omit locally to use polling)
 
 ## Commands
 

@@ -4,9 +4,9 @@ import json
 import asyncio
 from datetime import datetime, timedelta
 from dateutil import parser as dparser
+from dateutil.relativedelta import relativedelta
 from typing import Optional
 
-import pandas as pd
 from dotenv import load_dotenv
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
@@ -681,7 +681,7 @@ async def stat_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📆 By months":
         # Show list of months
         now = datetime.now()
-        months = [(now.replace(day=1) - pd.DateOffset(months=i)).strftime(MONTH_FMT) for i in range(12)]
+        months = [(now.replace(day=1) - relativedelta(months=i)).strftime(MONTH_FMT) for i in range(12)]
         kb = [[m] for m in months]
         kb.append(nav.home_row())
         await update.message.reply_text(
