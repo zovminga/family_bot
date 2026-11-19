@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #9: Python 3.12 + pyproject)  
+**Updated by:** agent session (issue #42 doc/code mismatches, merged after issue #9)  
 **Product code tip:** `5096dc6` (2026-11-19) — Python 3.12, pyproject, gspread auth without oauth2client  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -55,6 +55,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
+  recorded as open: stats not returning home (R7, R8, see
+  `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
+  `docs/ARCHITECTURE.md`), and Preset code names (`DEFAULTS`, `load_defaults`,
+  see `CONTEXT.md`).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
@@ -89,7 +94,7 @@ When finishing work, rewrite facts that changed:
 
 1. Bump **Last updated** / **Updated by**. Set **Product code tip** to the last commit that changed behaviour (a docs-only commit does not move it).
 2. Move finished items out of **Open** into **What works** (or delete).
-3. Add new risks, deploy notes, or follow-ups under **Open / unknown**.
+3. Add new risks, deploy notes, or follow-ups under **Open**.
 4. One short bullet under a dated subsection if the change needs a breadcrumb.
 
 Do not leave STATUS describing a world the code no longer matches.

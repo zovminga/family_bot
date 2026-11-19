@@ -35,8 +35,9 @@ An Expense proposed from voice or receipt photo, shown for review before it is s
 _Avoid_: Pending expense, suggestion
 
 **Preset**:
-A reusable Expense template from the Regular_expenses sheet (monthly or one-off).
+A reusable Expense from the Regular_expenses sheet (monthly or one-off).
 _Avoid_: Default expense, regular (as a noun), template
+_Code names (open until issues #22, #24 restructure `bot.py`):_ `DEFAULTS` / `load_defaults` (`bot.py`, `regular.py`).
 
 **Sheets**:
 The Google Spreadsheet that stores Data, Config, Meta, Regular_expenses, and Users worksheets.
