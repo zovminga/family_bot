@@ -54,7 +54,7 @@ family_bot/
     ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), bootstrap venv
     ├── schedule.sh                # установка/удаление launchd-агента (раз в месяц)
     ├── manual_adjustments.csv     # ручные доначисления (gitignored)
-    ├── requirements.txt
+    ├── requirements.txt           # generated from uv.lock (group dashboard), for run.sh
     ├── README.md                  # как запускать
     ├── SPEC.md                    # этот файл
     ├── venv/                      # изолированное окружение, создаёт run.sh (gitignored)
@@ -341,7 +341,7 @@ Eating out, Delivery food, Other, Health and Beauty, Bills.
 
 ```bash
 cd family_bot
-pip install -r dashboard/requirements.txt
+uv sync    # pyproject.toml + uv.lock; or: pip install -r dashboard/requirements.txt
 
 # из CSV (как делаем сейчас):
 python3 dashboard/build_dashboard.py --csv "/path/FamilyExpenses - Data.csv"
