@@ -16,6 +16,7 @@ from telegram.ext import (
     TypeHandler, ApplicationHandlerStop,
 )
 
+import amount_input
 import auth
 import clock
 import currency
@@ -201,6 +202,14 @@ def _is_public_command(update: Update) -> bool:
         return False
     cmd = msg.text.split()[0].split("@", 1)[0].lower()
     return cmd in {"/whoami"}
+
+
+async def ignore_edited(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """An edited Telegram message is not new input: stop it before any other handler."""
+    raise ApplicationHandlerStop
+
+
+EDITED_MESSAGES = MessageHandler(filters.UpdateType.EDITED, ignore_edited)
 
 
 async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -412,12 +421,7 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSE_ACTION
 
     if text == "💰 Add expense" or text == "Add expense":
-        kb = [[c] for c in CATS]
-        kb.append(nav.home_row())
-        await update.message.reply_text(
-            "📂 Choose category:",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
+        await _ask_from_list(update, "📂 Choose category:", CATS)
         return CHOOSE_CAT
 
     if text in (
@@ -448,13 +452,39 @@ async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ----- Manual add-expense flow -----
+async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
+    """Reply with prompt and one button per option, plus the home button."""
+    kb = [[c] for c in options]
+    kb.append(nav.home_row())
+    await update.message.reply_text(
+        prompt,
+        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+    )
+
+
+def _known_category(text: str) -> Optional[str]:
+    """Category from CATS matching text (case and outer spaces ignored)."""
+    key = text.strip().casefold()
+    return next((c for c in CATS if c.casefold() == key), None)
+
+
+def _on_buttons(found: Optional[currency.Currency]) -> Optional[str]:
+    """Stored symbol of a registered Currency if this install offers it (CURS)."""
+    return found.symbol if found is not None and found.symbol in CURS else None
+
+
 async def choose_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
 
-    context.user_data["cat"] = text
+    cat = _known_category(text)
+    if cat is None:
+        await _ask_from_list(update, "❌ No such category. Choose one from the list:", CATS)
+        return CHOOSE_CAT
+
+    context.user_data["cat"] = cat
     kb = [nav.home_row()]
     await update.message.reply_text(
         "💵 Enter amount:",
@@ -470,18 +500,17 @@ async def type_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
     
-    try:
-        amt = float(text.replace(",", "."))
-    except ValueError:
-        await update.message.reply_text("❌ Need a number. Try again:")
+    parsed = amount_input.parse_amount_text(text)
+    if parsed is None:
+        await update.message.reply_text(
+            "❌ Need an amount above zero with at most 2 decimals, e.g. 1 200 or 350 дин. Try again:")
         return TYPING_AMT
+    amt, typed_currency = parsed
     context.user_data["amt"] = amt
-    kb = [[c] for c in CURS]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        "💱 Currency?",
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
+    cur = _on_buttons(typed_currency)
+    if cur is not None:
+        return await _set_currency_and_ask_comment(update, context, cur)
+    await _ask_from_list(update, "💱 Currency?", CURS)
     return CHOOSE_CUR
 
 
@@ -492,8 +521,17 @@ async def choose_cur(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if nav.is_home_text(text):
         return await nav.go_home(update, context)
     
-    context.user_data["cur"] = text
-    
+    cur = _on_buttons(currency.find(text))
+    if cur is None:
+        await _ask_from_list(update, "❌ No such currency. Choose one from the list:", CURS)
+        return CHOOSE_CUR
+    return await _set_currency_and_ask_comment(update, context, cur)
+
+
+async def _set_currency_and_ask_comment(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        cur: str) -> int:
+    context.user_data["cur"] = cur
+
     # Automatically detect user
     user_name, username = get_user_info(update)
     context.user_data["spender"] = user_name
@@ -695,7 +733,8 @@ def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
     app = Application.builder().token(bot_token).build()
 
-    # Run before every other handler (group -1).
+    # Run before every other handler: drop edits (group -2), then the allowlist (group -1).
+    app.add_handler(EDITED_MESSAGES, group=-2)
     app.add_handler(TypeHandler(Update, enforce_allowlist), group=-1)
 
     conv = ConversationHandler(

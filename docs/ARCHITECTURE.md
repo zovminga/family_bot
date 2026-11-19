@@ -22,6 +22,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── regular.py              Regular_expenses → preset dicts
     ├── analytics.py            stats on normalized rows
     ├── expense.py              ExpenseRecord → row
+    ├── amount_input.py         typed/spoken amount checks
     ├── sheet_data.py           parse/normalize kernel
     ├── clock.py                "now" in the family time zone (TZ_NAME)
     ├── errors.py               error handler, user texts, secret masking
@@ -44,6 +45,7 @@ Finances never share across installs.
 | `sheets.py` | Auth to gspread, worksheet open, domain reads/writes | Call gspread directly |
 | `expense.py` | `ExpenseRecord`, row layout by Data headers, month derivation | Hand-build Data rows |
 | `currency.py` | Currency registry: stored symbol, ISO code, Russian words/stems. Feeds `bot.CURS`, voice/receipt prompts and snapping, preset columns, `sheet_data` symbol ↔ ISO maps | List currencies anywhere else; adding one is one line in `CURRENCIES` |
+| `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py` | Duplicate parse rules (known gap below) |
@@ -114,6 +116,8 @@ text too, not as a Sheets date value; Python readers use `get_all_values` and
 are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
+
+**Manual** (`bot.py`): Category → amount → Currency → comment → date. Category must match `CATS` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`CURS`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 

@@ -58,6 +58,7 @@ def parse_amount(raw: Any) -> Optional[float]:
     text = (
         text.replace(" ", "")
         .replace("\u00a0", "")
+        .replace("\u202f", "")
         .replace("'", "")
     )
     if "," in text and "." in text:
