@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (plan split into GitHub issues)  
+**Updated by:** agent session (issue #42, doc/code mismatches)  
 **Product code tip:** `311bb67` (2026-08-12) — last behaviour change  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -51,6 +51,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
+- Doc/code mismatches from spec section 2.8 are fixed in the docs, except three
+  recorded as open: stats not returning home (R7, R8, see
+  `docs/ARCHITECTURE.md`), the dashboard's own row parsing (C3, see
+  `docs/ARCHITECTURE.md`), and Preset code names (`DEFAULTS`, `load_defaults`,
+  see `CONTEXT.md`).
 - Full project review with findings, design, and a staged plan:
   [`docs/specs/2026-11-revision.md`](specs/2026-11-revision.md). Known bugs live
   there (section 2) until fixed; tick plan items as they land.
@@ -60,10 +65,6 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
   with native "blocked by" links. #9 (Python 3.12 + pyproject) and #42 (doc
   mismatches) have no blockers.
-- Doc/code mismatches from spec section 2.8 are fixed in the docs, except two
-  recorded as open: Preset code names (`DEFAULTS`, `load_defaults`, see
-  `CONTEXT.md`) and the dashboard's own row parsing (C3, see
-  `docs/ARCHITECTURE.md`).
 
 ## Only a person knows
 
