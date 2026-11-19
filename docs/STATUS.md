@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #14 currency registry)  
-**Product code tip:** issue #14 merge (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
+**Product code tip:** `a4364a0` (2026-11-19) — currency registry `currency.py`, `$` and `CNY` back  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
