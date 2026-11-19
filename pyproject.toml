@@ -72,6 +72,7 @@ files = [
     "conversation_states.py",
     "dashboard/failure_alert.py",
     "draft_expense.py",
+    "errors.py",
     "expense.py",
     "flow_preset.py",
     "flows",
