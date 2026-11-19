@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #36 monthly summary on the 1st)  
-**Product code tip:** `570b520` (2026-11-19) — household data (base currency, first month, Spender aliases, shops, launchd label) moved to settings (issue #41)  
+**Product code tip:** `89de51d` (2026-11-19) — last month's summary on the 1st via JobQueue to DASHBOARD_CHAT_ID (issue #36)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
