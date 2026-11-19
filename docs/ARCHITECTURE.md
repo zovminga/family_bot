@@ -118,6 +118,8 @@ Fallbacks: home button, `/cancel`, `/stop`, `/start`. `allow_reentry=True`.
 Home: state handlers never see it — their filters exclude the home text
 (`navigation.INPUT_TEXT`) and the `to_start` callback. `navigation.home_fallbacks()`
 catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
+So an old inline home button now works in any state (before #24 only in
+`TYPING_CMNT` / `CHOOSE_DT`), and typed home text works in `CHOOSE_DT` too.
 Clears flow keys in `user_data`, keeps open Drafts.
 
 ## Sheet schema

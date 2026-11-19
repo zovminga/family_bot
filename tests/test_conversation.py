@@ -55,7 +55,9 @@ def test_states_are_an_int_enum_without_duplicates() -> None:
 
 
 def test_every_state_has_a_handler() -> None:
-    assert set(conversation().states) == set(State)
+    states = conversation().states
+    assert set(states) == set(State)
+    assert all(states[state] for state in State)
 
 
 @pytest.mark.parametrize("update", [
@@ -81,6 +83,13 @@ def test_other_text_still_reaches_text_states() -> None:
 def test_home_callback_keeps_drafts_and_clears_flow() -> None:
     ctx_data: dict[str, Any] = {"cat": "Food", KEY_DRAFTS: {"1": object()}}
     ctx = type("Ctx", (), {"user_data": ctx_data})()
-    query = FakeQuery("to_start")
+    answered: list[bool] = []
+
+    class Query(FakeQuery):
+        async def answer(self, *args: Any, **kw: Any) -> None:
+            answered.append(True)
+
+    query = Query("to_start")
     assert run(nav.on_home(make_update(query=query), ctx)) == State.CHOOSE_ACTION
     assert set(ctx_data) == {KEY_DRAFTS}
+    assert answered == [True]  # the inline button stops spinning
