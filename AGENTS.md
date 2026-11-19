@@ -81,6 +81,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   flow_preset.py      ⚡ preset conversation steps
   flows/stats.py      Statistics conversation (StatsFlow, StatQuery)
   navigation.py       go_home / home button
+  per_user.py         Update order: users in parallel, one user's updates in order
   conversation_states.py  ConversationHandler state ints
   dashboard/          build_dashboard.py, failure_alert.py, __main__.py
 dashboard/            run.sh, schedule.sh (launchd), template.html, SPEC, output/ (gitignored)

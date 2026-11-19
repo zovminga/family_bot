@@ -29,6 +29,8 @@ from family_bot import currency
 
 # Reuse the JSON/snap helpers from voice_input to avoid duplicating logic.
 from family_bot.voice_input import (
+    LLM_MAX_RETRIES,
+    LLM_TIMEOUT_SEC,
     _extract_json_object,
     _snap_amount,
     _snap_category,
@@ -160,7 +162,7 @@ def extract_receipt(image_bytes: bytes, media_type: Optional[str],
 
     import anthropic
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SEC, max_retries=LLM_MAX_RETRIES)
     prompt = _build_prompt(categories, currencies, today, who, default_currency)
     b64 = base64.standard_b64encode(image_bytes).decode("ascii")
     resp = client.messages.create(

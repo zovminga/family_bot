@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #23 package `family_bot/`, merged after issue #39)  
-**Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
+**Updated by:** agent session (issue #18 slow calls do not freeze the bot)  
+**Product code tip:** issue #18 branch (2026-11-19) — Sheets/FX in worker threads, per-user update order, Claude 30 s / 1 retry  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -91,6 +91,14 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   user gets «❌ Не сохранилось. Попробуйте ещё раз»; a Vosk/Claude failure on
   voice or photo gets «❌ Не разобрал, введите вручную». No raw exception text
   reaches the user (R3, U5 fixed).
+- Slow calls do not freeze the bot (issue #18, R11): handlers run Sheets reads
+  and writes, FX requests (stats) and `config.load` / `reload` through
+  `asyncio.to_thread`. `per_user.PerUserUpdateProcessor` runs updates of
+  different people at the same time and one person's updates in order, so a
+  Draft double tap still sees «✅ Сохранено». Claude clients for voice, text
+  and receipt photo use a 30 s timeout and 1 retry
+  (`voice_input.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`); the dashboard's Claude
+  client keeps the SDK defaults.
 - Dashboard build pipeline under `dashboard/` (see `dashboard/SPEC.md`)
 - Dashboard build safety (issue #20): sheet text is escaped (`esc()` in
   `template.html`) and data JSON is embedded with `json_for_script()`, so a
@@ -167,9 +175,6 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Doc/code mismatches from spec section 2.8 are fixed in the docs, except one
   recorded as open: the dashboard's own row parsing (C3, see
   `docs/ARCHITECTURE.md`).
-- Draft double-tap guard (issue #13) relies on save running with no `await`
-  between the `closed` check and the Sheets write. When issue #18 moves the
-  write into `asyncio.to_thread`, mark the Draft as saving before the await.
 - Logging is not configured: `errors` logs through the `family_bot.errors`
   logger, which prints to stderr via Python's fallback handler (WARNING and
   above). Other modules still `print` exception text to stdout without
@@ -184,7 +189,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   there (section 2) until fixed; tick plan items as they land.
 - Known-bug reproductions live in `tests/known_bugs/` as
   `xfail(strict=True)`, tagged with their finding id. A fix removes the marker;
-  `pytest -rx` lists what is still open.
+  `pytest -rx` lists what is still open. After issue #18 it lists none: every
+  reproduction there passes.
 - The plan is split into 34 GitHub issues (#9–#42, label `ready-for-agent`)
   with native "blocked by" links. #9 (Python 3.12 + pyproject) is done; issues it
   blocked can start once it merges.
