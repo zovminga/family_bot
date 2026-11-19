@@ -191,6 +191,8 @@ def _run_classify_selftest() -> None:
 RENT_CATEGORY_RE = re.compile(r"^(rent|аренд)", re.IGNORECASE)
 BILLS_CATEGORY_RE = re.compile(r"^(bills|коммунал|счета)", re.IGNORECASE)
 NO_CATEGORY = "Без категории"
+RENT_COMMENT_WORD = "аренд"       # comment says the row is rent
+BILLS_COMMENT_WORD = "коммунал"   # comment says the row is utility bills
 
 
 def category_order(config: list[str], seen: list[str]) -> list[str]:
@@ -220,6 +222,21 @@ def category_order(config: list[str], seen: list[str]) -> list[str]:
 
 
 def _known(known: list[str], pattern: re.Pattern[str]) -> Optional[str]:
+    """
+    First name in ``known`` that matches ``pattern``.
+
+    Parameters
+    ----------
+    known : list[str]
+        Category names of this sheet.
+    pattern : re.Pattern[str]
+        Name prefix to look for.
+
+    Returns
+    -------
+    Optional[str]
+        The matching name, or None.
+    """
     return next((name for name in known if pattern.match(name)), None)
 
 
@@ -245,12 +262,12 @@ def repair_category(category: str, comment: str, known: list[str]) -> str:
         ``NO_CATEGORY``.
     """
     comment_l = comment.lower()
-    if "аренд" in comment_l:
+    if RENT_COMMENT_WORD in comment_l:
         rent = _known(known, RENT_CATEGORY_RE)
         if rent:
             return rent
     if not category or category.replace(".", "").replace(",", "").isdigit():
-        bills = _known(known, BILLS_CATEGORY_RE) if "коммунал" in comment_l else None
+        bills = _known(known, BILLS_CATEGORY_RE) if BILLS_COMMENT_WORD in comment_l else None
         return bills or NO_CATEGORY
     return category
 
@@ -633,7 +650,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         "theme_rules": ({} if use_llm else {t: kws for t, kws in THEME_RULES}),
         "grouping_mode": (provider if use_llm else "rules"),
         "from_month": from_month,
-        # colour order: Config sheet first, so a Category keeps its colour
+        # colour order: Config sheet first, so a Category keeps its colour.
+        # Taken after the repair, so repaired names and NO_CATEGORY are listed too.
         "categories": category_order(config_categories, [r["category"] for r in rows]),
         "rows": rows,
     }
