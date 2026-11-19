@@ -10,7 +10,9 @@ from family_bot.analytics import (
     aggregate,
     filter_rows,
     format_last_n,
+    format_month_summary,
     last_n,
+    month_summary,
     unique_currencies,
 )
 from family_bot.sheet_data import Row
@@ -107,3 +109,77 @@ def test_format_last_n_shows_date_text():
 def test_aggregate_convert_needs_rate_source():
     with pytest.raises(ValueError):
         aggregate(ROWS, month="2026-08", convert_to_currency="дин")
+
+
+# ---------- month summary (issue #35) ----------
+
+def _row(day: int, category: str, amount: float, currency: str, who: str,
+         month: str = "2026-11") -> Row:
+    return Row(date=date(int(month[:4]), int(month[5:]), day), month=month,
+               category=category, amount=amount, currency=currency, who=who, comment="")
+
+
+MONTH_ROWS = [
+    _row(1, "Еда", 1000.0, "дин", "Азат"),
+    _row(2, "Еда", 500.0, "дин", "Лиза"),
+    _row(3, "Транспорт", 2000.0, "дин", "Азат"),
+    _row(4, "Кафе", 300.0, "дин", "Лиза"),
+    _row(5, "Дом", 100.0, "дин", "Лиза"),
+    _row(6, "Еда", 20.0, "€", "Лиза"),
+    _row(30, "Еда", 9999.0, "дин", "Азат", month="2026-10"),
+]
+
+
+def test_month_summary_keeps_currencies_apart():
+    summary = month_summary(MONTH_ROWS, "2026-11")
+    assert summary.month == "2026-11"
+    assert list(summary.by_currency) == ["дин", "€"]  # most rows first
+    din = summary.by_currency["дин"]
+    assert din.total == 3900.0
+    assert din.categories == [("Транспорт", 2000.0), ("Еда", 1500.0),
+                              ("Кафе", 300.0), ("Дом", 100.0)]
+    assert din.spenders == [("Азат", 3000.0), ("Лиза", 900.0)]
+    eur = summary.by_currency["€"]
+    assert (eur.total, eur.categories, eur.spenders) == (20.0, [("Еда", 20.0)], [("Лиза", 20.0)])
+
+
+def test_month_summary_takes_any_month():
+    summary = month_summary(MONTH_ROWS, "2026-10")
+    assert summary.by_currency["дин"].total == 9999.0
+    assert month_summary(MONTH_ROWS, "2025-01").by_currency == {}
+
+
+def test_format_month_summary_one_currency():
+    text = format_month_summary(month_summary(MONTH_ROWS[:5], "2026-11"))
+    assert text == (
+        "📅 Ноябрь 2026\n"
+        "💰 Итого: 3 900 дин\n"
+        "\n"
+        "🏷 Топ категорий:\n"
+        "1. Транспорт — 2 000 дин\n"
+        "2. Еда — 1 500 дин\n"
+        "3. Кафе — 300 дин\n"
+        "\n"
+        "👤 По людям:\n"
+        "Азат — 3 000 дин\n"
+        "Лиза — 900 дин"
+    )
+
+
+def test_format_month_summary_several_currencies_never_added():
+    text = format_month_summary(month_summary(MONTH_ROWS, "2026-11"))
+    assert text.startswith("📅 Ноябрь 2026\n💰 Итого: 3 900 дин · 20 €\n")
+    assert "\n— дин —\n" in text and "\n— € —\n" in text
+    assert "3 920" not in text
+    assert text.endswith("👤 По людям:\nЛиза — 20 €")
+
+
+def test_format_month_summary_empty_month():
+    assert format_month_summary(month_summary([], "2026-11")) == "📅 Ноябрь 2026\nНет данных 🤷"
+
+
+def test_month_summary_blank_category_and_spender_get_labels():
+    rows = [_row(1, "", 10.0, "дин", "")]
+    din = month_summary(rows, "2026-11").by_currency["дин"]
+    assert din.categories == [("Без категории", 10.0)]
+    assert din.spenders == [("Не указан", 10.0)]

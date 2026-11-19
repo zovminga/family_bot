@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 
 from family_bot import conversation_states as states
+from family_bot import navigation as nav
 from family_bot.flows import stats
 from family_bot.sheet_data import Row
 from tests.known_bugs.fakes import make_update
@@ -81,5 +82,31 @@ def test_last_records_error_hides_raw_text() -> None:
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(category="Food")})
     upd = make_update(stats.LAST_BUTTON)
     run(flow.on_type(upd, ctx))
+    text = replies(upd)[0]
+    assert text.startswith("❌") and "503" not in text, text
+
+
+def test_this_month_one_tap_summary(monkeypatch: Any) -> None:
+    monkeypatch.setattr(stats.clock, "now", lambda: datetime(2026, 10, 19, 23, 30))
+    flow, ctx = make_flow(), SimpleNamespace(user_data={})
+    upd = make_update(nav.THIS_MONTH)
+    assert run(flow.this_month(upd, ctx)) == states.State.CHOOSE_ACTION
+    (text,) = replies(upd)
+    assert text.startswith("📅 Октябрь 2026\n💰 Итого: 100 дин · 10 €"), text
+    assert "Food — 100 дин" in text and "Azat — 10 €" in text
+
+
+def test_this_month_error_hides_raw_text() -> None:
+    def broken_rows(_ctx: object) -> list[Row]:
+        raise RuntimeError("APIError: [503] secret details")
+
+    flow = stats.StatsFlow(
+        categories=lambda _ctx: ["Food"],
+        load_rows=broken_rows,
+        fallback_currencies=lambda _ctx: ["дин"],
+        get_rate=lambda src, dst: 1.0,
+    )
+    upd = make_update(nav.THIS_MONTH)
+    assert run(flow.this_month(upd, SimpleNamespace(user_data={}))) == states.State.CHOOSE_ACTION
     text = replies(upd)[0]
     assert text.startswith("❌") and "503" not in text, text
