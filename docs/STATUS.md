@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-11-19  
 **Updated by:** agent session (issue #24 `flows/manual.py`, one home handler)  
-**Product code tip:** `bfceff3` (2026-11-19) — package `family_bot/`, `family-bot` command (issue #23)  
+**Product code tip:** `6ad018c` (2026-11-19) — manual input in `flows/manual.py`, one home handler in fallbacks (issue #24)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
