@@ -37,12 +37,15 @@ class FakeQuery:
         self.data = data
         self.message = message or FakeMessage()
         self.edits: list[Any] = []
+        self.markups: list[Any] = []  # reply_markup of each edit_message_text
+        self.answers: list[tuple[Any, ...]] = []
 
     async def answer(self, *args: Any, **kw: Any) -> None:
-        pass
+        self.answers.append(args)
 
     async def edit_message_text(self, text: str, **kw: Any) -> None:
         self.edits.append(text)
+        self.markups.append(kw.get("reply_markup"))
 
     async def edit_message_reply_markup(self, **kw: Any) -> None:
         self.edits.append(("markup", kw))

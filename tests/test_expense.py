@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from family_bot.expense import ExpenseRecord, append_expense, append_expenses
+from family_bot.expense import ExpenseRecord, append_expense, append_expenses, delete_expenses
 from tests.conftest import FakeSheetsClient
 
 
@@ -124,3 +124,62 @@ def test_append_expenses_reads_headers_once_and_appends_one_batch():
         ["Bob", "07.08.2026", 1, "Food", "€", "a"],
         ["Ann", "07.08.2026", 2, "Food", "€", "b"],
     ]]
+
+
+# --- delete_expenses (undo) ---
+
+HEADERS = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"]
+
+
+def _rec(amount=350, comment="", who="Azat"):
+    return ExpenseRecord(date="19.11.2026", category="Food", amount=amount,
+                         currency="дин", who=who, comment=comment)
+
+
+def test_delete_expenses_removes_the_matching_row_not_the_last_one():
+    client = FakeSheetsClient(data_values=[
+        HEADERS,
+        ["19.11.2026", "2026-11", "Food", "350", "дин", "Azat", "coffee"],
+        ["19.11.2026", "2026-11", "Food", "90", "дин", "Lisa", "bread"],  # added later
+    ])
+    assert delete_expenses(client, [_rec(comment="coffee")]) is True
+    assert [r[6] for r in client.read_data_values()[1:]] == ["bread"]
+
+
+def test_delete_expenses_reads_formatted_amounts():
+    client = FakeSheetsClient(data_values=[
+        HEADERS, ["19.11.2026", "2026-11", "Food", "1 234,50", "дин", "Azat", ""],
+    ])
+    assert delete_expenses(client, [_rec(amount=1234.5)]) is True
+    assert client.read_data_values() == [HEADERS]
+
+
+def test_delete_expenses_refuses_when_row_was_changed():
+    client = FakeSheetsClient(data_values=[
+        HEADERS, ["19.11.2026", "2026-11", "Food", "360", "дин", "Azat", ""],
+    ])
+    assert delete_expenses(client, [_rec()]) is False
+    assert len(client.read_data_values()) == 2
+
+
+def test_delete_expenses_all_or_nothing_for_several_rows():
+    client = FakeSheetsClient(data_values=[
+        HEADERS, ["19.11.2026", "2026-11", "Food", "350", "дин", "Azat", "a"],
+    ])
+    assert delete_expenses(client, [_rec(comment="a"), _rec(comment="b")]) is False
+    assert len(client.read_data_values()) == 2
+
+
+def test_delete_expenses_takes_the_latest_of_identical_rows_once_each():
+    row = ["19.11.2026", "2026-11", "Food", "350", "дин", "Azat", ""]
+    client = FakeSheetsClient(data_values=[HEADERS, row, ["x"] * 7, row, row])
+    assert delete_expenses(client, [_rec(), _rec()]) is True
+    assert client.read_data_values() == [HEADERS, row, ["x"] * 7]
+
+
+def test_delete_expenses_matches_by_header_names():
+    headers = ["Who", "Comment", "Amount", "Currency", "Category", "Date"]
+    client = FakeSheetsClient(data_values=[
+        headers, ["Azat", "", "350", "дин", "Food", "19.11.2026"],
+    ])
+    assert delete_expenses(client, [_rec()]) is True

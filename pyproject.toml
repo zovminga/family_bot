@@ -96,6 +96,7 @@ files = [
     "family_bot/sheet_data.py",
     "family_bot/sheets.py",
     "family_bot/text_input.py",
+    "family_bot/undo.py",
     "family_bot/voice_input.py",
 ]
 

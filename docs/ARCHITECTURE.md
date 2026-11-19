@@ -27,6 +27,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── flows/manual.py         manual add steps (ManualFlow)
     ├── flows/stats.py          statistics steps, StatQuery
     ├── draft_expense.py        Draft review UI state machine
+    ├── undo.py                 «↩️ Отменить» after a save (own last save, 30 min)
     ├── voice_input.py          OGG → Vosk → Claude → draft items
     ├── photo_input.py          image → Claude Vision → draft items
     ├── text_input.py           «кофе 350» → voice_input.extract_expenses → Draft
@@ -63,14 +64,15 @@ Finances never share across installs.
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller | Mix Sheets or HTTP into stats |
+| `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders) and `format_month_summary` for any `YYYY-MM` | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
 | `config.py` | `Config`: Allowlist, `SheetsClient` (or `None` when Google is not set up), categories, Presets, Currency buttons, `default_currency` (stored symbol of `BASE_CURRENCY`, written when an expense names no Currency; unset → EUR), setup `problems`. `load(env)` runs in `bot.post_init` and stores it in `bot_data["config"]`; handlers read it with `bot.cfg(context)`. Each setup mistake (Google key, `SHEET_NAME`, `ALLOWED_USERS`, `TZ_NAME`, `BASE_CURRENCY`) is one line «what — what to do», never a traceback. `reload` backs `/reloadcats` and its problem lines go into the reply. `load_env_file` reads `.env` (called from `bot.main()`) | Read settings or open Sheets at import time; keep settings in module globals |
 | `auth.py` | `ALLOWED_USERS` parse and checks. Pairs split only before the next `<id>:`, so a name may hold a comma (`111:Иван, Петров`) | Scatter allowlist string parsing |
-| `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
+| `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `THIS_MONTH`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home) | Check the home button inside a state handler |
 | `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `comment`); data sources injected from `bot.py` | Add manual-input handlers to `bot.py` |
-| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`, request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
+| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`; `this_month` answers «📅 Этот месяц» from the menu without a conversation state; request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
 | `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
 | `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
@@ -89,8 +91,10 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
 ```
 /start → CHOOSE_ACTION (main menu)
            ├─ other text → text_expense → Draft card (stays in CHOOSE_ACTION)
+           ├─ 📅 this month → StatsFlow.this_month → summary (stays in CHOOSE_ACTION)
            ├─ manual add → CHOOSE_CAT → TYPING_AMT → CHOOSE_CUR
            │                 → TYPING_CMNT → CHOOSE_DT [| TYPING_DT] → save → home
+           │                   TYPING_CMNT ─ «✅ Сегодня, без комментария» → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
@@ -109,7 +113,14 @@ works the same way: `bot.MANUAL` is a `ManualFlow`, `MANUAL.states()` is merged.
 
 - Voice / audio → `voice_handler` → Draft card (`vx:` callbacks)
 - Photo / image doc → `photo_handler` → same Draft card
-- Allowlist: `TypeHandler` in group `-1` (`enforce_allowlist`); `/whoami` exempt.
+- «↩️ Отменить» → `undo_callback` (`undo:` callbacks)
+- Edited messages: dropped in group `-3` (`EDITED_MESSAGES`).
+- Allowlist: `TypeHandler` in group `-2` (`enforce_allowlist`); `/whoami` exempt.
+- Typed amount after «✏️ Сумма» on a Draft card: `draft_amount_text` in group
+  `-1`. It acts only while `user_data["draft_amount_edit"]` is set, redraws the
+  card and stops the update (`ApplicationHandlerStop`). A command, text with
+  no digit (menu button, word), a new Draft card or any card button ends the
+  wait, and the text goes on to the conversation.
   When Google Sheets is not set up (`Config.sheets is None`) an allowed User
   gets the setup problems instead of the flow; `/whoami` still answers.
 
@@ -129,7 +140,7 @@ Home: state handlers never see it — their filters exclude the home text
 catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
 So an old inline home button now works in any state (before #24 only in
 `TYPING_CMNT` / `CHOOSE_DT`), and typed home text works in `CHOOSE_DT` too.
-Clears flow keys in `user_data`, keeps open Drafts.
+Clears flow keys in `user_data`, keeps open Drafts and the last save (undo).
 
 ## Sheet schema
 
@@ -154,7 +165,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 ## Input pipelines
 
-**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -2 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+**Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; Currency must be on the buttons (`Config.currencies`), found by symbol, ISO code or word. Anything else re-asks with the list. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
@@ -165,6 +176,27 @@ are unaffected, sheet-side date formulas and sorting see text.
 **Draft save:** `draft_expense.save_drafts` → `expense.append_expenses` → one
 `SheetsClient.append_data_rows` call (gspread `append_rows`, `RAW`): all items
 land or none do, so a retry after a Sheets error writes no duplicates.
+
+**Undo** (`undo.py`, issue #31): the manual save and the Draft save call
+`undo.remember`, which keeps the written `ExpenseRecord`s in
+`user_data["last_save"]` and returns the «↩️ Отменить» button. A tap deletes
+those rows (`expense.delete_expenses` → one `SheetsClient.delete_data_rows`
+call, gspread `batch_update` with `deleteDimension`, bottom-up). Data has no row
+id, so the row is found by its values: date, Category, Currency, Spender,
+comment equal, amount equal as a number; the bottom-most match wins, each row
+once. A row edited or deleted in the sheet since → nothing is deleted. Read
+and delete run under one lock (one bot process), so two Users' undos cannot
+shift each other's rows; a hand edit in the sheet between them still can. Refused
+(alert, button stays): another User's save (their `user_data` holds none), an
+earlier save of the same User, a save older than 30 minutes or from before a
+restart.
+
+**Draft card edits:** «✏️ Сумма» (`amt:<i>`) sets
+`user_data["draft_amount_edit"]`; the next text goes through
+`draft_expense.set_amount` (`amount_input.parse_amount_text`, same checks as the
+manual flow; a Currency typed with it replaces the item's). «👤 Кто» (`who:<i>`) lists the Allowlist Spender names;
+`setwho:<i>:<index>` carries the index (names may not fit 64 bytes; Drafts and
+the Allowlist both live until restart).
 
 **Drafts in memory:** `user_data["drafts"]` maps a 4-hex-char Draft id to a
 `DraftSession`; several cards stay usable at once. Callback data is

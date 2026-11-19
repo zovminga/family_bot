@@ -12,6 +12,7 @@ from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, Messag
 
 from family_bot.conversation_states import State
 from family_bot.draft_expense import KEY_DRAFTS
+from family_bot.undo import KEY_LAST_SAVE
 
 HOME_BUTTON = "🏠 В начало"
 # Reply keyboards stay on the phone until replaced, so labels from before the
@@ -31,6 +32,7 @@ NOT_HOME_CALLBACK = f"^(?!{HOME_CALLBACK}$)"
 # Main-menu buttons; bot.choose_action matches on these.
 ADD_EXPENSE = "💰 Добавить трату"
 ADD_PRESET = "🧾 Заготовка"
+THIS_MONTH = "📅 Этот месяц"
 SHOW_STATS = "📊 Статистика"
 DASHBOARD = "📈 Дашборд"
 
@@ -46,7 +48,8 @@ def home_inline_button() -> InlineKeyboardButton:
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     kb = [
         [ADD_EXPENSE, ADD_PRESET],
-        [SHOW_STATS, DASHBOARD],
+        [THIS_MONTH, SHOW_STATS],
+        [DASHBOARD],
         home_row(),
     ]
     return ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -67,11 +70,11 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Clear flow state and return to the main menu; open Drafts stay."""
-    drafts = context.user_data.get(KEY_DRAFTS)
+    """Clear flow state and return to the main menu; open Drafts and the last save stay."""
+    kept = {k: v for k, v in context.user_data.items()
+            if k in (KEY_DRAFTS, KEY_LAST_SAVE) and v}
     context.user_data.clear()
-    if drafts:
-        context.user_data.update({KEY_DRAFTS: drafts})
+    context.user_data.update(kept)
     await show_main_menu(update, context)
     return State.CHOOSE_ACTION
 

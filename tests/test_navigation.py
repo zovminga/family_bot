@@ -10,11 +10,11 @@ def test_home_row():
     assert nav.home_row() == ["🏠 В начало"]
 
 
-def test_main_menu_keyboard_has_four_actions():
+def test_main_menu_keyboard_has_five_actions():
     markup = nav.main_menu_keyboard()
     labels = {btn.text for row in markup.keyboard for btn in row}
-    assert labels == {"💰 Добавить трату", "🧾 Заготовка", "📊 Статистика", "📈 Дашборд",
-                      "🏠 В начало"}
+    assert labels == {"💰 Добавить трату", "🧾 Заготовка", "📅 Этот месяц", "📊 Статистика",
+                      "📈 Дашборд", "🏠 В начало"}
 
 
 def test_begin_preset_empty_stays_on_menu():

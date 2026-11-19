@@ -7,6 +7,7 @@ single locality.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Union
@@ -17,6 +18,13 @@ from family_bot.sheets import DATA_HEADERS, SheetsClient
 # Fields every Data sheet must have a column for. Month is optional: readers
 # derive it from the date when the column is absent.
 REQUIRED_FIELDS = ("date", "category", "amount", "currency", "who", "comment")
+# Text fields compared when looking a written Expense up again (amount apart).
+MATCH_TEXT_FIELDS = ("date", "category", "currency", "who", "comment")
+# One undo at a time across Users: rows found by one read must not shift
+# under another undo's delete before this delete runs.
+_DELETE_LOCK = threading.Lock()
+# Amounts are stored to cents, so two amounts closer than this are equal.
+AMOUNT_TOLERANCE = 0.005
 
 
 @dataclass(frozen=True)
@@ -78,3 +86,53 @@ def append_expenses(client: SheetsClient, records: list[ExpenseRecord]) -> None:
     """Persist several Expenses in one append call: all rows land or none do."""
     headers = client.read_data_headers()
     client.append_data_rows([r.to_row(headers) for r in records])
+
+
+def _matches(row: list, columns: dict[str, int], record: ExpenseRecord) -> bool:
+    """True if a Data row (as read back, formatted) holds exactly this record."""
+    def cell(field: str) -> str:
+        idx = columns[field]
+        return str(row[idx]).strip() if idx < len(row) else ""
+
+    if any(cell(f) != str(getattr(record, f)).strip() for f in MATCH_TEXT_FIELDS):
+        return False
+    stored = parse_amount(cell("amount"))
+    wanted = parse_amount(record.amount)
+    return stored is not None and wanted is not None and abs(stored - wanted) < AMOUNT_TOLERANCE
+
+
+def delete_expenses(client: SheetsClient, records: list[ExpenseRecord]) -> bool:
+    """Delete the Data rows holding these just-written records, all or none.
+
+    Data has no row id, so a row is found by its values: every field must equal
+    what was written (the amount compared as a number, since the sheet may
+    format it). The bottom-most match is taken, each row at most once.
+    Identical rows are interchangeable, so taking any of them leaves the same
+    data. A record with no matching row (edited or deleted in the sheet since)
+    deletes nothing and returns False. Read and delete run under one lock, so
+    two Users' undos cannot shift each other's rows; a hand edit in the sheet
+    between the two calls still can.
+    """
+    with _DELETE_LOCK:
+        return _delete_matching(client, records)
+
+
+def _delete_matching(client: SheetsClient, records: list[ExpenseRecord]) -> bool:
+    values = client.read_data_values()
+    if not values:
+        return False
+    columns = resolve_columns(values[0])
+    if any(f not in columns for f in REQUIRED_FIELDS):
+        return False
+    taken: set[int] = set()
+    for record in records:
+        found = next(
+            (n for n in range(len(values), 1, -1)
+             if n not in taken and _matches(values[n - 1], columns, record)),
+            None,
+        )
+        if found is None:
+            return False
+        taken.add(found)
+    client.delete_data_rows(sorted(taken))
+    return True
