@@ -124,6 +124,76 @@ def test_skip_comment_then_today_saves_and_goes_home(ctx, monkeypatch):
     assert "cat" not in ctx.user_data
 
 
+def _inline_labels(markup):
+    return {btn.text: btn.callback_data for row in markup.inline_keyboard for btn in row}
+
+
+def test_today_no_comment_button_saves_today_with_empty_comment(ctx, monkeypatch):
+    from family_bot.flows import manual
+    from tests.conftest import FakeSheetsClient, settings_of
+    from tests.known_bugs.fakes import FakeQuery
+
+    sheets = FakeSheetsClient()
+    settings_of(ctx).sheets = sheets
+    monkeypatch.setattr(manual.clock, "now", lambda: datetime(2026, 11, 19))
+    ctx.user_data.update(cat="Food", amt=350.0, cur="дин", spender="Azat", comment="old")
+    query = FakeQuery(manual.TODAY_NO_COMMENT)
+    assert run(bot.MANUAL.today_no_comment(make_update(query=query), ctx)) \
+        == State.CHOOSE_ACTION
+    assert sheets.appended_rows[0][:7] == ["19.11.2026", "2026-11", "Food", 350.0, "дин",
+                                           "Azat", ""]
+    assert query.edits == ["✅ Сохранено: Food — 350 дин, 19.11.2026"]
+    assert "cat" not in ctx.user_data
+
+
+def _tap_path_to_comment_step(ctx, taps):
+    """Menu → Category → «350 дин»: returns the comment-step markup."""
+    from family_bot import navigation as nav
+
+    taps.append(nav.ADD_EXPENSE)
+    run(bot.MANUAL.begin(make_update(nav.ADD_EXPENSE), ctx))
+    taps.append("Food")
+    run(bot.MANUAL.choose_cat(make_update("Food"), ctx))
+    upd = make_update("350 дин")  # typed, not a tap
+    assert run(bot.MANUAL.type_amount(upd, ctx)) == TYPING_CMNT
+    return upd.message.replies[-1][1]["reply_markup"]
+
+
+def test_coffee_350_din_today_tap_count(ctx, monkeypatch):
+    """«кофе 350 дин сегодня» by hand: count taps on the old and the new path (U2)."""
+    from telegram.ext import CallbackQueryHandler
+
+    from family_bot.flows import manual
+    from tests.conftest import FakeSheetsClient, settings_of
+    from tests.known_bugs.fakes import FakeQuery
+
+    settings_of(ctx).sheets = FakeSheetsClient()
+    monkeypatch.setattr(manual.clock, "now", lambda: datetime(2026, 11, 19))
+
+    old: list[str] = []
+    labels = _inline_labels(_tap_path_to_comment_step(ctx, old))
+    old.append("⏭️ Пропустить")
+    run(bot.MANUAL.type_comment(make_update(query=FakeQuery(labels[old[-1]])), ctx))
+    old.append("📅 Сегодня")
+    assert run(bot.MANUAL.choose_dt(make_update(query=FakeQuery("today")), ctx)) \
+        == State.CHOOSE_ACTION
+
+    new: list[str] = []
+    labels = _inline_labels(_tap_path_to_comment_step(ctx, new))
+    new.append("✅ Сегодня, без комментария")
+    data = labels[new[-1]]
+    patterns = [h.pattern for h in bot.MANUAL.states()[TYPING_CMNT]
+                if isinstance(h, CallbackQueryHandler)]
+    assert any(p.match(data) for p in patterns), "button has no handler in TYPING_CMNT"
+    assert run(bot.MANUAL.today_no_comment(make_update(query=FakeQuery(data)), ctx)) \
+        == State.CHOOSE_ACTION
+
+    # U2 counted 5 taps: the Currency tap is gone since «350 дин» (#15),
+    # this button turns «⏭️ Пропустить» + «📅 Сегодня» into one tap.
+    assert (len(old), len(new)) == (4, 3)
+    assert len(settings_of(ctx).sheets.appended_rows) == 2
+
+
 def test_typed_date_saves(ctx):
     from tests.conftest import FakeSheetsClient, settings_of
 

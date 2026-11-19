@@ -33,6 +33,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   in `flows/manual.py` since issue #24. The home button is handled once, in the
   `ConversationHandler` fallbacks (`navigation.home_fallbacks()`); states are
   the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
+  Issue #32 (plan 3.4): the comment step has «✅ Сегодня, без комментария» —
+  one tap saves with today's date (`clock.now()`) and an empty comment.
+  «кофе 350 дин сегодня» by hand is now 3 taps (menu, Category, this button);
+  before it was 4, and 5 when U2 was written (Currency tap, removed in #15).
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
 - Voice: Vosk STT + Claude → Draft confirmation card
