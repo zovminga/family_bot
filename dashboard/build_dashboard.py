@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,7 @@ from dotenv import load_dotenv
 if str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
 from sheets import open_client
 from sheet_data import (
     ISO_TO_SYMBOL,
@@ -646,13 +648,25 @@ def main() -> None:
                              "file_id in the 'Meta' sheet (needs BOT_TOKEN + DASHBOARD_CHAT_ID).")
     args = parser.parse_args()
 
-    _run_classify_selftest()
-    base = SYMBOL_TO_ISO.get(args.base, args.base.upper())
-    model = args.model or DEFAULT_LLM_MODELS[args.provider]
-    out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
-                     csv_path=args.csv, from_month=args.from_month or None)
-    if args.publish:
-        publish_to_telegram(out_path)
+    stage = "самопроверка классификатора"
+    try:
+        _run_classify_selftest()
+        base = SYMBOL_TO_ISO.get(args.base, args.base.upper())
+        model = args.model or DEFAULT_LLM_MODELS[args.provider]
+        stage = "сборка"
+        out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
+                         csv_path=args.csv, from_month=args.from_month or None)
+        if args.publish:
+            stage = "публикация в Telegram"
+            publish_to_telegram(out_path)
+    except Exception as exc:
+        # A --publish build is the scheduled one: tell the Dashboard chat. Only
+        # the stage and exception type go out; the text can quote sheet rows.
+        if not args.publish:
+            raise
+        traceback.print_exc()
+        send_failure_alert(f"{stage}: {type(exc).__name__}")
+        sys.exit(ALERT_HANDLED_EXIT_CODE)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ family_bot/
 ├── secrets/creds.json             # service account Google  (gitignored)
 └── dashboard/
     ├── build_dashboard.py         # пайплайн: данные → JSON → HTML
+    ├── failure_alert.py           # сообщение в Telegram при сбое сборки (только stdlib)
     ├── template.html              # вёрстка + вся клиентская логика (JS, Chart.js)
     ├── vendor/chart.umd.min.js    # Chart.js, скачивается при первой сборке и вшивается в HTML (gitignored)
     ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), venv на Python 3.12
@@ -415,6 +416,24 @@ plist `com.zovminga.familybot.dashboard.plist` (генерится с абсол
 `RUN_MINUTE`). Выбран **launchd**, а не cron: при спящем/выключенном Mac launchd
 догоняет пропущенный запуск при пробуждении. Подкоманды: `install` / `uninstall`
 / `status` / `run` (разовый прогон через launchd). Лог — `output/launchd.log`.
+
+**Сообщение о сбое** (`failure_alert.py`). Если сборка без `--trial` упала,
+в чат `DASHBOARD_CHAT_ID` уходит одно сообщение через `BOT_TOKEN` (Bot API
+`sendMessage`): этап и тип исключения, например «сборка: RuntimeError», и где
+лежит лог. Текст исключения не уходит: он может цитировать строки таблицы
+(трата, сумма, комментарий). Токен в тексте и в ошибке отправки заменяется на
+`<BOT_TOKEN>`; причина обрезается до 200 символов.
+- `build_dashboard.py --publish` ловит ошибку самопроверки, сборки или
+  публикации, пишет traceback в лог, шлёт сообщение и выходит с кодом 3.
+  Без `--publish` ошибка пробрасывается как раньше, сообщения нет.
+- `run.sh` ставит `trap … EXIT`: при ненулевом коде, кроме 3, шлёт сообщение
+  с этапом самого `run.sh` («поиск uv», «создание venv», «запуск
+  build_dashboard.py») и кодом выхода. Python — из `venv/`, иначе системный
+  `python3`: `failure_alert.py` использует только стандартную библиотеку и
+  синтаксис Python 3.9.
+- `BOT_TOKEN` / `DASHBOARD_CHAT_ID` берутся из окружения, иначе из
+  `family_bot/.env`. Если их нет или отправка не прошла — предупреждение в лог,
+  код выхода сборки не меняется.
 
 ⚠️ Для авто-обновления из Sheets нужен `family_bot/secrets/creds.json`
 (service account) и таблица, расшаренная на его email; и `ANTHROPIC_API_KEY`

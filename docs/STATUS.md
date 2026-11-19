@@ -64,6 +64,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   comment with HTML or `</script>` stays text. A Telegram publish error masks
   `BOT_TOKEN`. A Currency with no FX rate stops the build and lists the rows.
   A failed Claude batch is not cached, the next run retries it.
+- Failed dashboard build alert (issue #21): a non-trial `run.sh` build that
+  fails sends one Telegram message to `DASHBOARD_CHAT_ID` with the stage and
+  exception type (`dashboard/failure_alert.py`, stdlib only). Details:
+  `dashboard/SPEC.md` §5.1.
 
 ## Settled (do not re-open as unknowns)
 

@@ -15,6 +15,10 @@
 #   ./run.sh --trial --csv sample.csv   # same venv, no Claude, no Telegram
 #
 # Any extra arguments are forwarded to build_dashboard.py.
+#
+# A failed build without --trial sends a short alert to the Dashboard chat
+# (failure_alert.py): build_dashboard.py alerts for its own errors, the trap
+# below covers the steps before it (uv missing, venv install, crash on start).
 set -euo pipefail
 
 DASHBOARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,9 +35,33 @@ mkdir -p "$OUTPUT_DIR"
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 
+# Must match ALERT_HANDLED_EXIT_CODE in failure_alert.py: build_dashboard.py
+# has already tried to send the alert.
+ALERT_HANDLED_EXIT_CODE=3
+alert_on_failure=1
+[ "${1:-}" = "--trial" ] && alert_on_failure=0
+stage="запуск run.sh"
+
+on_exit() {
+  local code=$?
+  if [ "$code" -eq 0 ] || [ "$code" -eq "$ALERT_HANDLED_EXIT_CODE" ] || [ "$alert_on_failure" -eq 0 ]; then
+    return
+  fi
+  # The venv may be the thing that broke; failure_alert.py needs only the stdlib.
+  local py="$VENV_DIR/bin/python"
+  [ -x "$py" ] || py="$(command -v python3 || true)"
+  if [ -z "$py" ]; then
+    log "No python3 found — failure alert not sent."
+    return
+  fi
+  "$py" "$DASHBOARD_DIR/failure_alert.py" "$stage (код $code)" 2>&1 | tee -a "$LOG_FILE" || true
+}
+trap on_exit EXIT
+
 # launchd starts jobs with PATH=/usr/bin:/bin:/usr/sbin:/sbin, where uv's
 # default install locations are missing.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+stage="поиск uv"
 if ! command -v uv >/dev/null 2>&1; then
   log "uv not found. Install it: https://docs.astral.sh/uv/getting-started/installation/"
   exit 1
@@ -44,6 +72,7 @@ expected_stamp="python=$PYTHON_VERSION requirements=$(shasum -a 256 "$REQUIREMEN
 current_stamp="$(cat "$STAMP_FILE" 2>/dev/null || true)"
 
 if [ ! -x "$VENV_DIR/bin/python" ] || [ "$current_stamp" != "$expected_stamp" ]; then
+  stage="создание venv"
   log "Recreating virtualenv at $VENV_DIR (Python $PYTHON_VERSION, $REQUIREMENTS)"
   rm -rf "$VENV_DIR"
   # uv downloads a managed Python 3.12 if the machine has none.
@@ -66,6 +95,7 @@ else
   log "Building dashboard (Google Sheets + Claude classification)…"
 fi
 
+stage="запуск build_dashboard.py"
 "$VENV_DIR/bin/python" "$DASHBOARD_DIR/build_dashboard.py" \
   ${build_flags[@]+"${build_flags[@]}"} "$@" 2>&1 | tee -a "$LOG_FILE"
 
