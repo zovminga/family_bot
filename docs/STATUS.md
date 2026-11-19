@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-19  
-**Updated by:** agent session (issue #40 README, merged after issues #18, #24, #28)  
-**Product code tip:** `6ad018c` (2026-11-19) — manual input in `flows/manual.py`, one home handler in fallbacks (issue #24)  
+**Updated by:** agent session (issue #25 shared Row, fx, llm)  
+**Product code tip:** `47bf898` (2026-11-19) — bot and dashboard share `sheet_data.Row`, `fx.py`, `llm.py` (issue #25)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
