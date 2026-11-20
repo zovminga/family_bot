@@ -196,3 +196,51 @@ def test_aggregate_same_currency_as_code_and_symbol_needs_no_rate():
                               convert_to_currency="€", get_rate=lambda *_: None)
     assert text == "💰 Итого: 7,50 €"
     assert details == {}
+
+
+# Large expense (issue #87): every stats request leaves marked rows out,
+# «🔶 Только крупные» (large=True) takes only them.
+LARGE_ROWS = [
+    *ROWS,
+    Row(
+        date=date(2026, 8, 7), month="2026-08", category="Travel",
+        amount=2000.0, currency="€", who="Azat", comment="tickets", large=True,
+    ),
+]
+
+
+def test_filter_rows_leaves_large_out_by_default():
+    assert [r.comment for r in filter_rows(LARGE_ROWS, month="2026-08")] == ["a", "b"]
+
+
+def test_filter_rows_only_large():
+    out = filter_rows(LARGE_ROWS, month="2026-08", large=True)
+    assert [r.comment for r in out] == ["tickets"]
+
+
+def test_aggregate_leaves_large_out_by_default():
+    text, _ = aggregate(LARGE_ROWS, month="2026-08")
+    assert text == "10 дин\n20 €"
+
+
+def test_aggregate_only_large_same_period_and_conversion():
+    text, details = aggregate(
+        LARGE_ROWS, month="2026-08", large=True, group_by_currency=False,
+        convert_to_currency="дин", get_rate=lambda src, dst: 117.0)
+    assert text == "💰 Итого: 234 000 дин"
+    assert details["€"]["original_amount"] == 2000.0
+
+
+def test_aggregate_only_large_says_there_are_none():
+    text, details = aggregate(LARGE_ROWS, month="2026-07", large=True)
+    assert text == "🔶 Крупных трат за этот период нет"
+    assert details == {}
+
+
+def test_last_n_leaves_large_out_by_default():
+    assert [r.comment for r in last_n(LARGE_ROWS, n=1)] == ["c"]
+
+
+def test_format_last_n_only_large():
+    assert "tickets" in format_last_n(LARGE_ROWS, n=3, large=True)
+    assert format_last_n(ROWS, n=3, large=True) == "📭 Крупных трат нет"

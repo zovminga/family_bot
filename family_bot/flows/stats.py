@@ -3,7 +3,9 @@
 
 The whole request lives in one ``StatQuery`` under ``user_data[QUERY_KEY]``.
 A new query starts at the menu tap and again at the category step, so values
-from an earlier request never leak into the next one. Every exit path returns
+from an earlier request (the «🔶 Только крупные» choice too) never leak into the
+next one. Large expenses are left out of every request except «🔶 Только
+крупные», which takes the same path over Large expenses only. Every exit path returns
 CHOOSE_ACTION and drops the query.
 
 The Conversion target is chosen with the shared Currency picker
@@ -42,6 +44,7 @@ LAST_RECORDS_SHOWN = 3
 # Button texts; the handlers below match on them.
 ALL_BUTTON = "Все категории"
 ONE_BUTTON = "Одна категория"
+ONLY_LARGE_BUTTON = "🔶 Только крупные"
 LAST_BUTTON = f"📜 Последние {LAST_RECORDS_SHOWN} записи"
 PERIOD_BUTTON = "📅 Свой период"
 MONTHS_BUTTON = "📆 По месяцам"
@@ -69,6 +72,7 @@ class StatQuery:
     group_by_currency: bool = True
     convert_to: Optional[str] = None
     conversion_details: dict[str, dict[str, float]] = field(default_factory=dict)
+    only_large: bool = False
 
 
 def load_query(user_data: dict[str, Any]) -> StatQuery:
@@ -183,7 +187,7 @@ class StatsFlow:
         _user_data(context)[QUERY_KEY] = StatQuery()
         await _message(update).reply_text(
             "📊 Статистика по всем категориям или по одной?",
-            reply_markup=_keyboard([[ALL_BUTTON, ONE_BUTTON]]),
+            reply_markup=_keyboard([[ALL_BUTTON, ONE_BUTTON], [ONLY_LARGE_BUTTON]]),
         )
         return State.STAT_CAT
 
@@ -195,7 +199,8 @@ class StatsFlow:
         return State.CHOOSE_ACTION
 
     async def on_category(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """STAT_CAT: all categories, the category list, or a chosen category (starts a new query)."""
+        """STAT_CAT: all categories, the category list, a chosen category or only
+        Large expenses (starts a new query)."""
         text = _message(update).text or ""
 
         if text == ONE_BUTTON:
@@ -205,10 +210,13 @@ class StatsFlow:
             )
             return State.STAT_CAT
 
-        category = ALL_CATEGORIES if text == ALL_BUTTON else text
-        _user_data(context)[QUERY_KEY] = StatQuery(category=category)
+        if text == ONLY_LARGE_BUTTON:
+            query = StatQuery(only_large=True)
+        else:
+            query = StatQuery(category=ALL_CATEGORIES if text == ALL_BUTTON else text)
+        _user_data(context)[QUERY_KEY] = query
         await _message(update).reply_text(
-            f"📊 Что показать: {_category_label(category)}?",
+            f"📊 Что показать: {_scope_label(query)}?",
             reply_markup=_keyboard([[LAST_BUTTON, PERIOD_BUTTON, MONTHS_BUTTON]]),
         )
         return State.STAT_TYPE
@@ -218,9 +226,9 @@ class StatsFlow:
         text = _message(update).text or ""
 
         if text == LAST_BUTTON:
-            category = load_query(_user_data(context)).category
+            query = load_query(_user_data(context))
             await _message(update).reply_text(
-                await asyncio.to_thread(self._last_records, context, category))
+                await asyncio.to_thread(self._last_records, context, query))
             return await nav.go_home(update, context)
 
         if text == PERIOD_BUTTON:
@@ -372,11 +380,12 @@ class StatsFlow:
         await nav.show_main_menu(update, context)
         return State.CHOOSE_ACTION
 
-    def _last_records(self, context: ContextTypes.DEFAULT_TYPE, category: str) -> str:
+    def _last_records(self, context: ContextTypes.DEFAULT_TYPE, query: StatQuery) -> str:
         try:
             return analytics.format_last_n(
                 self._load_rows(context), n=LAST_RECORDS_SHOWN,
-                category=None if category == ALL_CATEGORIES else category)
+                category=None if query.category == ALL_CATEGORIES else query.category,
+                large=query.only_large)
         except Exception as e:  # noqa: BLE001 - details go to the log
             errors.log_exception("Last records", e)
             return "❌ Не удалось загрузить записи. Попробуйте ещё раз"
@@ -401,6 +410,7 @@ class StatsFlow:
             group_by_currency=query.group_by_currency,
             convert_to_currency=query.convert_to,
             get_rate=self._get_rate,
+            large=query.only_large,
         )
 
     async def _reply_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -412,7 +422,7 @@ class StatsFlow:
             period_text = f"с {query.date_from} по {query.date_to}"
         else:
             await _message(update).reply_text(
-                f"📊 Статистика, {_category_label(query.category)}:\n❌ Не задан период")
+                f"📊 Статистика, {_scope_label(query)}:\n❌ Не задан период")
             return
 
         # Sheets read and FX requests block, so they run in a worker thread.
@@ -420,24 +430,28 @@ class StatsFlow:
             self._aggregate, context, query)
         suffix = f" (в {query.convert_to})" if query.convert_to else ""
         await _message(update).reply_text(
-            f"📊 Статистика {period_text}, {_category_label(query.category)}{suffix}:\n{stats}")
+            f"📊 Статистика {period_text}, {_scope_label(query)}{suffix}:\n{stats}")
 
 
-def _category_label(category: str) -> str:
+def _scope_label(query: StatQuery) -> str:
     """
-    Category scope as shown in prompts and result headers.
+    Scope of a query as shown in prompts and result headers.
 
     Parameters
     ----------
-    category : str
-        Category name, or ``ALL_CATEGORIES``.
+    query : StatQuery
+        Its Category (or ``ALL_CATEGORIES``) and the «🔶 Только крупные» choice.
 
     Returns
     -------
     str
-        «все категории» or «категория «Еда»».
+        «все категории», «категория «Еда»» or «только крупные траты».
     """
-    return "все категории" if category == ALL_CATEGORIES else f"категория «{category}»"
+    if query.only_large:
+        return "только крупные траты"
+    if query.category == ALL_CATEGORIES:
+        return "все категории"
+    return f"категория «{query.category}»"
 
 
 def _details_text(query: StatQuery) -> str:
