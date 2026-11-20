@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (issue #86: «🔶 Крупная» on the Draft card)  
-**Product code tip:** `88806a9` (2026-11-20) — Large expense on the Draft card: flag by threshold on creation, «🔶 Крупная» toggle, saved to Data `Large`; on top of main `63c335c` (#83)  
+**Updated by:** agent session (merged #87 stats and #86 Draft card)  
+**Product code tip:** `main` with PR #95 (2026-11-20) — Large expense in statistics (#87) and on the Draft card (#86)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Large expense in statistics (issue #87, spec «Крупная трата», stories 13–14):
+  every request of «📊 Статистика» (period, month, «📜 Последние 3 записи»)
+  leaves Large expenses out. The Category step has a third button
+  «🔶 Только крупные»: the same path (records / period / month, «Разбить по
+  валютам?», Conversion) over Large expenses only, header «…, только крупные
+  траты». None in the period → «🔶 Крупных трат за этот период нет» (last
+  records: «📭 Крупных трат нет»). The choice is `StatQuery.only_large`; the
+  menu tap and the Category step start a new `StatQuery`, so it is never
+  inherited. Code: `analytics.filter_rows` / `aggregate` / `last_n` /
+  `format_last_n` take `large=False` (only unmarked) or `True` (only marked).
 - Large expense on the Draft card (issue #86, spec stories 2, 3, 7): voice,
   text and photo Drafts mark each item above `LARGE_EXPENSE_THRESHOLD` (same
   rule as manual input: `large_expense.suggest`, no rate → no mark) when the
@@ -41,9 +51,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «0», «false» is a mark, so hand edits count. «📅 Этот месяц» and the summary
   on the 1st leave Large expenses out of every sum and end with
   «🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)» (Category
-  when a row has no comment). Undo ignores the column. Not yet: stats «Только крупные» (#87), dashboard (#88) — until #87 the
-  other statistics still count Large expenses, and until #88 the dashboard
-  does too. Tests: `tests/test_large_expense.py`.
+  when a row has no comment). Undo ignores the column. Not yet: dashboard
+  (#88) — until #88 the dashboard still counts Large expenses. Draft card and
+  statistics: see the #86 and #87 bullets above. Tests: `tests/test_large_expense.py`.
 - Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
   a row in «ежемесячные траты» of Regular_expenses with no number is a Preset with
   `amount=None` (one-off rows without a number are still skipped). Its Currency is
@@ -302,7 +312,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## Open
 
 - New features planned (partly built): Large expense (#83 done: manual input
-  and «📅 Этот месяц»; #86 done: Draft card; #87 stats, #88 dashboard open), receipt
+  and «📅 Этот месяц»; #86 Draft card and #87 stats done; #88 dashboard open), receipt
   items from the Serbian fiscal QR, Payment reminder on the 5th and 20th. Spec:
   [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
   decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
