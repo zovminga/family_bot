@@ -101,9 +101,9 @@ class ManualFlow:
     all_codes : Callable[[], list[str]]
         Every ISO code that can be chosen (blocking: the rate service).
     large_threshold : Source[float]
-        Large expense threshold in the base Currency.
-    base_currency : Source[str]
-        Base Currency (stored symbol) the threshold is in.
+        Large expense threshold.
+    threshold_currency : Source[str]
+        Currency (stored symbol) the threshold is in.
     get_rate : GetRate
         Exchange rate (blocking: the rate service), ``fx.rate``.
     """
@@ -117,7 +117,7 @@ class ManualFlow:
         who: Who,
         all_codes: Callable[[], list[str]],
         large_threshold: Source[float],
-        base_currency: Source[str],
+        threshold_currency: Source[str],
         get_rate: GetRate,
     ) -> None:
         self._categories = categories
@@ -126,7 +126,7 @@ class ManualFlow:
         self._who = who
         self._all_codes = all_codes
         self._large_threshold = large_threshold
-        self._base_currency = base_currency
+        self._threshold_currency = threshold_currency
         self._get_rate = get_rate
 
     def states(self) -> dict[object, list[BaseHandler]]:
@@ -260,7 +260,8 @@ class ManualFlow:
         """Whether to ask the Large expense question for the amount and Currency."""
         return await asyncio.to_thread(
             large_expense.suggest, context.user_data["amt"], context.user_data["cur"],
-            threshold=self._large_threshold(context), base=self._base_currency(context),
+            threshold=self._large_threshold(context),
+            threshold_currency=self._threshold_currency(context),
             get_rate=self._get_rate)
 
     async def on_large_button(self, update: Update,
