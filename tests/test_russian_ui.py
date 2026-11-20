@@ -226,7 +226,7 @@ def test_preset_flow(seen: Seen, ctx: SimpleNamespace) -> None:
 def test_draft_card() -> None:
     session = draft.DraftSession(id="ab12", transcript="кофе", items=[
         {"comment": "кофе", "amount": 1234.0, "currency": "дин", "category": "Еда",
-         "date": "19.11.2026", "who": "Анна"}])
+         "date": "19.11.2026", "who": "Анна", "large": True}])
     texts = [draft.card_text(session)]
     grids = [draft.main_buttons(session), draft.item_edit_buttons(session, 0),
              draft.category_buttons(session, 0, CATEGORIES),

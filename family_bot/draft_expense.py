@@ -42,6 +42,14 @@ ButtonGrid = list[list[tuple[str, str]]]  # (label, callback_data)
 # that is a card from before a restart (or a closed Draft past MAX_CLOSED_DRAFTS).
 STALE_TEXT = "Черновик устарел после обновления бота, отправьте ещё раз"
 
+# Item key of the Large expense flag; an item without it is not large.
+LARGE_KEY = "large"
+LARGE_MARK = "🔶"
+LARGE_BUTTON = f"{LARGE_MARK} Крупная"
+
+# (amount, Currency) -> whether to suggest the Large expense mark.
+IsLarge = Callable[[float, str], bool]
+
 
 @dataclass
 class DraftSession:
@@ -104,6 +112,26 @@ class CallbackOutcome:
     picked: Optional[str] = None
 
 
+def mark_large(session: DraftSession, is_large: IsLarge) -> None:
+    """
+    Set the Large expense flag of every item by the threshold rule.
+
+    Parameters
+    ----------
+    session : DraftSession
+        New Draft; its items are changed in place.
+    is_large : IsLarge
+        ``large_expense.suggest`` with the threshold, base Currency and rate
+        already bound (blocking: may read rates).
+    """
+    for it in session.items:
+        it[LARGE_KEY] = is_large(it["amount"], it["currency"])
+
+
+def _is_large(item: dict) -> bool:
+    return bool(item.get(LARGE_KEY))
+
+
 def short(text: str, n: int = 20) -> str:
     text = (text or "—").strip() or "—"
     return text if len(text) <= n else text[: n - 1] + "…"
@@ -126,11 +154,14 @@ def card_text(session: DraftSession) -> str:
             f"• Дата: {it['date']}",
             f"• Кто: {it['who']}",
         ]
+        if _is_large(it):
+            lines.append(f"• {LARGE_MARK} Крупная трата")
     else:
         lines.append(f"📝 Черновик: {len(items)} трат(ы)")
         for i, it in enumerate(items, 1):
+            mark = f"{LARGE_MARK} " if _is_large(it) else ""
             lines.append(
-                f"{i}. {it['comment'] or '—'} — {format_amount(it['amount'], it['currency'])}"
+                f"{i}. {mark}{it['comment'] or '—'} — {format_amount(it['amount'], it['currency'])}"
                 f" · {it['category']} · {it['date']}"
             )
     if session.note:
@@ -165,6 +196,7 @@ def _amount_who_row(session: DraftSession, i: int) -> list[tuple[str, str]]:
     return [
         ("✏️ Сумма", _cb(session, f"amt:{i}")),
         ("👤 Кто", _cb(session, f"who:{i}")),
+        (LARGE_BUTTON, _cb(session, f"large:{i}")),
     ]
 
 
@@ -379,6 +411,7 @@ def save_drafts(client: SheetsClient, items: list[dict]) -> list[ExpenseRecord]:
             currency=it["currency"],
             who=it["who"],
             comment=it["comment"],
+            large=_is_large(it),
         )
         for it in items
     ]
@@ -487,6 +520,9 @@ def apply_callback(
     if action == "who":
         return CallbackOutcome(
             buttons=spender_buttons(session, i, spenders), markup_only=True)
+    if action == "large":
+        items[i][LARGE_KEY] = not _is_large(items[i])
+        return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
     if action == "setwho":
         if not arg.isdigit() or int(arg) >= len(spenders):
             return CallbackOutcome()
