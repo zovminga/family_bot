@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (spec: Large expense, receipt QR, Payment reminder)  
-**Product code tip:** `333d6cc` (2026-11-19) — voice notes decode without numpy (every voice note failed on Render)  
+**Updated by:** agent session (issue #85: Preset without an amount)  
+**Product code tip:** PR for issue #85 (2026-11-20) — Preset without an amount asks it on ⚡  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
+  a row in «ежемесячные траты» of Regular_expenses with no number is a Preset with
+  `amount=None` (one-off rows without a number are still skipped). Its Currency is
+  the Currency column holding a mark like «?», else `BASE_CURRENCY`. Its ⚡ button
+  asks the amount (`State.TYPING_PRESET_AMT`, checks of `amount_input`, home button
+  works), then saves with the Preset name as comment. A Currency typed with the
+  amount («3500 дин») wins over the sheet. Presets with an amount save at once as
+  before. The Payment reminder itself (#89) is not built. Tests:
+  `tests/test_preset_no_amount.py`.
 - Logging (issue #26, plan 2.4, C7): the bot, the dashboard build, the failure
   alert and `scripts/` call `family_bot.logs.setup()` once at start; modules use
   `logging.getLogger(__name__)`, no `print` diagnostics (ruff `T20`; `scripts/`
