@@ -23,6 +23,7 @@ class State(IntEnum):
     TYPING_DT = auto()
     # Preset (⚡) flow — not shared with CHOOSE_CAT
     CHOOSE_PRESET = auto()
+    TYPING_PRESET_AMT = auto()  # Preset without an amount asks it
     # Statistics flow (flows/stats.py)
     STAT_CAT = auto()
     STAT_TYPE = auto()

@@ -138,7 +138,9 @@ def test_regular_header_word_containing_a_stem_is_not_a_currency() -> None:
         ["название", "клиенты", "евро", "категория", "кто"],
         ["Gift", "7", "", "Other", "Both"],
     ]
-    assert regular.parse_regular(grid)["monthly"] == []
+    # The 7 is not read as yen: the row is a monthly Preset without an amount.
+    [item] = regular.parse_regular(grid, base_currency="дин")["monthly"]
+    assert (item["amount"], item["currency"]) == (None, "дин")
 
 
 @pytest.mark.parametrize("amount, symbol, text", [

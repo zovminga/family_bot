@@ -348,7 +348,7 @@ def reload(cfg: Config) -> list[str]:
                 "заполните столбец A листа Config и отправьте /reloadcats"))
     cfg.categories = categories or list(FALLBACK_CATEGORIES)
     try:
-        cfg.presets = regular.load_presets(cfg.sheets)
+        cfg.presets = regular.load_presets(cfg.sheets, cfg.default_currency)
     except Exception as e:  # noqa: BLE001 - presets are optional
         cfg.presets = []
         problems.append(problem(

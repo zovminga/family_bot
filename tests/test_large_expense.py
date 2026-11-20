@@ -307,3 +307,17 @@ def test_month_with_only_large_expenses_still_lists_them() -> None:
     text = analytics.format_month_summary(
         analytics.month_summary([_row(2000, "€", large=True, category="Trips")], "2026-11"))
     assert text.splitlines()[-1] == "🔶 Ещё крупные траты: 2 000 € (Trips)"
+
+
+def test_preset_without_amount_above_threshold_is_never_marked(
+        ctx: Any, rates: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings_of(ctx).presets = [{"name": "Utilities", "amount": None, "currency": "€",
+                                 "category": "Trips", "who": "Ann"}]
+    monkeypatch.setattr(bot.clock, "now", lambda: datetime(2026, 11, 19))
+    assert run(bot.choose_preset(make_update("⚡ Utilities"), ctx)) \
+        == State.TYPING_PRESET_AMT
+    assert run(bot.type_preset_amount(make_update("1500"), ctx)) == State.CHOOSE_ACTION
+    sheets = settings_of(ctx).sheets
+    assert sheets.appended_rows[-1][:7] == ["19.11.2026", "2026-11", "Trips", 1500.0, "€",
+                                            "Ann", "Utilities"]
+    assert sheets.read_data_headers() == HEADERS
