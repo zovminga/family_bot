@@ -14,6 +14,7 @@ own allowlist). Your finances never mix with someone else's install.
 - Multi-currency (дин, €, ₽, ¥, £, $, CNY; list in `currency.py`)
 - Statistics and optional HTML dashboard
 - Last month's summary on the 1st of each month, sent to `DASHBOARD_CHAT_ID`
+- Payment reminder on the 5th and 20th: monthly presets not entered this month, with «⚡ Внести» / «✅ Уже внесено» buttons
 - Categories and presets loaded from Google Sheets
 - Allowlist so only your family can use *your* bot
 
@@ -230,6 +231,7 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
 | `DASHBOARD_CHAT_ID` | optional, the chat for last month's summary on the 1st (same id as for the dashboard). Unset → no summary, and the log has one `⚠️ DASHBOARD_CHAT_ID` line |
 | `MONTHLY_SUMMARY_HOUR` | optional, hour 0–23 in `TZ_NAME` when the summary is sent on the 1st (default `9`) |
+| `PAYMENT_REMINDER_HOUR` | optional, hour 0–23 in `TZ_NAME` when the Payment reminder is sent on the 5th and 20th to `DASHBOARD_CHAT_ID` (default `10`) |
 | `WEBHOOK_SECRET` | recommended: a random string of 1–256 characters `A–Z a–z 0–9 _ -` (command below) |
 
 Render sets `RENDER_EXTERNAL_URL` (the service address) by itself. When it is
@@ -281,7 +283,7 @@ The bot does **not** build the dashboard. Build it on a laptop and publish
 
 **Config** — column A: header + category names  
 **Data** — Date, Month, Category, Amount, Currency, Who, Comment, Large (Large expense mark; the bot adds it if missing)  
-**Regular_expenses** — preset templates (optional)  
+**Regular_expenses** — preset templates (optional). An optional «напоминать» column limits the Payment reminder to monthly rows marked «да»; without the column every monthly preset is reminded  
 **Meta** — dashboard `file_id` for `/dashboard`  
 **Users** — Recent currencies of each Telegram account (the bot fills it)
 
