@@ -17,6 +17,7 @@ class State(IntEnum):
     CHOOSE_CAT = auto()
     TYPING_AMT = auto()
     CHOOSE_CUR = auto()
+    ASK_LARGE = auto()
     TYPING_CMNT = auto()
     CHOOSE_DT = auto()
     TYPING_DT = auto()

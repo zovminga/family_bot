@@ -65,6 +65,7 @@ async def choose_preset(
         currency=preset["currency"],
         who=who,
         comment=preset["name"],
+        large=False,  # a Preset is routine even above the threshold
     ))
     await update.message.reply_text(
         f"✅ Сохранено: {preset['name']} — "

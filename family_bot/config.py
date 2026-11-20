@@ -9,6 +9,7 @@ so ``/whoami`` works before Google Sheets is set up.
 from __future__ import annotations
 
 import json
+import math
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from family_bot import auth
 from family_bot import clock
 from family_bot import currency
 from family_bot import errors
+from family_bot import large_expense
 from family_bot import regular
 from family_bot.sheets import SheetsClient, SpreadsheetNotFound, open_client, resolve_creds_path
 
@@ -64,6 +66,8 @@ class Config:
     summary_chat_id: Optional[int] = None
     # Hour of the 1st, family time zone, when the summary is sent.
     summary_hour: int = DEFAULT_SUMMARY_HOUR
+    # Large expense threshold in the base Currency (LARGE_EXPENSE_THRESHOLD).
+    large_threshold: float = large_expense.DEFAULT_THRESHOLD
     problems: list[str] = field(default_factory=list)
 
 
@@ -234,6 +238,24 @@ def _summary_hour(raw: Optional[str], problems: list[str]) -> int:
     return default
 
 
+def _large_threshold(raw: Optional[str], problems: list[str]) -> float:
+    """Positive number from LARGE_EXPENSE_THRESHOLD; a bad value adds a problem line."""
+    default = large_expense.DEFAULT_THRESHOLD
+    if not raw or not raw.strip():
+        return default
+    try:
+        value = float(raw.strip().replace(",", ".").replace(" ", ""))
+    except ValueError:
+        value = math.nan
+    if math.isfinite(value) and value > 0:
+        return value
+    env = large_expense.THRESHOLD_ENV
+    problems.append(problem(
+        f"{env}={raw!r} — не число больше нуля, порог крупной траты {default:g}",
+        f"укажите сумму в базовой валюте, например {env}={default:g}, или удалите строку"))
+    return default
+
+
 def _default_currency(code: Optional[str], problems: list[str]) -> str:
     """
     Stored symbol of the BASE_CURRENCY Currency.
@@ -358,6 +380,7 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
     cfg.default_currency = _default_currency(env.get(currency.BASE_CURRENCY_ENV), problems)
     cfg.summary_chat_id = _summary_chat_id(env.get(SUMMARY_CHAT_ENV), problems)
     cfg.summary_hour = _summary_hour(env.get(SUMMARY_HOUR_ENV), problems)
+    cfg.large_threshold = _large_threshold(env.get(large_expense.THRESHOLD_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))
     return cfg

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, runtime_checkable
 
 from family_bot import clock
+from family_bot.sheet_data import resolve_columns
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,11 @@ META_UPDATED_AT_LABEL_CELL = "A2"
 META_UPDATED_AT_CELL = "B2"
 
 # Default layout for a fresh family spreadsheet (bootstrap / first install).
-DATA_HEADERS = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment"]
+# Optional Data column for the Large expense mark; the bot adds it on the
+# first marked write, so older sheets work without it.
+DATA_LARGE_HEADER = "Large"
+DATA_HEADERS = ["Date", "Month", "Category", "Amount", "Currency", "Who", "Comment",
+                DATA_LARGE_HEADER]
 CONFIG_HEADER = "Categories"
 DEFAULT_CATEGORIES = [
     "Food",
@@ -125,6 +130,8 @@ class SheetsClient(Protocol):
 
     def append_data_row(self, row: list) -> None: ...
 
+    def add_data_column(self, header: str) -> list[str]: ...
+
     def append_data_rows(self, rows: list[list]) -> None: ...
 
     def delete_data_rows(self, row_numbers: list[int]) -> None: ...
@@ -198,6 +205,19 @@ class GspreadSheetsClient:
 
     def read_data_headers(self) -> list[str]:
         return self._worksheet(DATA_SHEET).row_values(1) or []
+
+    def add_data_column(self, header: str) -> list[str]:
+        """Write header after the last Data header; return the new header row.
+
+        Grows the sheet by a column when it has no free one.
+        """
+        ws = self._worksheet(DATA_SHEET)
+        headers = ws.row_values(1) or []
+        col = len(headers) + 1
+        if ws.col_count < col:
+            ws.add_cols(col - ws.col_count)
+        ws.update_cell(1, col, header)
+        return [*headers, header]
 
     def append_data_row(self, row: list) -> None:
         """Append one Data-sheet row (built by ExpenseRecord.to_row).
@@ -309,6 +329,7 @@ class GspreadSheetsClient:
         changed = {
             "data_created": False,
             "data_headers": False,
+            "data_large_column": False,
             "config_created": False,
             "config_seeded": False,
             "regular_created": False,
@@ -322,9 +343,14 @@ class GspreadSheetsClient:
         data_ws, changed["data_created"] = self._ensure_worksheet(
             DATA_SHEET, rows=500, cols=len(DATA_HEADERS)
         )
-        if seed_if_empty and not any(c.strip() for c in (data_ws.row_values(1) or [])):
+        data_headers = data_ws.row_values(1) or []
+        has_headers = any(c.strip() for c in data_headers)
+        if seed_if_empty and not has_headers:
             data_ws.update(range_name="A1", values=[DATA_HEADERS])
             changed["data_headers"] = True
+        elif has_headers and "large" not in resolve_columns(data_headers):
+            self.add_data_column(DATA_LARGE_HEADER)
+            changed["data_large_column"] = True
 
         config_ws, changed["config_created"] = self._ensure_worksheet(
             CONFIG_SHEET, rows=50, cols=1
