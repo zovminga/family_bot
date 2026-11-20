@@ -147,6 +147,10 @@ class FakeSheetsClient:
     def read_data_headers(self) -> list[str]:
         return list(self._data_values[0]) if self._data_values else []
 
+    def add_data_column(self, header: str) -> list[str]:
+        self._data_values[0].append(header)
+        return list(self._data_values[0])
+
     def append_data_row(self, row: list) -> None:
         self.appended_rows.append(list(row))
         if not self._data_values:

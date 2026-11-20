@@ -19,7 +19,7 @@ def test_to_row_includes_derived_month():
     )
     assert record.month() == "2026-08"
     assert record.to_row() == [
-        "07.08.2026", "2026-08", "Food", 12.5, "дин", "Ann", "lunch",
+        "07.08.2026", "2026-08", "Food", 12.5, "дин", "Ann", "lunch", "",
     ]
 
 
