@@ -98,6 +98,8 @@ files = [
     "family_bot/logs.py",
     "family_bot/monthly_summary.py",
     "family_bot/navigation.py",
+    "family_bot/payment_reminder.py",
+    "family_bot/payment_reminder_bot.py",
     "family_bot/per_user.py",
     "family_bot/photo_input.py",
     "family_bot/regular.py",

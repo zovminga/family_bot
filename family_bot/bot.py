@@ -30,6 +30,9 @@ from family_bot import draft_expense as draft
 from family_bot import flow_preset
 from family_bot import monthly_summary
 from family_bot import navigation as nav
+from family_bot import payment_reminder as reminder
+from family_bot import payment_reminder_bot as reminder_bot
+from family_bot import regular
 from family_bot import undo
 from family_bot.flows import manual as flow_manual
 from family_bot.flows import stats as flow_stats
@@ -78,6 +81,10 @@ async def post_init(app: Application) -> None:
             app.job_queue, settings.summary_chat_id, settings.summary_hour,
             lambda: load_expense_rows(app.bot_data[config.KEY].sheets))
         logger.info("✅ Monthly summary: 1st of each month, %d:00", settings.summary_hour)
+        reminder_bot.schedule(
+            app.job_queue, settings.summary_chat_id, settings.reminder_hour,
+            lambda: load_reminder_inputs(app.bot_data[config.KEY]))
+        logger.info("✅ Payment reminder: 5th and 20th, %d:00", settings.reminder_hour)
     try:
         await app.bot.set_my_commands(COMMANDS)
     except TelegramError as e:  # the menu is a convenience, the bot still works
@@ -204,6 +211,12 @@ def load_expense_rows(sheets: SheetsClient) -> list[Row]:
     if not all_values or len(all_values) < 2:
         return []
     return parse_rows(all_values[0], all_values[1:])
+
+
+def load_reminder_inputs(settings: config.Config) -> tuple[list[dict], list[Row]]:
+    """Presets and Data rows for the Payment reminder, read fresh from the sheet."""
+    presets = regular.load_presets(settings.sheets, settings.default_currency)
+    return presets, load_expense_rows(settings.sheets)
 
 
 # Statistics conversation; data sources are read per request from Config so
@@ -678,9 +691,11 @@ def build_application(bot_token: str) -> Application:
            .concurrent_updates(PerUserUpdateProcessor()).build())
 
     # Run before every other handler: drop edits (group -3), then the allowlist
-    # (group -2), then a typed amount for a Draft card (group -1).
+    # (group -2), then an amount answering a Payment reminder prompt or a typed
+    # amount for a Draft card (group -1, first match wins).
     app.add_handler(EDITED_MESSAGES, group=-3)
     app.add_handler(TypeHandler(Update, enforce_allowlist), group=-2)
+    app.add_handler(reminder_bot.AMOUNT_REPLY, group=-1)
     app.add_handler(DRAFT_AMOUNT_TEXT, group=-1)
 
     # Entry points serve a User with no conversation state: memory is wiped on
@@ -714,6 +729,8 @@ def build_application(bot_token: str) -> Application:
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_handler))
     app.add_handler(CallbackQueryHandler(vx_callback, pattern="^vx:"))
     app.add_handler(CallbackQueryHandler(undo_callback, pattern=f"^{undo.CALLBACK_PREFIX}"))
+    app.add_handler(CallbackQueryHandler(reminder_bot.on_button,
+                                         pattern=f"^{reminder.CALLBACK_PREFIX}"))
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))
