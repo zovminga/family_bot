@@ -173,3 +173,15 @@ def test_save_without_flag_writes_unmarked() -> None:
     records = draft.save_drafts(sheets, [_item()])
     assert records[0].large is False
     assert sheets.read_data_headers() == HEADERS
+
+
+def test_dinar_base_does_not_mark_everyday_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bug: with BASE_CURRENCY=RSD the threshold became 1000 дин, so a voice
+    # «кофе 1500 дин» card showed «🔶 Крупная трата».
+    monkeypatch.setattr(bot.fx, "rate", eur_rate)
+    ctx = bot_context(categories=["Food", "Trips"], currencies=["дин", "€"],
+                      default_currency="дин", sheets=FakeSheetsClient())
+    session = _session(_item(amount=1500.0, currency="дин"),
+                       _item(amount=150_000.0, currency="дин"))
+    run(bot._show_draft(FakeMessage(), ctx, session))
+    assert [it["large"] for it in session.items] == [False, True]
