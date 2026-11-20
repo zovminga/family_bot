@@ -69,7 +69,7 @@ async def send_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
         errors.log_exception("Monthly summary", e)
 
 
-def _job_tz() -> tzinfo:
+def job_tz() -> tzinfo:
     """Family zone; ``DEFAULT_TZ`` when ``TZ_NAME`` is wrong (config already printed that line)."""
     try:
         return clock.family_tz()
@@ -95,7 +95,7 @@ def schedule(job_queue: JobQueue[CallbackContext], chat_id: int, hour: int,
     """
     job_queue.run_monthly(
         send_summary,
-        when=time(hour, tzinfo=_job_tz()),
+        when=time(hour, tzinfo=job_tz()),
         day=DAY_OF_MONTH,
         data=load_rows,
         name=JOB_NAME,

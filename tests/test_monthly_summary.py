@@ -117,7 +117,7 @@ def test_post_init_schedules_summary_when_chat_is_set(monkeypatch: pytest.Monkey
     monkeypatch.setenv(config.SUMMARY_HOUR_ENV, "10")
     queue = FakeJobQueue()
     run(bot.post_init(fake_bot_app(queue)))  # type: ignore[arg-type]
-    (job,) = queue.monthly
+    (job,) = [j for j in queue.monthly if j["callback"] is ms.send_summary]
     assert job["chat_id"] == -100 and job["when"].hour == 10
 
 
