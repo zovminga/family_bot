@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (issue #85: Preset without an amount)  
-**Product code tip:** PR for issue #85 (2026-11-20) — Preset without an amount asks it on ⚡  
+**Updated by:** agent session (issue #83: Large expense in manual input and «📅 Этот месяц», merged with #85)  
+**Product code tip:** `e52340c` (2026-11-20) — Large expense: manual-input question, Data column `Large`, «📅 Этот месяц» without Large expenses; on top of main `4dfe75b` (#85, Preset without an amount)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,25 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Large expense, part 1 (issue #83, spec
+  `docs/specs/2026-11-large-receipt-reminders.md`): manual input asks
+  «🔶 Это крупная трата?» («Да» / «Нет», typed «да»/«нет» too) after the
+  Currency and before the comment step, only when the amount in
+  `BASE_CURRENCY` is above `LARGE_EXPENSE_THRESHOLD` (default 1000; a bad value
+  → one setup line and 1000). Another Currency is converted with `fx.rate`;
+  no rate → no question. The decision is `large_expense.suggest` (no Telegram).
+  ⚡ Presets never mark. The mark is `ExpenseRecord.large` / `Row.large`, stored
+  in the optional Data column `Large` (alias «Крупная»): the bot writes «да» or
+  empty and adds the column after the last header on the first marked write
+  (`SheetsClient.add_data_column`); `scripts/bootstrap_sheet.py` adds it to a
+  new or existing Data sheet. On read any non-empty cell except «нет», «no»,
+  «0», «false» is a mark, so hand edits count. «📅 Этот месяц» and the summary
+  on the 1st leave Large expenses out of every sum and end with
+  «🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)» (Category
+  when a row has no comment). Undo ignores the column. Not yet: Draft card
+  button (#86), stats «Только крупные» (#87), dashboard (#88) — until #87 the
+  other statistics still count Large expenses, and until #88 the dashboard
+  does too. Tests: `tests/test_large_expense.py`.
 - Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
   a row in «ежемесячные траты» of Regular_expenses with no number is a Preset with
   `amount=None` (one-off rows without a number are still skipped). Its Currency is
@@ -274,8 +293,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
-- New features planned (not built): Large expense, receipt items from the Serbian
-  fiscal QR, Payment reminder on the 5th and 20th. Spec:
+- New features planned (partly built): Large expense (#83 done: manual input
+  and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard open), receipt
+  items from the Serbian fiscal QR, Payment reminder on the 5th and 20th. Spec:
   [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
   decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
   GitHub issues with `ready-for-agent` carry the work; the first receipt issue

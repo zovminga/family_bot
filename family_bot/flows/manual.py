@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Manual add-expense conversation flow.
 
-Category → amount → Currency → comment → date → save. The Currency step is the
-shared picker (``currency_picker``): Recent currencies of this User, «🌍 Другая»
-pages, or a code / Russian name typed as text. A Currency typed with the
-amount («350 дин») skips the step. On the comment step
-«✅ Сегодня, без комментария» saves at once with today's date and no comment.
-Step values live in ``user_data`` (``cat``, ``amt``, ``cur``, ``spender``,
-``comment``) until the save; every exit goes through ``navigation.go_home``.
+Category → amount → Currency → [Large expense?] → comment → date → save. The
+Currency step is the shared picker (``currency_picker``): Recent currencies of
+this User, «🌍 Другая» pages, or a code / Russian name typed as text. A
+Currency typed with the amount («350 дин») skips the step. Above the Large
+expense threshold (``large_expense.suggest``) the bot asks «Это крупная
+трата?» before the comment step, so no comment-step button skips it. On the
+comment step «✅ Сегодня, без комментария» saves at once with today's date
+and no comment. Step values live in ``user_data`` (``cat``, ``amt``, ``cur``,
+``spender``, ``large``, ``comment``) until the save; every exit goes through ``navigation.go_home``.
 The home button is not checked here: ``navigation.home_fallbacks()`` handles
 it for every state.
 """
@@ -25,6 +27,7 @@ from family_bot import amount_input
 from family_bot import clock
 from family_bot import currency
 from family_bot import currency_picker as picker
+from family_bot import large_expense
 from family_bot.currency import format_amount
 from family_bot import navigation as nav
 from family_bot import undo
@@ -36,10 +39,17 @@ from family_bot.sheets import SheetsClient
 T = TypeVar("T")
 Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
 Who = Callable[[Update, ContextTypes.DEFAULT_TYPE], str]
+GetRate = Callable[[str, str], Optional[float]]
 
 TODAY_NO_COMMENT = "today_no_comment"
 # Callback data prefix of the Currency picker buttons in this flow.
 CURRENCY_CALLBACK = "cur:"
+# Large expense step: question and its two buttons.
+LARGE_CALLBACK = "large:"
+LARGE_YES = LARGE_CALLBACK + "yes"
+LARGE_NO = LARGE_CALLBACK + "no"
+LARGE_QUESTION = "🔶 Это крупная трата?"
+YES_LABEL, NO_LABEL = "Да", "Нет"
 
 
 async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
@@ -90,6 +100,12 @@ class ManualFlow:
         Spender name for the current User.
     all_codes : Callable[[], list[str]]
         Every ISO code that can be chosen (blocking: the rate service).
+    large_threshold : Source[float]
+        Large expense threshold in the base Currency.
+    base_currency : Source[str]
+        Base Currency (stored symbol) the threshold is in.
+    get_rate : GetRate
+        Exchange rate (blocking: the rate service), ``fx.rate``.
     """
 
     def __init__(
@@ -100,12 +116,18 @@ class ManualFlow:
         sheets: Source[SheetsClient],
         who: Who,
         all_codes: Callable[[], list[str]],
+        large_threshold: Source[float],
+        base_currency: Source[str],
+        get_rate: GetRate,
     ) -> None:
         self._categories = categories
         self._currencies = currencies
         self._sheets = sheets
         self._who = who
         self._all_codes = all_codes
+        self._large_threshold = large_threshold
+        self._base_currency = base_currency
+        self._get_rate = get_rate
 
     def states(self) -> dict[object, list[BaseHandler]]:
         """ConversationHandler states for this flow."""
@@ -118,6 +140,10 @@ class ManualFlow:
             State.CHOOSE_CUR: [
                 *text(self.choose_cur),
                 CallbackQueryHandler(self.on_currency_button, pattern=f"^{CURRENCY_CALLBACK}"),
+            ],
+            State.ASK_LARGE: [
+                *text(self.on_large_text),
+                CallbackQueryHandler(self.on_large_button, pattern=f"^{LARGE_CALLBACK}"),
             ],
             State.TYPING_CMNT: [
                 *text(self.type_comment),
@@ -216,10 +242,51 @@ class ManualFlow:
         context.user_data["cur"] = cur
 
         # Automatically detect user
-        user_name = self._who(update, context)
-        context.user_data["spender"] = user_name
+        context.user_data["spender"] = self._who(update, context)
+        context.user_data["large"] = False
 
-        # Go to comment
+        if await self._above_threshold(context):
+            await update.effective_message.reply_text(
+                LARGE_QUESTION,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(YES_LABEL, callback_data=LARGE_YES),
+                     InlineKeyboardButton(NO_LABEL, callback_data=LARGE_NO)],
+                    [nav.home_inline_button()],
+                ]))
+            return State.ASK_LARGE
+        return await self._ask_comment(update, context)
+
+    async def _above_threshold(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Whether to ask the Large expense question for the amount and Currency."""
+        return await asyncio.to_thread(
+            large_expense.suggest, context.user_data["amt"], context.user_data["cur"],
+            threshold=self._large_threshold(context), base=self._base_currency(context),
+            get_rate=self._get_rate)
+
+    async def on_large_button(self, update: Update,
+                              context: ContextTypes.DEFAULT_TYPE) -> int:
+        """«Да» / «Нет» under «Это крупная трата?»."""
+        query = update.callback_query
+        await query.answer()
+        large = query.data == LARGE_YES
+        context.user_data["large"] = large
+        await query.edit_message_text(
+            f"{LARGE_QUESTION} {YES_LABEL if large else NO_LABEL}")
+        return await self._ask_comment(update, context)
+
+    async def on_large_text(self, update: Update,
+                            context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Typed «да» / «нет» instead of a button; anything else repeats the hint."""
+        answer = update.message.text.strip().casefold()
+        if answer not in (YES_LABEL.casefold(), NO_LABEL.casefold()):
+            await update.message.reply_text(
+                f"Нажмите «{YES_LABEL}» или «{NO_LABEL}» под вопросом «{LARGE_QUESTION}».")
+            return State.ASK_LARGE
+        context.user_data["large"] = answer == YES_LABEL.casefold()
+        return await self._ask_comment(update, context)
+
+    async def _ask_comment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        user_name = context.user_data["spender"]
         buttons = [
             [InlineKeyboardButton("✅ Сегодня, без комментария", callback_data=TODAY_NO_COMMENT)],
             [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
@@ -291,6 +358,7 @@ class ManualFlow:
         cur = context.user_data["cur"]
         who = context.user_data["spender"]
         cmnt = context.user_data.get("comment", "")
+        large = context.user_data.get("large", False)
         record = ExpenseRecord(
             date=date_str,
             category=cat,
@@ -298,6 +366,7 @@ class ManualFlow:
             currency=cur,
             who=who,
             comment=cmnt,
+            large=large,
         )
         await asyncio.to_thread(append_expense, self._sheets(context), record)
         await asyncio.to_thread(
@@ -305,6 +374,8 @@ class ManualFlow:
             update.effective_user.id, who, cur)
 
         text = f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}"
+        if large:
+            text += "\n🔶 Крупная трата"
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton(label, callback_data=data) for label, data in row]
             for row in undo.remember(context.user_data, [record], clock.now())

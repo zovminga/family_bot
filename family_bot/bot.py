@@ -224,6 +224,9 @@ MANUAL = flow_manual.ManualFlow(
     sheets=lambda context: cfg(context).sheets,
     who=lambda update, context: get_user_info(update, context)[0],
     all_codes=lambda: picker.CATALOG.codes(),
+    large_threshold=lambda context: cfg(context).large_threshold,
+    base_currency=lambda context: cfg(context).default_currency,
+    get_rate=lambda src, dst: fx.rate(src, dst),
 )
 
 

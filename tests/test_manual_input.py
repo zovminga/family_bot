@@ -93,6 +93,7 @@ def test_amount_with_currency_off_the_buttons_asks_for_currency(ctx):
 
 @pytest.mark.parametrize("text,stored", [("€", "€"), ("eur", "€"), ("динар", "дин")])
 def test_currency_by_symbol_code_or_word(ctx, text, stored):
+    ctx.user_data["amt"] = 5.0
     assert run(bot.MANUAL.choose_cur(make_update(text), ctx)) == TYPING_CMNT
     assert ctx.user_data["cur"] == stored
 
@@ -113,6 +114,7 @@ def test_currency_typo_offers_recent_currencies(ctx, text):
 @pytest.mark.parametrize("text,stored", [("юань", "CNY"), ("GEL", "GEL"), ("лари", "GEL"),
                                          ("¥", "¥")])
 def test_currency_found_by_name_or_code(ctx, text, stored):
+    ctx.user_data["amt"] = 5.0
     assert run(bot.MANUAL.choose_cur(make_update(text), ctx)) == TYPING_CMNT
     assert ctx.user_data["cur"] == stored
 

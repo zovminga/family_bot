@@ -12,17 +12,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Union
 
-from family_bot.sheet_data import DATE_FMT, MONTH_FMT, parse_amount, resolve_columns
-from family_bot.sheets import DATA_HEADERS, SheetsClient
+from family_bot.sheet_data import (DATE_FMT, LARGE_MARK, MONTH_FMT, parse_amount,
+                                   resolve_columns)
+from family_bot.sheets import DATA_HEADERS, DATA_LARGE_HEADER, SheetsClient
 
 # Fields every Data sheet must have a column for. Month is optional: readers
 # derive it from the date when the column is absent.
 REQUIRED_FIELDS = ("date", "category", "amount", "currency", "who", "comment")
 # Text fields compared when looking a written Expense up again (amount apart).
+# Large is left out: a person may change the mark in the sheet.
 MATCH_TEXT_FIELDS = ("date", "category", "currency", "who", "comment")
 # One undo at a time across Users: rows found by one read must not shift
 # under another undo's delete before this delete runs.
 _DELETE_LOCK = threading.Lock()
+# Two marked saves at once must not both add the Large column.
+_COLUMN_LOCK = threading.Lock()
 # Amounts are stored to cents, so two amounts closer than this are equal.
 AMOUNT_TOLERANCE = 0.005
 
@@ -37,6 +41,8 @@ class ExpenseRecord:
     currency: str
     who: str
     comment: str = ""
+    # Large expense mark; written to the optional Large column.
+    large: bool = False
 
     def month(self) -> str:
         return datetime.strptime(self.date, DATE_FMT).strftime(MONTH_FMT)
@@ -70,6 +76,7 @@ class ExpenseRecord:
             "currency": self.currency,
             "who": self.who,
             "comment": self.comment,
+            "large": LARGE_MARK if self.large else "",
         }
         row: list = [""] * (max(columns.values()) + 1)
         for field, idx in columns.items():
@@ -77,14 +84,34 @@ class ExpenseRecord:
         return row
 
 
+def _has_large_column(headers: list[str]) -> bool:
+    return "large" in resolve_columns(headers)
+
+
+def _headers_for(client: SheetsClient, records: list[ExpenseRecord]) -> list[str]:
+    """Data headers to lay the records out by; adds the Large column when needed.
+
+    A sheet without headers keeps the default layout (DATA_HEADERS has Large).
+    """
+    headers = client.read_data_headers()
+    if (not any(r.large for r in records) or not any(str(h).strip() for h in headers)
+            or _has_large_column(headers)):
+        return headers
+    with _COLUMN_LOCK:
+        headers = client.read_data_headers()
+        if not _has_large_column(headers):
+            headers = client.add_data_column(DATA_LARGE_HEADER)
+    return headers
+
+
 def append_expense(client: SheetsClient, record: ExpenseRecord) -> None:
     """Persist one Expense through the SheetsClient seam, matching Data headers."""
-    client.append_data_row(record.to_row(client.read_data_headers()))
+    client.append_data_row(record.to_row(_headers_for(client, [record])))
 
 
 def append_expenses(client: SheetsClient, records: list[ExpenseRecord]) -> None:
     """Persist several Expenses in one append call: all rows land or none do."""
-    headers = client.read_data_headers()
+    headers = _headers_for(client, records)
     client.append_data_rows([r.to_row(headers) for r in records])
 
 
