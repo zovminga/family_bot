@@ -204,3 +204,75 @@ def test_picker_buttons_have_a_handler_in_target_state() -> None:
                 if isinstance(h, CallbackQueryHandler)]
     assert any(p.match("scur:pick:RSD") for p in patterns)
     assert any(p.match("scur:page:2") for p in patterns)
+
+
+# Large expense (issue #87).
+LARGE_ROW = Row(date=date(2026, 10, 7), month="2026-10", category="Travel", amount=2000.0,
+                currency="€", who="Azat", comment="tickets", large=True)
+
+
+def large_flow(rows: list[Row]) -> stats.StatsFlow:
+    flow = make_flow()
+    flow._load_rows = lambda _ctx: list(rows)
+    return flow
+
+
+def test_category_step_offers_only_large() -> None:
+    flow, ctx = make_flow(), SimpleNamespace(user_data={})
+    upd = make_update("📊 Статистика")
+    run(flow.begin(upd, ctx))
+    keyboard = upd.message.replies[0][1]["reply_markup"].keyboard
+    assert stats.ONLY_LARGE_BUTTON in [b.text for row in keyboard for b in row]
+
+
+def test_default_stats_leave_large_out() -> None:
+    flow, ctx = large_flow([*ROWS, LARGE_ROW]), SimpleNamespace(user_data={})
+    run(flow.begin(make_update("📊 Статистика"), ctx))
+    run(flow.on_category(make_update(stats.ALL_BUTTON), ctx))
+    run(flow.on_month(make_update("2026-10"), ctx))
+    upd = make_update(stats.YES_BUTTON)
+    run(flow.on_group_currency(upd, ctx))
+    assert replies(upd)[0].endswith("\n100 дин\n10 €"), replies(upd)
+
+
+def test_only_large_same_path_and_conversion() -> None:
+    flow, ctx = large_flow([*ROWS, LARGE_ROW]), SimpleNamespace(user_data={})
+    run(flow.begin(make_update("📊 Статистика"), ctx))
+    upd = make_update(stats.ONLY_LARGE_BUTTON)
+    assert run(flow.on_category(upd, ctx)) == states.State.STAT_TYPE
+    assert "только крупные траты" in replies(upd)[0]
+    assert ctx.user_data[stats.QUERY_KEY] == stats.StatQuery(only_large=True)
+    run(flow.on_type(make_update(stats.MONTHS_BUTTON), ctx))
+    run(flow.on_month(make_update("2026-10"), ctx))
+    run(flow.on_group_currency(make_update(stats.NO_BUTTON), ctx))
+    upd = make_update("дин")
+    run(flow.on_convert_currency(upd, ctx))
+    assert replies(upd)[0] == (
+        "📊 Статистика за 2026-10, только крупные траты (в дин):\n💰 Итого: 234 000 дин")
+
+
+def test_only_large_last_records() -> None:
+    flow, ctx = large_flow([*ROWS, LARGE_ROW]), SimpleNamespace(user_data={})
+    run(flow.on_category(make_update(stats.ONLY_LARGE_BUTTON), ctx))
+    upd = make_update(stats.LAST_BUTTON)
+    run(flow.on_type(upd, ctx))
+    assert "tickets" in replies(upd)[0] and "Food" not in replies(upd)[0]
+
+
+def test_only_large_without_marked_rows_says_so() -> None:
+    flow, ctx = large_flow(list(ROWS)), SimpleNamespace(user_data={})
+    run(flow.on_category(make_update(stats.ONLY_LARGE_BUTTON), ctx))
+    run(flow.on_month(make_update("2026-10"), ctx))
+    upd = make_update(stats.YES_BUTTON)
+    run(flow.on_group_currency(upd, ctx))
+    assert replies(upd)[0].endswith("🔶 Крупных трат за этот период нет"), replies(upd)
+
+
+def test_new_query_does_not_inherit_only_large() -> None:
+    flow, ctx = make_flow(), SimpleNamespace(user_data={})
+    run(flow.on_category(make_update(stats.ONLY_LARGE_BUTTON), ctx))
+    run(flow.begin(make_update("📊 Статистика"), ctx))
+    assert ctx.user_data[stats.QUERY_KEY].only_large is False
+    run(flow.on_category(make_update(stats.ONLY_LARGE_BUTTON), ctx))
+    run(flow.on_category(make_update(stats.ALL_BUTTON), ctx))
+    assert ctx.user_data[stats.QUERY_KEY] == stats.StatQuery()
