@@ -201,6 +201,11 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(s.on_group_currency(seen.update(flow_stats.NO_BUTTON), ctx))
     run(s.on_convert_currency(seen.update("дин"), ctx))
     run(s.on_show_details(seen.update(flow_stats.DETAILS_BUTTON), ctx))
+    run(s.on_category(seen.update(flow_stats.ONLY_LARGE_BUTTON), ctx))
+    run(s.on_type(seen.update(flow_stats.LAST_BUTTON), ctx))
+    run(s.on_category(seen.update(flow_stats.ONLY_LARGE_BUTTON), ctx))
+    run(s.on_month(seen.update("2026-10"), ctx))
+    run(s.on_group_currency(seen.update(flow_stats.YES_BUTTON), ctx))
     run(s.this_month(seen.update(nav.THIS_MONTH), ctx))
     seen.texts.append(analytics.format_last_n([], category="Еда"))
     texts = seen.collect()
@@ -226,7 +231,7 @@ def test_preset_flow(seen: Seen, ctx: SimpleNamespace) -> None:
 def test_draft_card() -> None:
     session = draft.DraftSession(id="ab12", transcript="кофе", items=[
         {"comment": "кофе", "amount": 1234.0, "currency": "дин", "category": "Еда",
-         "date": "19.11.2026", "who": "Анна"}])
+         "date": "19.11.2026", "who": "Анна", "large": True}])
     texts = [draft.card_text(session)]
     grids = [draft.main_buttons(session), draft.item_edit_buttons(session, 0),
              draft.category_buttons(session, 0, CATEGORIES),
