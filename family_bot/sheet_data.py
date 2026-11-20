@@ -22,7 +22,14 @@ HEADER_ALIASES: dict[str, list[str]] = {
     "currency": ["currency", "валюта"],
     "who": ["who", "кто внес", "spender", "кто"],
     "comment": ["comment", "комментарий", "коммент"],
+    # Optional: Large expense mark (issue #83). Absent column: no row is marked.
+    "large": ["large", "крупная"],
 }
+
+# Large column: the bot writes LARGE_MARK or "". On read any other non-empty
+# value marks the row too (hand edits), except these.
+LARGE_MARK = "да"
+NOT_LARGE = frozenset({"нет", "no", "0", "false"})
 
 # Stored currency value → ISO code, derived from the registry in currency.py.
 SYMBOL_TO_ISO: dict[str, str] = {c.symbol: c.code for c in currency.CURRENCIES}
@@ -55,6 +62,8 @@ class Row:
         Spender cell as stored.
     comment : str
         Comment cell as stored.
+    large : bool
+        Large expense mark (``is_large_cell``); False without the column.
     """
 
     date: Optional[date]
@@ -64,6 +73,7 @@ class Row:
     currency: str
     who: str
     comment: str
+    large: bool = False
 
     @property
     def date_text(self) -> str:
@@ -145,6 +155,12 @@ def cell(row: list, columns: dict[str, int], field: str) -> str:
     return str(row[idx]).strip()
 
 
+def is_large_cell(raw: str) -> bool:
+    """True when a Large cell marks the row: non-empty and not in NOT_LARGE."""
+    text = str(raw).strip().casefold()
+    return bool(text) and text not in NOT_LARGE
+
+
 def parse_row(row: list, columns: dict[str, int]) -> Optional[Row]:
     """Parse one Data-sheet row, or None when the amount is missing or not a number."""
     if "amount" not in columns:
@@ -162,6 +178,7 @@ def parse_row(row: list, columns: dict[str, int]) -> Optional[Row]:
         currency=cell(row, columns, "currency"),
         who=cell(row, columns, "who"),
         comment=cell(row, columns, "comment"),
+        large=is_large_cell(cell(row, columns, "large")),
     )
 
 

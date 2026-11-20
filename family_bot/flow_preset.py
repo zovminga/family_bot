@@ -107,6 +107,7 @@ async def _save(update: Update, context: ContextTypes.DEFAULT_TYPE, preset: dict
         currency=cur,
         who=who,
         comment=preset["name"],
+        large=False,  # a Preset is routine even above the threshold
     ))
     await update.message.reply_text(
         f"✅ Сохранено: {preset['name']} — {format_amount(amount, cur)} · {date_str}")

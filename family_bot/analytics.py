@@ -201,11 +201,15 @@ class MonthSummary:
     month : str
         ``YYYY-MM``.
     by_currency : dict[str, CurrencySummary]
-        Currency → its totals; the Currency with the most expenses comes first.
+        Currency → its totals without Large expenses; the Currency with the
+        most expenses comes first.
+    large : tuple[Row, ...]
+        The month's Large expenses, in sheet order; not in ``by_currency``.
     """
 
     month: str
     by_currency: dict[str, CurrencySummary]
+    large: tuple[Row, ...] = ()
 
 
 def _ranked(sums: dict[str, float]) -> list[tuple[str, float]]:
@@ -215,6 +219,8 @@ def _ranked(sums: dict[str, float]) -> list[tuple[str, float]]:
 def month_summary(rows: list[Row], month: str) -> MonthSummary:
     """
     Total, Category and Spender sums for one month, per Currency.
+
+    Large expenses are left out of the sums and returned apart.
 
     Parameters
     ----------
@@ -228,7 +234,8 @@ def month_summary(rows: list[Row], month: str) -> MonthSummary:
     MonthSummary
         Empty ``by_currency`` when the month has no expenses.
     """
-    month_rows = [r for r in rows if r.month == month]
+    month_rows = [r for r in rows if r.month == month and not r.large]
+    large = tuple(r for r in rows if r.month == month and r.large)
     counts = Counter(r.currency for r in month_rows)
     by_currency: dict[str, CurrencySummary] = {}
     for cur, _ in counts.most_common():
@@ -243,7 +250,7 @@ def month_summary(rows: list[Row], month: str) -> MonthSummary:
             categories=_ranked(categories),
             spenders=_ranked(spenders),
         )
-    return MonthSummary(month=month, by_currency=by_currency)
+    return MonthSummary(month=month, by_currency=by_currency, large=large)
 
 
 def month_title(month: str) -> str:
@@ -252,12 +259,23 @@ def month_title(month: str) -> str:
     return f"{MONTH_NAMES[int(number) - 1]} {year}"
 
 
+def _large_line(rows: tuple[Row, ...]) -> str:
+    """«🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)»."""
+    totals: dict[str, float] = {}
+    for r in rows:
+        totals[r.currency] = totals.get(r.currency, 0.0) + r.amount
+    sums = " · ".join(format_amount(amount, cur) for cur, amount in totals.items())
+    # A row without a comment is named by its Category.
+    names = ", ".join(r.comment or r.category or NO_CATEGORY for r in rows)
+    return f"🔶 Ещё крупные траты: {sums} ({names})"
+
+
 def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> str:
     """
     Telegram text for a month summary: total, top Categories, Spenders.
 
     Each Currency gets its own block; amounts in different Currencies are
-    never added together.
+    never added together. Large expenses, if any, are one last line.
 
     Parameters
     ----------
@@ -272,8 +290,9 @@ def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> st
         Message text.
     """
     lines = [f"📅 {month_title(summary.month)}"]
+    tail = ["", _large_line(summary.large)] if summary.large else []
     if not summary.by_currency:
-        return "\n".join([*lines, NO_DATA])
+        return "\n".join([*lines, NO_DATA, *tail])
 
     lines.append("💰 Итого: " + " · ".join(
         format_amount(sums.total, cur) for cur, sums in summary.by_currency.items()))
@@ -287,4 +306,4 @@ def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> st
                   for i, (name, amount) in enumerate(sums.categories[:top], 1)]
         lines += ["", "👤 По людям:"]
         lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in sums.spenders]
-    return "\n".join(lines)
+    return "\n".join([*lines, *tail])

@@ -240,3 +240,47 @@ def test_write_recent_currencies_creates_users_sheet_with_headers():
     GspreadSheetsClient(book).write_recent_currencies(111, "Анна", ["дин"])
     assert book.added == ["Users"]
     assert book.ws.values == [["User ID", "Name", "Recent currencies"], ["111", "Анна", "дин"]]
+
+
+class _DataWorksheet:
+    """Data worksheet with a header row and a fixed number of columns."""
+
+    def __init__(self, headers, col_count):
+        self.headers = list(headers)
+        self.col_count = col_count
+        self.calls = []
+
+    def row_values(self, n):
+        assert n == 1
+        return list(self.headers)
+
+    def add_cols(self, n):
+        self.calls.append(("add_cols", n))
+        self.col_count += n
+
+    def update_cell(self, row, col, value):
+        assert col <= self.col_count, "write outside the grid"
+        self.calls.append(("update_cell", row, col, value))
+        self.headers.append(value)
+
+
+class _DataBook:
+    def __init__(self, ws):
+        self.ws = ws
+
+    def worksheet(self, name):
+        assert name == "Data"
+        return self.ws
+
+
+def test_gspread_add_data_column_grows_a_full_sheet():
+    ws = _DataWorksheet(["Date", "Amount"], col_count=2)
+    assert GspreadSheetsClient(_DataBook(ws)).add_data_column("Large") == \
+        ["Date", "Amount", "Large"]
+    assert ws.calls == [("add_cols", 1), ("update_cell", 1, 3, "Large")]
+
+
+def test_gspread_add_data_column_uses_a_free_column():
+    ws = _DataWorksheet(["Date", "Amount"], col_count=26)
+    GspreadSheetsClient(_DataBook(ws)).add_data_column("Large")
+    assert ws.calls == [("update_cell", 1, 3, "Large")]

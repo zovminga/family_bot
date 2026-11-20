@@ -51,7 +51,7 @@ def matches(handlers: list[Any], update: Update) -> bool:
 
 def test_states_are_an_int_enum_without_duplicates() -> None:
     assert issubclass(State, IntEnum)
-    assert len({s.value for s in State}) == len(State) == 17
+    assert len({s.value for s in State}) == len(State) == 18
 
 
 def test_every_state_has_a_handler() -> None:

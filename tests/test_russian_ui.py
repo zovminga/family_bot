@@ -156,6 +156,25 @@ def test_manual_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     assert_russian(texts)
 
 
+def test_large_expense_texts(seen: Seen, ctx: SimpleNamespace,
+                             monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bot.fx, "rate", lambda src, dst: 1.0)
+    m = bot.MANUAL
+    run(m.choose_cat(seen.update("Еда"), ctx))
+    run(m.type_amount(seen.update("1500 €"), ctx))
+    run(m.on_large_text(seen.update("может быть"), ctx))
+    run(m.on_large_button(seen.update(query=FakeQuery(manual.LARGE_YES)), ctx))
+    run(m.today_no_comment(seen.update(query=FakeQuery(manual.TODAY_NO_COMMENT)), ctx))
+    large = Row(date=date(2026, 10, 7), month="2026-10", category="Транспорт",
+                amount=2000.0, currency="€", who="Анна", comment="билеты", large=True)
+    seen.texts.append(analytics.format_month_summary(
+        analytics.month_summary([*ROWS, large], "2026-10")))
+    texts = seen.collect()
+    assert manual.LARGE_QUESTION in texts
+    assert any(t.endswith("🔶 Ещё крупные траты: 2 000 € (билеты)") for t in texts), texts
+    assert_russian(texts)
+
+
 def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     s = flow_stats.StatsFlow(
         categories=lambda _ctx: list(CATEGORIES),
