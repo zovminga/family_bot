@@ -3,8 +3,8 @@
 > Living handoff. Agents update this at the end of every meaningful task
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
-**Last updated:** 2026-11-19  
-**Updated by:** agent session (voice decode without numpy)  
+**Last updated:** 2026-11-20  
+**Updated by:** agent session (spec: Large expense, receipt QR, Payment reminder)  
 **Product code tip:** `333d6cc` (2026-11-19) — voice notes decode without numpy (every voice note failed on Render)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -264,6 +264,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Unread sections are unread source, not missing knowledge.
 
 ## Open
+
+- New features planned (not built): Large expense, receipt items from the Serbian
+  fiscal QR, Payment reminder on the 5th and 20th. Spec:
+  [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
+  decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
+  GitHub issues with `ready-for-agent` carry the work; the first receipt issue
+  needs a real receipt from the owner.
 
 - Currency picker (issue #33): Recent currencies are read from `Users` once
   per User per bot process (cache in `user_data`), so a hand edit of `Users`
