@@ -30,14 +30,22 @@ _Avoid_: Default currency, favourite currencies
 Restating Expense amounts in another Currency at the rate of the day the statistics are requested, not the day the Expense happened. The target is any Currency of the rate service, chosen with the same picker as manual input.
 _Avoid_: Historical rate, exchange (as a noun)
 
+**Large expense**:
+An Expense marked as outside routine spending (flight tickets, a laptop), shown in the bot as «Крупная трата». It is stored in Data like any Expense but left out of routine statistics, and can still be looked at on request.
+_Avoid_: One-off / разовая трата (that is a Preset section), outlier, anomaly
+
 **Draft**:
 An Expense proposed from voice, typed text («кофе 350») or receipt photo, shown for review before it is saved.
 Each Draft card has its own short id; several can be open at once.
 _Avoid_: Pending expense, suggestion
 
 **Preset**:
-A reusable Expense from the Regular_expenses sheet (monthly or one-off).
+A reusable Expense from the Regular_expenses sheet (monthly or one-off). A Preset may have no amount (utilities that change every month); the amount is then asked when it is used.
 _Avoid_: Default expense, regular (as a noun), template
+
+**Payment reminder**:
+A message to the shared chat on the 5th and 20th listing the monthly Presets not yet entered this month, each with the Expenses of its Category already in Data this month, so a person decides whether it is still due.
+_Avoid_: Notification, alert, overdue payment
 
 **Sheets**:
 The Google Spreadsheet that stores Data, Config, Meta, Regular_expenses, and Users worksheets.
