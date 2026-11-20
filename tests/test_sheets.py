@@ -50,18 +50,19 @@ def test_regular_load_presets_uses_client(monkeypatch):
     assert items[1]["section"] == "oneoff"
 
 
-def test_parse_regular_skips_blank_amounts():
+def test_parse_regular_skips_blank_amounts_in_oneoff_section():
     values = [
         ["name", "динары", "категория", "кто"],
+        ["разовые траты", "", "", ""],
         ["Subscription", "", "Other", "Both"],
         ["Coffee", "200", "Food", "Ann"],
     ]
     parsed = parse_regular(values)
-    assert parsed["monthly"] == [
+    assert parsed["oneoff"] == [
         {"name": "Coffee", "amount": 200.0, "currency": "дин",
          "category": "Food", "who": "Ann"},
     ]
-    assert parsed["oneoff"] == []
+    assert parsed["monthly"] == []
 
 
 def test_resolve_creds_path_relative(tmp_path, monkeypatch):

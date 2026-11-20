@@ -11,13 +11,16 @@ per-currency column) and split into two sections by divider rows:
     баня              | 3850   |      |         |       | Beauty ... | Both
 
 Both sections are surfaced in the bot as one-tap preset buttons; the
-only difference is the label section. This module just reads and parses the
+only difference is the label section. A monthly row without an amount (e.g.
+utilities that change every month) is a Preset with ``amount=None``: the bot
+asks the amount when it is used. This module just reads and parses the
 sheet — no posting logic here.
 """
 from __future__ import annotations
 
 from typing import Optional
 
+from family_bot import currency as currency_registry
 from family_bot.currency import find as find_currency
 from family_bot.sheets import SheetsClient, open_client
 from family_bot.sheet_data import parse_amount
@@ -30,12 +33,14 @@ def _find_col(header: list[str], substr: str) -> Optional[int]:
     return None
 
 
-def parse_regular(values: list[list[str]]) -> dict:
+def parse_regular(values: list[list[str]],
+                  base_currency: str = currency_registry.DEFAULT_BASE.symbol) -> dict:
     """Split the sheet grid into {'monthly': [...], 'oneoff': [...]}.
 
-    Each item: {name, amount, currency, category, who}. Rows without an amount
-    (e.g. a subscription with a blank price) or that are section dividers are
-    skipped.
+    Each item: {name, amount, currency, category, who}. Section dividers are
+    skipped. A row without an amount is skipped in the one-off section and
+    kept with ``amount=None`` in the monthly section; its Currency is the
+    column holding a non-number mark («?»), else ``base_currency``.
     """
     if not values:
         return {"monthly": [], "oneoff": []}
@@ -67,14 +72,18 @@ def parse_regular(values: list[list[str]]) -> dict:
             section = "monthly"
             continue
         amount = currency = None
+        marked = None
         for idx, sym in cur_cols.items():
             if idx < len(row) and str(row[idx]).strip():
                 value = parse_amount(row[idx])
                 if value is not None:
                     amount, currency = value, sym
                     break
+                marked = marked or sym
         if amount is None:
-            continue
+            if section == "oneoff":
+                continue
+            currency = marked or base_currency
         category = (row[cat_col].strip() if cat_col is not None and cat_col < len(row)
                     else "") or "Other"
         who = (row[who_col].strip() if who_col is not None and who_col < len(row)
@@ -86,14 +95,16 @@ def parse_regular(values: list[list[str]]) -> dict:
     return result
 
 
-def load_presets(client: SheetsClient | None = None) -> list[dict]:
+def load_presets(client: SheetsClient | None = None,
+                 base_currency: str = currency_registry.DEFAULT_BASE.symbol) -> list[dict]:
     """Return all presets (monthly first, then one-off) as a flat list.
 
     Each item carries a 'section' key ('monthly'|'oneoff') for optional grouping.
+    ``base_currency`` goes to monthly Presets without an amount or a marked column.
     """
     sheets = client or open_client()
     values = sheets.read_regular_values()
-    parsed = parse_regular(values)
+    parsed = parse_regular(values, base_currency)
     items = []
     for section in ("monthly", "oneoff"):
         for it in parsed[section]:

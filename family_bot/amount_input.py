@@ -18,6 +18,10 @@ from family_bot.sheet_data import parse_amount
 # may hold spaces, dots, commas, apostrophes), Currency text after it.
 _AMOUNT_WITH_CURRENCY = re.compile(r"^(?P<pre>[^\d\s+-]*)\s*(?P<num>\d[\d\s.,' ]*)(?P<post>.*)$")
 
+# Reply to a typed amount that `parse_amount_text` rejects.
+RETRY_TEXT = ("❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
+              "Например: 1 200 или 350 дин. Попробуйте ещё раз:")
+
 
 def positive_amount(value: Any) -> Optional[float]:
     """

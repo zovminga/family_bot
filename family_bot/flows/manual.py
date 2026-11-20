@@ -155,9 +155,7 @@ class ManualFlow:
 
         parsed = amount_input.parse_amount_text(text)
         if parsed is None:
-            await update.message.reply_text(
-                "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
-                "Например: 1 200 или 350 дин. Попробуйте ещё раз:")
+            await update.message.reply_text(amount_input.RETRY_TEXT)
             return State.TYPING_AMT
         amt, typed_currency = parsed
         context.user_data["amt"] = amt

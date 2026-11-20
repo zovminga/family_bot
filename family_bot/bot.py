@@ -564,6 +564,16 @@ async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def type_preset_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await flow_preset.type_preset_amount(
+        update,
+        context,
+        sheets=cfg(context).sheets,
+        date_fmt=DATE_FMT,
+        resolve_who=lambda u: get_user_info(u, context)[0],
+    )
+
+
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows current categories."""
     categories = cfg(context).categories
@@ -683,6 +693,7 @@ def build_application(bot_token: str) -> Application:
             State.CHOOSE_ACTION: [MessageHandler(nav.INPUT_TEXT, choose_action)],
             **MANUAL.states(),
             State.CHOOSE_PRESET: [MessageHandler(nav.INPUT_TEXT, choose_preset)],
+            State.TYPING_PRESET_AMT: [MessageHandler(nav.INPUT_TEXT, type_preset_amount)],
             **STATS.states(),
         },
         fallbacks=[

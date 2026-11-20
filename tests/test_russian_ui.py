@@ -39,6 +39,8 @@ ROWS = [
         currency="€", who="Анна", comment=""),
 ]
 PRESETS = [{"name": "Аренда", "amount": 500.0, "currency": "€", "category": "Еда",
+            "who": "Анна"},
+           {"name": "Коммуналка", "amount": None, "currency": "дин", "category": "Еда",
             "who": "Анна"}]
 # Latin words the User is meant to see: commands, settings, services, sheet names,
 # ISO currency codes.
@@ -193,8 +195,12 @@ def test_preset_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(bot.choose_preset(seen.update("что-то"), ctx))
     run(bot.choose_preset(seen.update("⚡ Нет такой"), ctx))
     run(bot.choose_preset(seen.update("⚡ Аренда"), ctx))
+    run(bot.choose_preset(seen.update("⚡ Коммуналка"), ctx))
+    run(bot.type_preset_amount(seen.update("ноль"), ctx))
+    run(bot.type_preset_amount(seen.update("4 200"), ctx))
     texts = seen.collect()
     assert "✅ Сохранено: Аренда — 500 € · 19.11.2026" in texts
+    assert "✅ Сохранено: Коммуналка — 4 200 дин · 19.11.2026" in texts
     assert_russian(texts)
 
 
