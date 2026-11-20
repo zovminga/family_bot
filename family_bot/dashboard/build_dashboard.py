@@ -619,6 +619,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     parsed = parse_rows(headers, raw_rows)
     skipped = len(raw_rows) - len(parsed)
     rows: list[dict] = []
+    # Large expenses: kept out of every calculation, listed in their own block.
+    large: list[dict] = []
     excluded = 0
     comments: list[str] = []
     for r in parsed:
@@ -629,6 +631,19 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
             continue
         iso = to_iso(r.currency) if r.currency else base_iso
         amount_base = to_base(r.amount, iso, base_iso, rates)
+        if r.large:
+            large.append({
+                "date": r.date_text,
+                "sort_date": r.date.isoformat() if r.date else "",
+                "month": r.month,
+                "category": r.category,
+                "amount": round(r.amount, 2),
+                "currency": iso,
+                "currency_symbol": ISO_TO_SYMBOL.get(iso, r.currency or iso),
+                "amount_base": round(amount_base, 2) if amount_base is not None else None,
+                "comment": r.comment,
+            })
+            continue
         comments.append(r.comment)
         rows.append({
             "date": r.date_text,
@@ -643,19 +658,24 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         })
 
     # Repair empty / numeric / rent-mislogged Category cells with this sheet's own names.
-    known = category_order(config_categories, [r["category"] for r in rows])
-    for r in rows:
+    known = category_order(config_categories, [r["category"] for r in rows + large])
+    for r in rows + large:
         r["category"] = repair_category(r["category"], r["comment"], known)
 
-    logger.info("→ Kept %d rows, skipped %d unparseable, excluded %d cash withdrawal(s).",
-                len(rows), skipped, excluded)
+    logger.info("→ Kept %d rows, %d Large expense(s), skipped %d unparseable, "
+                "excluded %d cash withdrawal(s).", len(rows), len(large), skipped, excluded)
 
     # Optionally hide early periods (e.g. data before the household settled in).
     if from_month:
         before = len(rows)
         rows = [r for r in rows if r["month"] and r["month"] >= from_month]
+        large = [r for r in large if r["month"] and r["month"] >= from_month]
         logger.info("→ Filtered to months >= %s: kept %d, hid %d.",
                     from_month, len(rows), before - len(rows))
+    # Newest first; rows without a date go last.
+    large.sort(key=lambda r: r["sort_date"], reverse=True)
+    for r in large:
+        del r["sort_date"]
 
     rate_error = unconvertible_rows_error(rows)
     if rate_error:
@@ -706,6 +726,8 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
         # Taken after the repair, so repaired names and NO_CATEGORY are listed too.
         "categories": category_order(config_categories, [r["category"] for r in rows]),
         "rows": rows,
+        # Large expenses, newest first: shown only in the «Крупные траты» block.
+        "large": large,
     }
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
