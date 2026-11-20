@@ -16,6 +16,8 @@ from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
 NO_DATA = "Нет данных 🤷"
+NO_LARGE = "🔶 Крупных трат за этот период нет"
+NO_LARGE_RECORDS = "📭 Крупных трат нет"
 TOP_CATEGORIES = 3
 NO_CATEGORY = "Без категории"
 NO_SPENDER = "Не указан"
@@ -27,11 +29,15 @@ def last_n(
     rows: list[Row],
     n: int = 3,
     category: Optional[str] = None,
+    large: bool = False,
 ) -> list[Row]:
-    """Return the last N expenses (newest first), optionally filtered by category."""
-    filtered = rows
+    """Return the last N expenses (newest first), optionally filtered by category.
+
+    Large expenses are left out; ``large=True`` takes only them.
+    """
+    filtered = [r for r in rows if r.large == large]
     if category and category != "All":
-        filtered = [r for r in rows if r.category == category]
+        filtered = [r for r in filtered if r.category == category]
     if not filtered:
         return []
     return list(reversed(filtered[-n:]))
@@ -41,10 +47,13 @@ def format_last_n(
     rows: list[Row],
     n: int = 3,
     category: Optional[str] = None,
+    large: bool = False,
 ) -> str:
     """Human-readable last-N listing for Telegram."""
-    records = last_n(rows, n=n, category=category)
+    records = last_n(rows, n=n, category=category, large=large)
     if not records:
+        if large:
+            return NO_LARGE_RECORDS
         if category and category != "All":
             return f"📭 Нет записей в категории «{category}»"
         return "📭 Записей нет"
@@ -74,9 +83,13 @@ def filter_rows(
     month: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    large: bool = False,
 ) -> list[Row]:
-    """Filter parsed expenses by category and period."""
-    out = list(rows)
+    """Filter parsed expenses by category and period.
+
+    Large expenses are left out; ``large=True`` takes only them.
+    """
+    out = [r for r in rows if r.large == large]
     if month:
         out = [r for r in out if r.month == month]
     elif date_from and date_to:
@@ -100,11 +113,13 @@ def aggregate(
     group_by_currency: bool = True,
     convert_to_currency: Optional[str] = None,
     get_rate: Optional[GetRate] = None,
+    large: bool = False,
 ) -> tuple[str, dict]:
     """Aggregate filtered expenses into Telegram text + conversion details.
 
     get_rate(from_currency, to_currency) -> rate | None; required when
-    convert_to_currency is set.
+    convert_to_currency is set. Large expenses are left out; ``large=True``
+    takes only them.
     """
     conversion_details: dict = {}
 
@@ -114,9 +129,10 @@ def aggregate(
         month=month,
         date_from=date_from,
         date_to=date_to,
+        large=large,
     )
     if not filtered:
-        return NO_DATA, {}
+        return (NO_LARGE if large else NO_DATA), {}
 
     # Working copy of amounts/currencies for optional conversion.
     working: list[dict[str, Any]] = [
