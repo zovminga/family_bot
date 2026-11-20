@@ -280,7 +280,7 @@ The bot does **not** build the dashboard. Build it on a laptop and publish
 ## Sheet layout (after bootstrap)
 
 **Config** — column A: header + category names  
-**Data** — Date, Month, Category, Amount, Currency, Who, Comment  
+**Data** — Date, Month, Category, Amount, Currency, Who, Comment, Large (Large expense mark; the bot adds it if missing)  
 **Regular_expenses** — preset templates (optional)  
 **Meta** — dashboard `file_id` for `/dashboard`  
 **Users** — Recent currencies of each Telegram account (the bot fills it)
