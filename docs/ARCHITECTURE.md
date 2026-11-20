@@ -72,9 +72,9 @@ Finances never share across installs.
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
 | `logs.py` | `setup()`: one stderr handler on the root logger, level from `LOG_LEVEL` (default INFO; an unknown value → INFO plus one warning line), format `time LEVEL module: message`, every formatted line (traceback too) passed through `errors.mask_secrets`; `httpx` held at WARNING (it logs Telegram URLs with the token). Called once by each entry point after `.env` is read: `bot.main`, `build_dashboard.main`, `failure_alert.main`, `scripts/`. Standard library only (runs under system python3 from `run.sh`) | `print` diagnostics (ruff `T20`; only `scripts/` print their report); call `logging.basicConfig` elsewhere |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
-| `draft_expense.py` | Draft session, card text, `vx:` callback outcomes | Re-implement confirm UI |
+| `draft_expense.py` | Draft session, card text, `vx:` callback outcomes; item key `large` (Large expense flag: `mark_large` on creation, `large:<i>` toggle, written by `save_drafts`) | Re-implement confirm UI |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders — Large expenses left out — plus `large`, that month's Large expense rows) and `format_month_summary` for any `YYYY-MM` (last line «🔶 Ещё крупные траты: …» when `large` is not empty) |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. `filter_rows`, `aggregate`, `last_n`, `format_last_n` take `large=False` (Large expenses left out) or `large=True` (only Large expenses; nothing → «🔶 Крупных трат за этот период нет» / «📭 Крупных трат нет»). Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders — Large expenses left out — plus `large`, that month's Large expense rows) and `format_month_summary` for any `YYYY-MM` (last line «🔶 Ещё крупные траты: …» when `large` is not empty) |
 | `large_expense.py` | Large expense decision: `suggest(amount, currency, threshold=, base=, get_rate=)` — above the threshold in the base Currency; no rate → False. `THRESHOLD_ENV`, `DEFAULT_THRESHOLD` | Compare an amount with the threshold elsewhere | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). `rate` reads the table of the target Currency from `RATES` (`RateCache`): every source Currency of one stats request shares one call, the table is kept 1 h (`RATE_TTL_SEC`), a failed read is not repeated for 60 s. Tests replace `fx.RATES` (autouse fixture: no network). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
@@ -108,14 +108,16 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
            │                   TYPING_CMNT ─ «✅ Сегодня, без комментария» → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
            │                 no amount → TYPING_PRESET_AMT → append_expense → home
-           └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
+           └─ stats      → STAT_CAT [all | one Category | 🔶 only Large] → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
                              → result → [STAT_SHOW_DETAILS] → CHOOSE_ACTION
 ```
 
 Stats (`flows/stats.py`): the menu tap and the category step each start a new
-`StatQuery`, so a previous request's month, dates or conversion currency never
-carry over. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
+`StatQuery`, so a previous request's month, dates, conversion currency or
+«🔶 Только крупные» choice (`StatQuery.only_large`) never carry over. Every
+request leaves Large expenses out; `only_large` takes the same steps over Large
+expenses only. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
 drops it too. `STAT_SHOW_DETAILS` is entered only when there are conversion
 details to show. The Conversion target (`STAT_CONVERT_CURRENCY`) uses the
 Currency picker like manual input (callback prefix `scur:`, typed code or name
@@ -227,6 +229,17 @@ User's Recent currencies, `cur:<i>:page:<n>` a page of all Currencies; both set
 through `draft_expense.search_currency`; text with a digit, a command or a menu
 button ends that wait. `cur:<i>:pick:<ISO>` sets the item's Currency; the
 choice goes to Recent currencies (`CallbackOutcome.picked`).
+
+**Large expense on the Draft card** (issue #86): `bot._show_draft` (voice, text,
+photo) calls `draft_expense.mark_large` in a worker thread before the card is
+shown: each item gets `large` from `large_expense.suggest` (threshold
+`Config.large_threshold`, base `Config.default_currency`, `fx.rate`; no rate →
+unmarked). The flag is not recomputed after «✏️ Сумма» or «💱 Валюта».
+«🔶 Крупная» (`large:<i>`) flips it for any item, below the threshold too; it
+sits next to «✏️ Сумма» / «👤 Кто» on a one-item card and in the item edit of a
+multi-item card. The card shows «• 🔶 Крупная трата» (one item) or
+«🔶» before the comment (several). `save_drafts` passes it to
+`ExpenseRecord.large` → Data column `Large`. An item without the key is unmarked.
 
 **Drafts in memory:** `user_data["drafts"]` maps a 4-hex-char Draft id to a
 `DraftSession`; several cards stay usable at once. Callback data is

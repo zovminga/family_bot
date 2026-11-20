@@ -27,6 +27,7 @@ from family_bot import voice_input as vx
 from family_bot import photo_input as px
 from family_bot import text_input
 from family_bot import draft_expense as draft
+from family_bot import large_expense
 from family_bot import flow_preset
 from family_bot import monthly_summary
 from family_bot import navigation as nav
@@ -283,8 +284,17 @@ async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
 
 async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
                       session: draft.DraftSession) -> None:
-    """Register the Draft and turn the status message into its card."""
+    """Mark Large expenses, register the Draft and turn the status message into its card."""
     context.user_data.pop(KEY_AMOUNT_EDIT, None)  # a new card ends a «✏️ Сумма» wait
+    settings = cfg(context)
+
+    def is_large(amount: float, currency: str) -> bool:
+        return large_expense.suggest(
+            amount, currency, threshold=settings.large_threshold,
+            base=settings.default_currency, get_rate=fx.rate)
+
+    # Rates may be read from the network: keep the event loop free.
+    await asyncio.to_thread(draft.mark_large, session, is_large)
     draft.add_draft(context.user_data, session)
     await status.edit_text(
         draft.card_text(session),

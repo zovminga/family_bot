@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (issue #89: Payment reminder on the 5th and 20th)  
-**Product code tip:** `0181549` (2026-11-20) — Payment reminder: job on the 5th and 20th, «⚡ Внести» / «✅ Уже внесено», «напоминать» column; on top of main `63c335c` (#83 Large expense part 1)  
+**Updated by:** agent session (merged #89 Payment reminder after #86, #87, #88)  
+**Product code tip:** `main` with PR #97 (2026-11-20) — Payment reminder on the 5th and 20th (#89); Large expense in statistics, Draft card and dashboard (#86–#88)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -36,6 +36,35 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   whose hour passes while the bot is down is skipped. Code:
   `payment_reminder.py` (no Telegram), `payment_reminder_bot.py`. Tests:
   `tests/test_payment_reminder.py`. Not checked in a real Telegram group yet.
+- Large expense on the dashboard (issue #88, spec stories 15–16): rows marked
+  in the Data column `Large` go to `DATA.large`, not `DATA.rows`, so the
+  first-screen card «Этот месяц: X, обычно Y, прогноз Z», KPIs, insights,
+  monitor, tiers, charts and the operations table never count them. Cash
+  withdrawals are still dropped first, even when marked. A card «🔶 Крупные
+  траты» under the operations table lists date, Category, amount as entered
+  (≈ base below for another Currency) and comment, newest first, within
+  `DASHBOARD_FROM_MONTH`; no Large expenses → no card. A sheet without the
+  column builds as before. Details: `dashboard/SPEC.md` §3.3, §4.13. Tests:
+  `tests/test_dashboard_large.py`.
+- Large expense in statistics (issue #87, spec «Крупная трата», stories 13–14):
+  every request of «📊 Статистика» (period, month, «📜 Последние 3 записи»)
+  leaves Large expenses out. The Category step has a third button
+  «🔶 Только крупные»: the same path (records / period / month, «Разбить по
+  валютам?», Conversion) over Large expenses only, header «…, только крупные
+  траты». None in the period → «🔶 Крупных трат за этот период нет» (last
+  records: «📭 Крупных трат нет»). The choice is `StatQuery.only_large`; the
+  menu tap and the Category step start a new `StatQuery`, so it is never
+  inherited. Code: `analytics.filter_rows` / `aggregate` / `last_n` /
+  `format_last_n` take `large=False` (only unmarked) or `True` (only marked).
+- Large expense on the Draft card (issue #86, spec stories 2, 3, 7): voice,
+  text and photo Drafts mark each item above `LARGE_EXPENSE_THRESHOLD` (same
+  rule as manual input: `large_expense.suggest`, no rate → no mark) when the
+  card is created. «🔶 Крупная» next to «✏️ Сумма» / «👤 Кто» (one item) or in
+  the item edit (several) sets or removes the mark on any item. The card shows
+  «• 🔶 Крупная трата» or «🔶» before the item's comment. Save writes «да» to
+  the Data column `Large` (adds the column on the first mark). The mark is not
+  recomputed after the amount or Currency is edited. Tests:
+  `tests/test_draft_large.py`.
 - Large expense, part 1 (issue #83, spec
   `docs/specs/2026-11-large-receipt-reminders.md`): manual input asks
   «🔶 Это крупная трата?» («Да» / «Нет», typed «да»/«нет» too) after the
@@ -51,10 +80,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «0», «false» is a mark, so hand edits count. «📅 Этот месяц» and the summary
   on the 1st leave Large expenses out of every sum and end with
   «🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)» (Category
-  when a row has no comment). Undo ignores the column. Not yet: Draft card
-  button (#86), stats «Только крупные» (#87), dashboard (#88) — until #87 the
-  other statistics still count Large expenses, and until #88 the dashboard
-  does too. Tests: `tests/test_large_expense.py`.
+  when a row has no comment). Undo ignores the column. Draft card, statistics
+  and dashboard: see the #86, #87 and #88 bullets above. Tests:
+  `tests/test_large_expense.py`.
 - Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
   a row in «ежемесячные траты» of Regular_expenses with no number is a Preset with
   `amount=None` (one-off rows without a number are still skipped). Its Currency is
@@ -313,8 +341,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## Open
 
 - New features planned (partly built): Large expense (#83 done: manual input
-  and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard open), receipt
-  items from the Serbian fiscal QR; Payment reminder (#89) built. Spec:
+  and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard done), receipt
+  items from the Serbian fiscal QR (#84, #90, #91 open); Payment reminder (#89) built. Spec:
   [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
   decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
   GitHub issues with `ready-for-agent` carry the work; the first receipt issue
