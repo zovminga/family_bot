@@ -37,7 +37,8 @@ def parse_regular(values: list[list[str]],
                   base_currency: str = currency_registry.DEFAULT_BASE.symbol) -> dict:
     """Split the sheet grid into {'monthly': [...], 'oneoff': [...]}.
 
-    Each item: {name, amount, currency, category, who}. Section dividers are
+    Each item: {name, amount, currency, category, who}; with a «напоминать»
+    column also ``remind`` (True for «да»). Section dividers are
     skipped. A row without an amount is skipped in the one-off section and
     kept with ``amount=None`` in the monthly section; its Currency is the
     column holding a non-number mark («?»), else ``base_currency``.
@@ -57,6 +58,7 @@ def parse_regular(values: list[list[str]],
                 break
     cat_col = _find_col(header, "категор")
     who_col = _find_col(header, "кто")
+    remind_col = _find_col(header, "напомин")
 
     section = "monthly"
     result: dict[str, list[dict]] = {"monthly": [], "oneoff": []}
@@ -88,10 +90,13 @@ def parse_regular(values: list[list[str]],
                     else "") or "Other"
         who = (row[who_col].strip() if who_col is not None and who_col < len(row)
                else "") or "Both"
-        result[section].append({
-            "name": name, "amount": amount, "currency": currency,
-            "category": category, "who": who,
-        })
+        item = {"name": name, "amount": amount, "currency": currency,
+                "category": category, "who": who}
+        if remind_col is not None:
+            # Payment reminder: with the column only rows marked «да» are reminded.
+            cell = row[remind_col] if remind_col < len(row) else ""
+            item["remind"] = str(cell).strip().lower() == "да"
+        result[section].append(item)
     return result
 
 

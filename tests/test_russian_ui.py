@@ -254,3 +254,20 @@ def test_draft_card() -> None:
 def test_check_catches_english() -> None:
     assert english_words("📊 Show statistics") == ["Show", "statistics"]
     assert english_words("Добавьте ID в ALLOWED_USERS в .env, потом /reloadcats") == []
+
+
+def test_payment_reminder_texts() -> None:
+    from family_bot import payment_reminder as pr
+
+    rent = {**PRESETS[0], "section": "monthly"}
+    bills = {**PRESETS[1], "section": "monthly"}
+    rows = [Row(date=date(2026, 11, 3), month="2026-11", category="Еда", amount=300.0,
+                currency="дин", who="Анна", comment="кофе")]
+    rem = pr.new_reminder(pr.due_payments([rent, bills], rows, "2026-11"), "2026-11")
+    texts = [pr.message_text(rem), pr.STALE_TEXT, pr.CLOSED_TEXT, pr.NOT_YOURS_TEXT,
+             pr.PROMPT_TEXT.format(name="Коммуналка", currency="дин")]
+    texts += [label for row in pr.buttons(rem) for label, _ in row]
+    rem.open.clear()
+    texts.append(pr.message_text(rem))
+    assert "уже есть: 03.11.2026 — 300 дин — кофе" in texts[0]
+    assert_russian(texts)

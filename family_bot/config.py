@@ -46,6 +46,9 @@ SUMMARY_CHAT_ENV = "DASHBOARD_CHAT_ID"
 # Hour of the 1st (family time zone) when the summary is sent.
 SUMMARY_HOUR_ENV = "MONTHLY_SUMMARY_HOUR"
 DEFAULT_SUMMARY_HOUR = 9
+# Hour of the 5th and 20th (family time zone) when the Payment reminder is sent.
+REMINDER_HOUR_ENV = "PAYMENT_REMINDER_HOUR"
+DEFAULT_REMINDER_HOUR = 10
 HOURS_IN_DAY = 24
 
 OpenSheets = Callable[[str, str], SheetsClient]
@@ -66,6 +69,8 @@ class Config:
     summary_chat_id: Optional[int] = None
     # Hour of the 1st, family time zone, when the summary is sent.
     summary_hour: int = DEFAULT_SUMMARY_HOUR
+    # Hour of the 5th and 20th, family time zone, when the Payment reminder is sent.
+    reminder_hour: int = DEFAULT_REMINDER_HOUR
     # Large expense threshold in the base Currency (LARGE_EXPENSE_THRESHOLD).
     large_threshold: float = large_expense.DEFAULT_THRESHOLD
     problems: list[str] = field(default_factory=list)
@@ -212,14 +217,14 @@ def _summary_chat_id(raw: Optional[str], problems: list[str]) -> Optional[int]:
     env = SUMMARY_CHAT_ENV
     if not raw:
         problems.append(problem(
-            f"{env} не задан, сводка за месяц 1-го числа не придёт",
+            f"{env} не задан, сводка за месяц и напоминания о платежах не придут",
             f"впишите в {env} id чата семьи (например, из /whoami) и перезапустите бота"))
         return None
     try:
         return int(raw.strip())
     except ValueError:
         problems.append(problem(
-            f"{env}={raw!r} — не id чата, сводка за месяц 1-го числа не придёт",
+            f"{env}={raw!r} — не id чата, сводка за месяц и напоминания о платежах не придут",
             "укажите число, например 111111111 или -1001234567890"))
         return None
 
@@ -234,6 +239,20 @@ def _summary_hour(raw: Optional[str], problems: list[str]) -> int:
     env = SUMMARY_HOUR_ENV
     problems.append(problem(
         f"{env}={raw!r} — не час от 0 до {HOURS_IN_DAY - 1}, сводка придёт в {default}:00",
+        f"укажите час числом, например {env}={default}, или удалите строку"))
+    return default
+
+
+def _reminder_hour(raw: Optional[str], problems: list[str]) -> int:
+    """Hour 0-23 from PAYMENT_REMINDER_HOUR; a bad value adds a problem line and keeps the default."""
+    default = DEFAULT_REMINDER_HOUR
+    if not raw:
+        return default
+    if raw.strip().isdigit() and int(raw) < HOURS_IN_DAY:
+        return int(raw)
+    env = REMINDER_HOUR_ENV
+    problems.append(problem(
+        f"{env}={raw!r} — не час от 0 до {HOURS_IN_DAY - 1}, напоминание о платежах придёт в {default}:00",
         f"укажите час числом, например {env}={default}, или удалите строку"))
     return default
 
@@ -380,6 +399,7 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
     cfg.default_currency = _default_currency(env.get(currency.BASE_CURRENCY_ENV), problems)
     cfg.summary_chat_id = _summary_chat_id(env.get(SUMMARY_CHAT_ENV), problems)
     cfg.summary_hour = _summary_hour(env.get(SUMMARY_HOUR_ENV), problems)
+    cfg.reminder_hour = _reminder_hour(env.get(REMINDER_HOUR_ENV), problems)
     cfg.large_threshold = _large_threshold(env.get(large_expense.THRESHOLD_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))

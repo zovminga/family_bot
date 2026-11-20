@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (merged #88 dashboard after #86, #87)  
-**Product code tip:** `main` with PR #96 (2026-11-20) — Large expense in statistics (#87), on the Draft card (#86) and on the dashboard (#88)  
+**Updated by:** agent session (merged #89 Payment reminder after #86, #87, #88)  
+**Product code tip:** `main` with PR #97 (2026-11-20) — Payment reminder on the 5th and 20th (#89); Large expense in statistics, Draft card and dashboard (#86–#88)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,25 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Payment reminder (issue #89, spec
+  `docs/specs/2026-11-large-receipt-reminders.md`): on the 5th and 20th at
+  `PAYMENT_REMINDER_HOUR` (default 10) in `TZ_NAME` the bot sends to
+  `DASHBOARD_CHAT_ID` the monthly Presets with no Data row this month whose
+  comment equals the Preset name (case and outer spaces ignored). Under each:
+  the month's Data rows of the same Category («уже есть: дата — сумма —
+  комментарий»), so a person decides; nothing is credited by guess. All
+  entered → no message. No chat or no Sheets → no job. Buttons per payment:
+  «⚡ Внести: <name>» saves at once (sheet Category, Currency, Spender; Preset
+  name as comment; today; no Large mark) and replies «✅ Сохранено» with
+  «↩️ Отменить» for the presser; a Preset without an amount asks it by
+  `ForceReply` (works in a group with privacy mode), only the presser's reply
+  counts, same checks as manual input. «✅ Уже внесено» removes the line and
+  writes nothing. Optional Regular_expenses column «напоминать»: present →
+  only rows with «да». The reminder lives in `bot_data`; after a restart its
+  buttons answer «Напоминание устарело после обновления бота», and a reminder
+  whose hour passes while the bot is down is skipped. Code:
+  `payment_reminder.py` (no Telegram), `payment_reminder_bot.py`. Tests:
+  `tests/test_payment_reminder.py`. Not checked in a real Telegram group yet.
 - Large expense on the dashboard (issue #88, spec stories 15–16): rows marked
   in the Data column `Large` go to `DATA.large`, not `DATA.rows`, so the
   first-screen card «Этот месяц: X, обычно Y, прогноз Z», KPIs, insights,
@@ -71,7 +90,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   asks the amount (`State.TYPING_PRESET_AMT`, checks of `amount_input`, home button
   works), then saves with the Preset name as comment. A Currency typed with the
   amount («3500 дин») wins over the sheet. Presets with an amount save at once as
-  before. The Payment reminder itself (#89) is not built. Tests:
+  before. Tests:
   `tests/test_preset_no_amount.py`.
 - Logging (issue #26, plan 2.4, C7): the bot, the dashboard build, the failure
   alert and `scripts/` call `family_bot.logs.setup()` once at start; modules use
@@ -323,7 +342,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 - New features planned (partly built): Large expense (#83 done: manual input
   and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard done), receipt
-  items from the Serbian fiscal QR, Payment reminder on the 5th and 20th. Spec:
+  items from the Serbian fiscal QR (#84, #90, #91 open); Payment reminder (#89) built. Spec:
   [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
   decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
   GitHub issues with `ready-for-agent` carry the work; the first receipt issue
