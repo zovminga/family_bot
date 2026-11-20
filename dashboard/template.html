@@ -124,6 +124,11 @@
   th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); cursor: pointer; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .tbl-scroll { max-height: 460px; overflow: auto; border-radius: 10px; }
+  /* Large expenses: not sortable; the comment wraps so four columns fit a phone. */
+  #largeTable th { cursor: default; }
+  #largeTable { font-size: 12px; }
+  #largeTable th, #largeTable td { padding: 8px 5px; }
+  #largeTable :is(th, td):is(:nth-child(2), :last-child) { white-space: normal; min-width: 5em; }
   .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
     background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); margin: 1px; }
   .empty { color: var(--muted); text-align: center; padding: 40px; }
@@ -296,6 +301,15 @@
             <th class="num" data-k="amount">Сумма</th><th data-k="currency">Вал.</th>
             <th data-k="who">Кто</th><th data-k="theme">Тема</th><th data-k="comment">Комментарий</th>
           </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card full" id="largeCard" style="display:none">
+      <h3>🔶 Крупные траты <span id="largeCount" class="tag"></span> <span class="info" data-tip="Траты с пометкой «крупная» (колонка Large в таблице). Они не входят ни в один расчёт выше: «Этот месяц», «обычно», прогноз, средние, тиры, графики, операции. Здесь — все за всё время, новые сверху, фильтры не действуют. Сумма — как внесена; для другой валюты ниже ≈ в {base}.">i</span></h3>
+      <div class="tbl-scroll">
+        <table id="largeTable">
+          <thead><tr><th>Дата</th><th>Категория</th><th class="num">Сумма</th><th>Комментарий</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -1058,6 +1072,21 @@ function renderTable(rows) {
   document.getElementById("rowCount").textContent = rows.length;
 }
 
+// ---- Large expenses: own list, outside every calculation ----
+// DATA.large comes newest first and is not in DATA.rows. Filters do not apply.
+function renderLarge() {
+  const large = DATA.large || [];
+  if (!large.length) return;
+  document.querySelector("#largeTable tbody").innerHTML = large.map(r => {
+    const approx = (r.currency !== BASE && r.amount_base != null)
+      ? `<div class="sub">≈ ${fmt(r.amount_base)} ${esc(BASE_SYM)}</div>` : "";
+    return `<tr><td>${esc(r.date)}</td><td>${esc(r.category)}</td>
+      <td class="num">${fmt(r.amount)} ${esc(r.currency_symbol || r.currency)}${approx}</td><td>${esc(r.comment)}</td></tr>`;
+  }).join("");
+  document.getElementById("largeCount").textContent = large.length;
+  document.getElementById("largeCard").style.display = "";
+}
+
 // ---- category exclusion chips ----
 function renderExcludeChips() {
   const cats = uniqueSorted("category");
@@ -1148,6 +1177,7 @@ function init() {
   populate("fCat", uniqueSorted("category"));
   populate("fCur", uniqueSorted("currency"));
   renderExcludeChips();
+  renderLarge();
 
   ["fMonth", "fWho", "fCat", "fCur"].forEach(id =>
     document.getElementById(id).addEventListener("change", render));
