@@ -101,6 +101,7 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
            │                 → TYPING_CMNT → CHOOSE_DT [| TYPING_DT] → save → home
            │                   TYPING_CMNT ─ «✅ Сегодня, без комментария» → save → home
            ├─ preset ⚡   → CHOOSE_PRESET → append_expense → home
+           │                 no amount → TYPING_PRESET_AMT → append_expense → home
            └─ stats      → STAT_CAT → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
                              → result → [STAT_SHOW_DETAILS] → CHOOSE_ACTION
@@ -164,7 +165,7 @@ Created/filled by `scripts/bootstrap_sheet.py`:
 |-----------|------|
 | `Data` | Expenses. Columns: Date, Month, Category, Amount, Currency, Who, Comment |
 | `Config` | Category list (column A, header + names) |
-| `Regular_expenses` | Human preset table (monthly / one-off sections) → `regular.parse_regular` |
+| `Regular_expenses` | Human preset table → `regular.parse_regular`. Columns: name, one column per Currency (header word known to `currency.find`: «динары», «евро», «CNY»), «категория», «кто». Divider rows «ежемесячные траты» / «разовые траты» start the sections. The first Currency column holding a number gives amount and Currency. A row with no number: skipped in «разовые траты»; in «ежемесячные траты» it is a Preset with `amount=None` (utilities), Currency from the first Currency column holding any other mark («?»), else `Config.default_currency` |
 | `Meta` | Dashboard Telegram `file_id` for `/dashboard` |
 | `Users` | One row per Telegram account: User ID, Name (Spender), Recent currencies (stored values, newest first, «CNY, дин, €»). The bot creates it on the first Currency choice if bootstrap did not; read/written by `SheetsClient.read_recent_currencies` / `write_recent_currencies` (`RAW`) |
 
@@ -181,6 +182,8 @@ are unaffected, sheet-side date formulas and sorting see text.
 ## Input pipelines
 
 **Manual** (`flows/manual.py`): Category → amount → Currency → comment → date. Category must match `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; the Currency step is `currency_picker` as inline buttons (callback `cur:pick:<ISO>`, `cur:page:<n>`): Recent currencies of the User, «🌍 Другая» pages, or typed text — one match is chosen, several come back as buttons, none re-asks with Recent currencies. The saved Expense's Currency goes to Recent currencies (`save_row`), so a cancelled entry leaves them as they were. A registry word («доллар», «динар») means the registry Currency; «канадский доллар» finds the others. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
+
+**Preset ⚡** (`flow_preset.py`): the ⚡ button of a Preset with an amount saves at once. A Preset with `amount=None` stores itself in `user_data["preset"]`, asks «💵 Введите сумму для «<name>» (<Currency>):» with the home button and moves to `TYPING_PRESET_AMT`. The answer goes through `amount_input.parse_amount_text` (same checks and retry text `RETRY_TEXT` as manual input); a Currency typed with the amount replaces the sheet's. Saved: today, Category and Spender from the sheet, comment = Preset name.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
