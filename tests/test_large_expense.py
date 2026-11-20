@@ -66,12 +66,12 @@ def test_bad_threshold_is_one_line_and_keeps_default(raw: str) -> None:
     (5000, "CNY", False),  # no rate: never suggested
 ])
 def test_suggest(amount: float, cur: str, expected: bool) -> None:
-    assert large_expense.suggest(amount, cur, threshold=1000, base="€",
+    assert large_expense.suggest(amount, cur, threshold=1000, threshold_currency="€",
                                  get_rate=eur_rate) is expected
 
 
 def test_suggest_compares_eur_and_its_iso_code_without_rate() -> None:
-    assert large_expense.suggest(2000, "EUR", threshold=1000, base="€",
+    assert large_expense.suggest(2000, "EUR", threshold=1000, threshold_currency="€",
                                  get_rate=lambda s, d: None)
 
 
@@ -321,3 +321,33 @@ def test_preset_without_amount_above_threshold_is_never_marked(
     assert sheets.appended_rows[-1][:7] == ["19.11.2026", "2026-11", "Trips", 1500.0, "€",
                                             "Ann", "Utilities"]
     assert sheets.read_data_headers() == HEADERS
+
+
+# --- Threshold Currency (bug: BASE_CURRENCY=RSD made the threshold 1000 дин) ---
+
+def test_threshold_is_in_euro_whatever_the_base_currency() -> None:
+    cfg = config.load({"BASE_CURRENCY": "RSD"})
+    assert (cfg.large_threshold, cfg.large_threshold_currency) == (1000, "€")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("1000 EUR", (1000, "€")),
+    ("117 000 дин", (117_000, "дин")),
+    ("RSD 50000", (50_000, "дин")),
+    ("2000", (2000, "€")),
+])
+def test_threshold_setting_may_name_its_currency(raw: str, expected: tuple) -> None:
+    cfg = config.load({"LARGE_EXPENSE_THRESHOLD": raw, "BASE_CURRENCY": "RSD"})
+    assert (cfg.large_threshold, cfg.large_threshold_currency) == expected
+    assert not [p for p in cfg.problems if "LARGE_EXPENSE_THRESHOLD" in p]
+
+
+def test_manual_input_with_dinar_base_asks_only_above_1000_euro(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bot.fx, "rate", eur_rate)
+    ctx = bot_context(categories=["Food"], currencies=["дин", "€"],
+                      default_currency="дин", sheets=FakeSheetsClient())
+    ctx.user_data["cat"] = "Food"
+    assert run(bot.MANUAL.type_amount(make_update("1500 дин"), ctx)) == State.TYPING_CMNT
+    ctx.user_data["cat"] = "Food"
+    assert run(bot.MANUAL.type_amount(make_update("150000 дин"), ctx)) == State.ASK_LARGE

@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (merged #89 Payment reminder after #86, #87, #88)  
-**Product code tip:** `main` with PR #97 (2026-11-20) — Payment reminder on the 5th and 20th (#89); Large expense in statistics, Draft card and dashboard (#86–#88)  
+**Updated by:** agent session (fix: Large expense threshold in €, not BASE_CURRENCY)  
+**Product code tip:** `main` with the threshold-Currency fix (2026-11-20) — with `BASE_CURRENCY=RSD` almost every voice Draft was marked «🔶 Крупная трата»; the threshold now carries its own Currency (default 1000 €)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -68,9 +68,11 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Large expense, part 1 (issue #83, spec
   `docs/specs/2026-11-large-receipt-reminders.md`): manual input asks
   «🔶 Это крупная трата?» («Да» / «Нет», typed «да»/«нет» too) after the
-  Currency and before the comment step, only when the amount in
-  `BASE_CURRENCY` is above `LARGE_EXPENSE_THRESHOLD` (default 1000; a bad value
-  → one setup line and 1000). Another Currency is converted with `fx.rate`;
+  Currency and before the comment step, only when the amount is above
+  `LARGE_EXPENSE_THRESHOLD` — an amount with its own Currency («1000 EUR»,
+  «117 000 дин»; a bare number and the default are €, never `BASE_CURRENCY`,
+  so `BASE_CURRENCY=RSD` no longer makes it 1000 дин; a bad value → one setup
+  line and 1000 €). Another Currency is converted with `fx.rate`;
   no rate → no question. The decision is `large_expense.suggest` (no Telegram).
   ⚡ Presets never mark. The mark is `ExpenseRecord.large` / `Row.large`, stored
   in the optional Data column `Large` (alias «Крупная»): the bot writes «да» or

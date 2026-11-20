@@ -239,7 +239,7 @@ MANUAL = flow_manual.ManualFlow(
     who=lambda update, context: get_user_info(update, context)[0],
     all_codes=lambda: picker.CATALOG.codes(),
     large_threshold=lambda context: cfg(context).large_threshold,
-    base_currency=lambda context: cfg(context).default_currency,
+    threshold_currency=lambda context: cfg(context).large_threshold_currency,
     get_rate=lambda src, dst: fx.rate(src, dst),
 )
 
@@ -291,7 +291,7 @@ async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
     def is_large(amount: float, currency: str) -> bool:
         return large_expense.suggest(
             amount, currency, threshold=settings.large_threshold,
-            base=settings.default_currency, get_rate=fx.rate)
+            threshold_currency=settings.large_threshold_currency, get_rate=fx.rate)
 
     # Rates may be read from the network: keep the event loop free.
     await asyncio.to_thread(draft.mark_large, session, is_large)

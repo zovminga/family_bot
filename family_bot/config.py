@@ -9,7 +9,6 @@ so ``/whoami`` works before Google Sheets is set up.
 from __future__ import annotations
 
 import json
-import math
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -25,6 +24,7 @@ from family_bot import currency
 from family_bot import errors
 from family_bot import large_expense
 from family_bot import regular
+from family_bot.amount_input import parse_amount_text
 from family_bot.sheets import SheetsClient, SpreadsheetNotFound, open_client, resolve_creds_path
 
 KEY = "config"  # bot_data key
@@ -71,8 +71,9 @@ class Config:
     summary_hour: int = DEFAULT_SUMMARY_HOUR
     # Hour of the 5th and 20th, family time zone, when the Payment reminder is sent.
     reminder_hour: int = DEFAULT_REMINDER_HOUR
-    # Large expense threshold in the base Currency (LARGE_EXPENSE_THRESHOLD).
+    # Large expense threshold and its Currency (LARGE_EXPENSE_THRESHOLD, «1000 EUR»).
     large_threshold: float = large_expense.DEFAULT_THRESHOLD
+    large_threshold_currency: str = large_expense.DEFAULT_THRESHOLD_CURRENCY
     problems: list[str] = field(default_factory=list)
 
 
@@ -257,21 +258,35 @@ def _reminder_hour(raw: Optional[str], problems: list[str]) -> int:
     return default
 
 
-def _large_threshold(raw: Optional[str], problems: list[str]) -> float:
-    """Positive number from LARGE_EXPENSE_THRESHOLD; a bad value adds a problem line."""
-    default = large_expense.DEFAULT_THRESHOLD
+def _large_threshold(raw: Optional[str], problems: list[str]) -> tuple[float, str]:
+    """
+    Amount and Currency from LARGE_EXPENSE_THRESHOLD («1000», «1000 EUR», «117 000 дин»).
+
+    Parameters
+    ----------
+    raw : str or None
+        Setting value; empty means the default.
+    problems : list[str]
+        Problem lines; a bad value appends one.
+
+    Returns
+    -------
+    tuple of (float, str)
+        Threshold and its Currency (stored symbol). Without a Currency the
+        threshold is in € (``large_expense.DEFAULT_THRESHOLD_CURRENCY``), not
+        the base Currency.
+    """
+    default = (large_expense.DEFAULT_THRESHOLD, large_expense.DEFAULT_THRESHOLD_CURRENCY)
     if not raw or not raw.strip():
         return default
-    try:
-        value = float(raw.strip().replace(",", ".").replace(" ", ""))
-    except ValueError:
-        value = math.nan
-    if math.isfinite(value) and value > 0:
-        return value
+    parsed = parse_amount_text(raw)
+    if parsed is not None:
+        value, cur = parsed
+        return value, cur.symbol if cur is not None else default[1]
     env = large_expense.THRESHOLD_ENV
     problems.append(problem(
-        f"{env}={raw!r} — не число больше нуля, порог крупной траты {default:g}",
-        f"укажите сумму в базовой валюте, например {env}={default:g}, или удалите строку"))
+        f"{env}={raw!r} — не сумма больше нуля, порог крупной траты {default[0]:g} {default[1]}",
+        f"укажите сумму и валюту, например {env}=1000 EUR, или удалите строку"))
     return default
 
 
@@ -400,7 +415,8 @@ def load(env: Mapping[str, str], open_sheets: OpenSheets = open_client) -> Confi
     cfg.summary_chat_id = _summary_chat_id(env.get(SUMMARY_CHAT_ENV), problems)
     cfg.summary_hour = _summary_hour(env.get(SUMMARY_HOUR_ENV), problems)
     cfg.reminder_hour = _reminder_hour(env.get(REMINDER_HOUR_ENV), problems)
-    cfg.large_threshold = _large_threshold(env.get(large_expense.THRESHOLD_ENV), problems)
+    cfg.large_threshold, cfg.large_threshold_currency = _large_threshold(
+        env.get(large_expense.THRESHOLD_ENV), problems)
     cfg.sheets = _open_sheets(env, open_sheets, problems)
     problems.extend(reload(cfg))
     return cfg
