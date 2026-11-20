@@ -84,7 +84,7 @@ def test_manual_today_no_comment_save_does_not_block(monkeypatch: pytest.MonkeyP
                              sheets=lambda _ctx: object(), who=lambda _u, _c: "Azat",
                              all_codes=lambda: ["RSD"],
                              large_threshold=lambda _ctx: 1000.0,
-                             base_currency=lambda _ctx: "€", get_rate=lambda _s, _d: None)
+                             threshold_currency=lambda _ctx: "€", get_rate=lambda _s, _d: None)
     ctx = SimpleNamespace(user_data={"cat": "Food", "amt": 350.0, "cur": "дин",
                                      "spender": "Azat"})
     upd = make_update(query=FakeQuery(manual.TODAY_NO_COMMENT))
