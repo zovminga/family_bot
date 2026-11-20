@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-20  
-**Updated by:** agent session (issue #83: Large expense in manual input and «📅 Этот месяц», merged with #85)  
-**Product code tip:** `e52340c` (2026-11-20) — Large expense: manual-input question, Data column `Large`, «📅 Этот месяц» without Large expenses; on top of main `4dfe75b` (#85, Preset without an amount)  
+**Updated by:** agent session (issue #86: «🔶 Крупная» on the Draft card)  
+**Product code tip:** `88806a9` (2026-11-20) — Large expense on the Draft card: flag by threshold on creation, «🔶 Крупная» toggle, saved to Data `Large`; on top of main `63c335c` (#83)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,15 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Large expense on the Draft card (issue #86, spec stories 2, 3, 7): voice,
+  text and photo Drafts mark each item above `LARGE_EXPENSE_THRESHOLD` (same
+  rule as manual input: `large_expense.suggest`, no rate → no mark) when the
+  card is created. «🔶 Крупная» next to «✏️ Сумма» / «👤 Кто» (one item) or in
+  the item edit (several) sets or removes the mark on any item. The card shows
+  «• 🔶 Крупная трата» or «🔶» before the item's comment. Save writes «да» to
+  the Data column `Large` (adds the column on the first mark). The mark is not
+  recomputed after the amount or Currency is edited. Tests:
+  `tests/test_draft_large.py`.
 - Large expense, part 1 (issue #83, spec
   `docs/specs/2026-11-large-receipt-reminders.md`): manual input asks
   «🔶 Это крупная трата?» («Да» / «Нет», typed «да»/«нет» too) after the
@@ -32,8 +41,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «0», «false» is a mark, so hand edits count. «📅 Этот месяц» and the summary
   on the 1st leave Large expenses out of every sum and end with
   «🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)» (Category
-  when a row has no comment). Undo ignores the column. Not yet: Draft card
-  button (#86), stats «Только крупные» (#87), dashboard (#88) — until #87 the
+  when a row has no comment). Undo ignores the column. Not yet: stats «Только крупные» (#87), dashboard (#88) — until #87 the
   other statistics still count Large expenses, and until #88 the dashboard
   does too. Tests: `tests/test_large_expense.py`.
 - Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
@@ -294,7 +302,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## Open
 
 - New features planned (partly built): Large expense (#83 done: manual input
-  and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard open), receipt
+  and «📅 Этот месяц»; #86 done: Draft card; #87 stats, #88 dashboard open), receipt
   items from the Serbian fiscal QR, Payment reminder on the 5th and 20th. Spec:
   [`docs/specs/2026-11-large-receipt-reminders.md`](specs/2026-11-large-receipt-reminders.md);
   decision on the QR: [`docs/adr/0001-receipt-items-from-fiscal-qr.md`](adr/0001-receipt-items-from-fiscal-qr.md).
