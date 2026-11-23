@@ -14,7 +14,7 @@ from family_bot import navigation as nav
 from family_bot.flows import stats
 from family_bot.sheet_data import Row
 from tests.conftest import TEST_CURRENCY_CODES, FakeSheetsClient
-from tests.known_bugs.fakes import FakeQuery, make_update
+from tests.known_bugs.fakes import FakeBot, FakeQuery, make_update
 
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
@@ -58,18 +58,16 @@ class Chat:
     def __init__(self, flow: stats.StatsFlow, ctx: Any = None) -> None:
         self.flow = flow
         self.ctx = ctx or SimpleNamespace(user_data={})
+        self.bot = FakeBot()  # one chat: shared message ids, every bot message
         self.typed: list[Any] = []  # the User's messages
+        self.card: Any = None  # the questions message of the open request
         self.state: Any = None
 
-    @property
-    def card(self) -> Any:
-        """The questions message (the first bot message of the request)."""
-        return self.typed[0].bot_replies[0]
-
     def open(self) -> "Chat":
-        upd = make_update(nav.SHOW_STATS)
+        upd = make_update(nav.SHOW_STATS, bot=self.bot)
         self.typed.append(upd.message)
         self.state = run(self.flow.begin(upd, self.ctx))
+        self.card = self.bot.sent[-1]
         return self
 
     def tap(self, handler: str, data: str) -> Any:
@@ -78,7 +76,7 @@ class Chat:
         return query
 
     def type(self, handler: str, text: str) -> Any:
-        upd = make_update(text)
+        upd = make_update(text, bot=self.bot)
         self.typed.append(upd.message)
         self.state = run(getattr(self.flow, handler)(upd, self.ctx))
         return upd
@@ -87,17 +85,17 @@ class Chat:
         return self.card.edits[-1][0] if self.card.edits else self.card.text
 
     def buttons(self) -> dict[str, str]:
-        kw = self.card.edits[-1][1] if self.card.edits else self.typed[0].replies[0][1]
+        kw = self.card.edits[-1][1] if self.card.edits else self.card.kw
         return {b.text: b.callback_data for row in kw["reply_markup"].inline_keyboard
                 for b in row}
 
     def answer(self) -> str:
-        (msg,) = self.card.bot_replies
+        (msg,) = [m for m in self.bot.sent if m is not self.card]
         return msg.text
 
     def left_in_chat(self) -> list[str]:
         """Texts of bot messages and typed answers not deleted (menu tap left out)."""
-        messages = [self.card, *self.card.bot_replies, *self.typed[1:]]
+        messages = [*self.bot.sent, *self.typed[1:]]
         return [m.text for m in messages if not m.deleted]
 
 
@@ -137,7 +135,7 @@ def test_custom_period_only_the_answer_stays_in_chat() -> None:
     chat.type("on_convert_currency", "дин")
     assert chat.state == states.State.CHOOSE_ACTION
     # Every question was an edit of one message; nothing else was sent.
-    assert len(chat.typed[0].bot_replies) == 1 and all(not t.bot_replies for t in chat.typed[1:])
+    assert len(chat.bot.sent) == 2  # the questions message and the answer
     answer = chat.answer()
     assert chat.left_in_chat() == [answer]
     assert answer.startswith(
