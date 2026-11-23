@@ -20,7 +20,8 @@ from family_bot.undo import KEY_LAST_SAVE
 
 HOME_BUTTON = "🏠 В начало"
 # Reply keyboards stay on the phone until replaced, so labels from before the
-# Russian UI still work.
+# Russian UI still work. The main menu has no home button since issue #107;
+# old menu keyboards and the ⚡ Preset picker still show it.
 HOME_LABELS = {HOME_BUTTON, "В начало", "🏠 To start", "To start"}
 HOME_CALLBACK = "to_start"
 
@@ -56,6 +57,7 @@ MENU_TEXT = filters.Text(list(MENU_ACTIONS))
 
 
 MENU_LABELS = {ADD_EXPENSE, ADD_PRESET, THIS_MONTH, SHOW_STATS, DASHBOARD}
+GREETING = "👋 Что делаем?"
 
 
 def is_menu_text(text: str) -> bool:
@@ -100,11 +102,10 @@ def inline_markup(grid: ButtonGrid, *, home: bool = False) -> InlineKeyboardMark
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Two rows, no home button: every step has its own way back and /cancel."""
     kb = [
         [ADD_EXPENSE, ADD_PRESET],
-        [THIS_MONTH, SHOW_STATS],
-        [DASHBOARD],
-        home_row(),
+        [THIS_MONTH, SHOW_STATS, DASHBOARD],
     ]
     return ReplyKeyboardMarkup(kb, resize_keyboard=True)
 
@@ -117,10 +118,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         target = update.callback_query.message
     else:
         return
-    await target.reply_text(
-        "👋 Привет! Что делаем?",
-        reply_markup=main_menu_keyboard(),
-    )
+    await target.reply_text(GREETING, reply_markup=main_menu_keyboard())
 
 
 async def leave_flow(context: ContextTypes.DEFAULT_TYPE) -> None:

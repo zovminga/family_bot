@@ -47,7 +47,7 @@ def creds(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_alert_text_names_reason_and_log() -> None:
     text = fa.failure_text("сборка: RuntimeError", TOKEN)
-    assert "Сборка дашборда не удалась" in text
+    assert "Дашборд не собрался" in text
     assert "сборка: RuntimeError" in text
     assert "launchd.log" in text
 
@@ -55,7 +55,7 @@ def test_alert_text_names_reason_and_log() -> None:
 def test_alert_text_masks_token_and_stays_short() -> None:
     text = fa.failure_text(f"bad url bot{TOKEN}/x " + "x" * 2000, TOKEN)
     assert TOKEN not in text
-    assert "<BOT_TOKEN>" in text
+    assert "&lt;BOT_TOKEN&gt;" in text  # the alert is HTML
     assert len(text) < 500
 
 

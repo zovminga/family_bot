@@ -47,7 +47,7 @@ def _card(query, n=0):
 def test_typed_amount_updates_the_card(ctx):
     session = _open_draft(ctx)
     query = _tap(ctx, session, "amt:0")
-    assert "Введите новую сумму" in _card(query)[0]
+    assert "Введи новую сумму" in _card(query)[0]
     with pytest.raises(ApplicationHandlerStop):
         run(bot.draft_amount_text(make_update("1 200 €"), ctx))
     assert (session.items[0]["amount"], session.items[0]["currency"]) == (1200.0, "€")
@@ -63,7 +63,7 @@ def test_bad_amount_is_asked_again(ctx):
     with pytest.raises(ApplicationHandlerStop):
         run(bot.draft_amount_text(upd, ctx))
     text, _ = _card(query, -1)
-    assert "больше нуля" in text and "Введите новую сумму" in text
+    assert "больше нуля" in text and "Введи новую сумму" in text
     assert upd.message.replies == []
     assert session.items[0]["amount"] == 350.0
     assert bot.KEY_AMOUNT_EDIT in ctx.user_data
@@ -138,7 +138,7 @@ def test_currency_button_shows_recent_currencies_of_this_user(ctx):
     session = _open_draft(ctx)
     query = _tap(ctx, session, "cur:0")
     text, markup = _card(query)
-    assert "введите код" in text
+    assert "введи код" in text
     rows = [[b.text for b in row] for row in markup.inline_keyboard]
     assert rows == [["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"], ["🌍 Другая"], ["⬅️ Назад"]]
 
