@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #104: month summary in look B)  
-**Product code tip:** branch for issue #104 (2026-11-23) — «📅 Этот месяц» and the summary on the 1st in look B: bold totals, share bars per Category, details collapsed  
+**Updated by:** agent session (issue #104: month summary in look B; merged main with #106)  
+**Product code tip:** branch for issue #104 (2026-11-23) — «📅 Этот месяц» and the summary on the 1st in look B: bold totals, share bars per Category, details collapsed; on top of #106 (Payment reminder in look B)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -28,6 +28,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «📅 Этот месяц» and the 1st-of-month post in `DASHBOARD_CHAT_ID` share this
   text; statistics answers keep the old look until #105. Not checked in a real
   Telegram yet.
+- Payment reminder in look B (issue #106, spec `docs/specs/2026-11-bot-look.md`
+  stories 52–55): title in bold; each payment is a block «<b>Preset</b> — 850 € ·
+  Category», the month's rows of that Category below it in a quote («уже есть:
+  дата — сумма — комментарий»); blocks split by an empty line; human text
+  escaped. «⚡ Внести: <name>» is `success` (green), «✅ Уже внесено» has no
+  style. The reply after «⚡ Внести» is «✅ Сохранено» with
+  «<b>Аренда — 850 €</b> / Жильё · 20.11 · Оба» in a quote
+  (`payment_reminder.saved_text`, local to the reminder). Follow-up after #101:
+  build it with #101's saved-line helper instead. The amount prompt says
+  «Ответь на это сообщение суммой.» (was «Ответьте»). The bot deletes nothing in
+  the group chat. Not checked in a real Telegram chat yet.
 - HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
   first of #100–#108): the Application sends every message with parse mode
   HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`). Human text
@@ -371,8 +382,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
-- New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button styles; #104 built: month summary;
-  the rest is spec only): HTML in every message,
+- New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
+  styles; #104 built: month summary; #106 built: Payment reminder; the rest is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons
