@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #100: HTML in every message, button styles)  
-**Product code tip:** branch for issue #100 (2026-11-23) — every message is Telegram HTML, human text escaped, buttons can carry a style; look almost unchanged  
+**Updated by:** agent session (issue #101: Draft card in variant B, saved/undone lines)  
+**Product code tip:** branch for issue #101 (2026-11-23) — Draft card with labelled bold fields, green «✅ Сохранить» / red «❌ Отмена», «✅ Сохранено» / «↩️ Отменено» quote lines  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,21 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Draft card in variant B (issue #101, spec `docs/specs/2026-11-bot-look.md`
+  stories 1–3, 6, 8, 10–12, 30–34, 36–37): voice, typed text and receipt
+  Drafts show «📝 <b>Черновик траты</b>», the transcript / typed text /
+  «Чек · <merchant>» in a quote, then «Сумма: <b>350 дин</b>», Что, Категория,
+  Дата, Кто and «🔶 Крупная трата». Several items: «1. Хлеб — <b>120 дин</b> ·
+  Еда · 23.11.2026» lines and «Итого» per Currency. «✅ Сохранить» is green
+  (`success`), «❌ Отмена» red (`danger`), the others plain; the category
+  button is «🏷 Категория». Save turns the card into «✅ Сохранено» with the
+  records in a quote (one line per item) and a red «↩️ Отменить» that undoes
+  them all; undo (any save) turns the message into «↩️ Отменено» with the
+  records struck through and no buttons; a tap after 30 minutes drops the
+  button. «❌ Отмена» leaves «Черновик отменён». Code: `draft_expense.card_text`,
+  `undo.saved_text` / `undone_text`. Manual, ⚡ Preset and Payment reminder
+  saves keep their old one-line «✅ Сохранено: …» until #103 / #106; editing
+  inside the card (#102) is not done. Not checked in a real Telegram chat yet.
 - HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
   first of #100–#108): the Application sends every message with parse mode
   HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`). Human text
@@ -30,7 +45,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the multi-item Draft card now says «3 траты» instead of «трат(ы)»). Button
   grids take an optional style, `look.SUCCESS` / `look.DANGER`, which
   `navigation.inline_markup` (the one grid → inline keyboard adapter) puts in
-  Telegram's `style` field; no button is coloured yet (#101, #106 do that).
+  Telegram's `style` field (#101 colours the Draft and undo buttons).
   python-telegram-bot lower bound is 22.7. Other texts look as before; the
   redesign is #101–#108. Tests: `tests/test_look.py`. Not checked in a real
   Telegram chat yet.

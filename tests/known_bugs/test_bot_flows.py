@@ -113,7 +113,7 @@ CHIPS = {"comment": "chips", "amount": 100.0, "currency": "дин",
 
 def save_cb(session):
     """callback_data of the card's «✅ Сохранить» button."""
-    label, cb = draft.main_buttons(session)[0][0]
+    label, cb, *_ = draft.main_buttons(session)[0][0]
     assert label.startswith("✅")
     return cb
 

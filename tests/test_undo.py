@@ -22,8 +22,9 @@ def _client():
 
 
 def _callback(buttons):
-    [[(label, data)]] = buttons
+    [[(label, data, style)]] = buttons
     assert label == "↩️ Отменить"
+    assert style == "danger"
     return data
 
 
@@ -33,7 +34,8 @@ def test_undo_deletes_exactly_the_saved_row():
     client = _client()
     result = undo.undo(user_data, data, client, NOW + timedelta(minutes=1))
     assert result.done
-    assert result.text == "↩️ Отменено, трата удалена: Food — 350 дин, 19.11.2026"
+    assert result.text == ("↩️ Отменено\n<blockquote><s>Food — 350 дин</s>\n"
+                           "19.11 · Azat</blockquote>")
     assert [r[6] for r in client.read_data_values()[1:]] == ["bread"]
 
 
@@ -55,6 +57,7 @@ def test_someone_elses_record_cannot_be_undone():
     client = _client()
     result = undo.undo(other, data, client, NOW)
     assert not result.done
+    assert not result.drop_button  # still the owner's button
     assert "только свою последнюю" in result.text
     assert len(client.read_data_values()) == 3
 
@@ -74,6 +77,7 @@ def test_old_save_cannot_be_undone():
     client = _client()
     result = undo.undo(user_data, data, client, NOW + undo.UNDO_WINDOW + timedelta(seconds=1))
     assert not result.done
+    assert result.drop_button  # dead for everyone: the adapter removes it
     assert "30 минут" in result.text
     assert len(client.read_data_values()) == 3
 
@@ -96,7 +100,10 @@ def test_several_rows_are_undone_together():
     data = _callback(undo.remember(user_data, [REC, other], NOW))
     client = _client()
     result = undo.undo(user_data, data, client, NOW)
-    assert result.text == "↩️ Отменено, удалено трат: 2"
+    assert result.text == (
+        "↩️ Отменено\n<blockquote>"
+        "<s>Food — 350 дин</s> · 19.11 · Azat\n"
+        "<s>bread — 90 дин</s> · Food · 19.11 · Lisa</blockquote>")
     assert client.read_data_values() == [HEADERS]
 
 
@@ -112,3 +119,17 @@ def test_failed_delete_keeps_the_undo_available():
     except RuntimeError:
         pass
     assert undo.undo(user_data, data, _client(), NOW).done
+
+
+def test_saved_text_quotes_one_record_in_two_lines():
+    rec = ExpenseRecord(date="23.11.2026", category="Еда", amount=350.0, currency="дин",
+                        who="Аня", comment="Кофе")
+    assert undo.saved_text([rec]) == (
+        "✅ Сохранено\n<blockquote><b>Кофе — 350 дин</b>\nЕда · 23.11 · Аня</blockquote>")
+
+
+def test_saved_and_undone_text_escape_human_text():
+    rec = ExpenseRecord(date="23.11.2026", category="Еда <дом>", amount=5.0, currency="€",
+                        who="Аня", comment="M&M's")
+    assert "<b>M&amp;M's — 5 €</b>" in undo.saved_text([rec])
+    assert "<s>M&amp;M's — 5 €</s>\nЕда &lt;дом&gt;" in undo.undone_text([rec])

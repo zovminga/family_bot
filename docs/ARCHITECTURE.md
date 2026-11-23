@@ -198,7 +198,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
-**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, header «✍️ «<text>»». No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` or a menu button first.
+**Text** (`text_input.py`): any text in the main menu (`CHOOSE_ACTION`) that is not a menu button goes to `bot.text_expense`. Text with no digit gets `text_input.HINT` without a Claude call. Otherwise `text_input.draft_from_text` calls `voice_input.extract_expenses` (same prompt, snapping and amount check as voice) → `draft_expense.session_from_text` → the same Draft card, the typed text in its quote. No expense found → `HINT`; a Claude error → `errors.NOT_PARSED`. Text only reaches the handler inside the conversation, so after a bot restart the user needs `/start` or a menu button first.
 
 **Photo** (`photo_input.py`): image bytes → Claude Vision line items + semantic buckets → Python grouping/sums → `session_from_receipt`. No fiscal QR / zbar (Render-friendly).
 
@@ -217,8 +217,26 @@ once. A row edited or deleted in the sheet since → nothing is deleted. Read
 and delete run under one lock (one bot process), so two Users' undos cannot
 shift each other's rows; a hand edit in the sheet between them still can. Refused
 (alert, button stays): another User's save (their `user_data` holds none), an
-earlier save of the same User, a save older than 30 minutes or from before a
-restart.
+earlier save of the same User, a save from before a restart. An own save past
+30 minutes gets the alert and loses its button (`UndoResult.drop_button`; no
+timer, it goes on the tap). The button is red
+(`look.DANGER`). `undo.saved_text` / `undo.undone_text` build «✅ Сохранено» /
+«↩️ Отменено» with the records in a quote (bold / struck through; one record:
+«what — amount» line, then Category · day.month · Spender; several: one line
+each). The Draft save uses `saved_text`; a done undo replaces any message with
+`undone_text` and no buttons. Manual, ⚡ Preset and Payment reminder saves still
+write their own one-line «✅ Сохранено: …» (#103, #106).
+
+**Draft card look** (issue #101, spec `docs/specs/2026-11-bot-look.md`, variant
+B): `card_text` → «📝 <b>Черновик траты</b>» (several items: «📝 <b>Черновик:
+3 траты</b>»), then `DraftSession.transcript` in a quote (voice transcript,
+typed text, or «Чек · <merchant>» for a receipt), then for one item
+«Сумма / Что / Категория / Дата / Кто: <b>value</b>» lines (`look.field`) and
+«🔶 Крупная трата»; for several «1. <comment> — <b>amount</b> · Category · date»
+lines and «Итого: <b>…</b>» summed per Currency («120 дин + 5 €»). The note
+follows as plain text. Emoji only in the title (and the 🔶 mark). Buttons:
+«✅ Сохранить» `success`, «❌ Отмена» `danger`, the rest plain; «❌ Отмена» turns
+the card into «Черновик отменён».
 
 **Draft card edits:** «✏️ Сумма» (`amt:<i>`) sets
 `user_data["draft_amount_edit"]`; the next text goes through
@@ -239,7 +257,7 @@ shown: each item gets `large` from `large_expense.suggest` (threshold
 unmarked). The flag is not recomputed after «✏️ Сумма» or «💱 Валюта».
 «🔶 Крупная» (`large:<i>`) flips it for any item, below the threshold too; it
 sits next to «✏️ Сумма» / «👤 Кто» on a one-item card and in the item edit of a
-multi-item card. The card shows «• 🔶 Крупная трата» (one item) or
+multi-item card. The card shows «🔶 Крупная трата» (one item) or
 «🔶» before the comment (several). `save_drafts` passes it to
 `ExpenseRecord.large` → Data column `Large`. An item without the key is unmarked.
 
