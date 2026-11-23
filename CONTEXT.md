@@ -39,6 +39,10 @@ An Expense proposed from voice, typed text («кофе 350») or receipt photo, 
 Each Draft card has its own short id; several can be open at once.
 _Avoid_: Pending expense, suggestion
 
+**Live card**:
+One bot message that a step-by-step flow keeps editing instead of sending a new question per step (Draft edits; manual input next). The person's answers to it are deleted in a private chat; when newer bot messages bury it, it is sent again at the bottom.
+_Avoid_: Chain of questions, prompt message
+
 **Preset**:
 A reusable Expense from the Regular_expenses sheet (monthly or one-off). A Preset may have no amount (utilities that change every month); the amount is then asked when it is used.
 _Avoid_: Default expense, regular (as a noun), template
