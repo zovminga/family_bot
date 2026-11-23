@@ -27,7 +27,6 @@ from family_bot import look
 from family_bot import navigation as nav
 from family_bot import payment_reminder as pr
 from family_bot import undo
-from family_bot.currency import format_amount
 from family_bot.expense import append_expense
 from family_bot.monthly_summary import job_tz
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
@@ -128,10 +127,7 @@ async def _save(context: ContextTypes.DEFAULT_TYPE, reply_to: Message, reminder:
         return
     undo_grid = undo.remember(cast(dict, context.user_data), [record], clock.now())
     await _redraw(context, reminder)
-    await reply_to.reply_text(
-        look.escape(
-            f"✅ Сохранено: {preset['name']} — {format_amount(amount, currency)} · {today}"),
-        reply_markup=nav.inline_markup(undo_grid))
+    await reply_to.reply_text(pr.saved_text(record), reply_markup=nav.inline_markup(undo_grid))
 
 
 async def _ask_amount(context: ContextTypes.DEFAULT_TYPE, reply_to: Message,
@@ -139,8 +135,7 @@ async def _ask_amount(context: ContextTypes.DEFAULT_TYPE, reply_to: Message,
                       prefix: str = "") -> None:
     """Send the amount prompt as a ForceReply and remember who must answer it."""
     preset = reminder.payments[index].preset
-    text = look.escape(
-        prefix + pr.PROMPT_TEXT.format(name=preset["name"], currency=preset["currency"]))
+    text = look.escape(prefix) + pr.prompt_text(preset)
     prompt = await reply_to.reply_text(text, reply_markup=ForceReply())
     pr.prompts(context.bot_data)[(prompt.chat_id, prompt.message_id)] = pr.AmountPrompt(
         reminder_id=reminder.id, index=index, user_id=user_id)

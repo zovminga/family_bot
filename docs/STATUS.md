@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #101: Draft card in variant B, saved/undone lines)  
-**Product code tip:** branch for issue #101 (2026-11-23) — Draft card with labelled bold fields, green «✅ Сохранить» / red «❌ Отмена», «✅ Сохранено» / «↩️ Отменено» quote lines  
+**Updated by:** agent session (issue #101: Draft card in variant B, saved/undone lines; merged main with #104, #106)  
+**Product code tip:** branch for issue #101 (2026-11-23) — Draft card with labelled bold fields, green «✅ Сохранить» / red «❌ Отмена», «✅ Сохранено» / «↩️ Отменено» quote lines; on top of #104 (month summary in look B) and #106 (Payment reminder in look B)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -29,9 +29,32 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   them all; undo (any save) turns the message into «↩️ Отменено» with the
   records struck through and no buttons; a tap after 30 minutes drops the
   button. «❌ Отмена» leaves «Черновик отменён». Code: `draft_expense.card_text`,
-  `undo.saved_text` / `undone_text`. Manual, ⚡ Preset and Payment reminder
-  saves keep their old one-line «✅ Сохранено: …» until #103 / #106; editing
+  `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves keep their old
+  one-line «✅ Сохранено: …» until #103; the Payment reminder builds the same
+  look with its own `payment_reminder.saved_text` (#106); editing
   inside the card (#102) is not done. Not checked in a real Telegram chat yet.
+- Month summary in look B (issue #104, spec `docs/specs/2026-11-bot-look.md`,
+  stories 45–51): `analytics.format_month_summary` writes «📅 <b>Итог за
+  ноябрь 2026</b>», then one block per Currency: «💰 Итого <b>сумма</b>» and
+  every Category (not only the top 3) as «<b>Еда</b> 48 300» with a 10-cell
+  bar and the percent of that Currency's total. Currencies are never added.
+  «👤 По людям» (one line per Spender, amounts in several Currencies joined by
+  « · ») and «🔶 Крупные (не в итоге)» (one line per Large expense) sit in one
+  `<blockquote expandable>`. A month without expenses: header and «Трат нет».
+  «📅 Этот месяц» and the 1st-of-month post in `DASHBOARD_CHAT_ID` share this
+  text; statistics answers keep the old look until #105. Not checked in a real
+  Telegram yet.
+- Payment reminder in look B (issue #106, spec `docs/specs/2026-11-bot-look.md`
+  stories 52–55): title in bold; each payment is a block «<b>Preset</b> — 850 € ·
+  Category», the month's rows of that Category below it in a quote («уже есть:
+  дата — сумма — комментарий»); blocks split by an empty line; human text
+  escaped. «⚡ Внести: <name>» is `success` (green), «✅ Уже внесено» has no
+  style. The reply after «⚡ Внести» is «✅ Сохранено» with
+  «<b>Аренда — 850 €</b> / Жильё · 20.11 · Оба» in a quote
+  (`payment_reminder.saved_text`, local to the reminder). Follow-up after #101:
+  build it with #101's saved-line helper instead. The amount prompt says
+  «Ответь на это сообщение суммой.» (was «Ответьте»). The bot deletes nothing in
+  the group chat. Not checked in a real Telegram chat yet.
 - HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
   first of #100–#108): the Application sends every message with parse mode
   HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`). Human text
@@ -112,9 +135,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   (`SheetsClient.add_data_column`); `scripts/bootstrap_sheet.py` adds it to a
   new or existing Data sheet. On read any non-empty cell except «нет», «no»,
   «0», «false» is a mark, so hand edits count. «📅 Этот месяц» and the summary
-  on the 1st leave Large expenses out of every sum and end with
-  «🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)» (Category
-  when a row has no comment). Undo ignores the column. Draft card, statistics
+  on the 1st leave Large expenses out of every sum and list them in the
+  collapsed block under «🔶 Крупные (не в итоге)» (Category when a row has no
+  comment; look B since #104). Undo ignores the column. Draft card, statistics
   and dashboard: see the #86, #87 and #88 bullets above. Tests:
   `tests/test_large_expense.py`.
 - Preset without an amount (issue #85, spec «Напоминание о платежах», stories 42–43):
@@ -219,8 +242,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
 - «📅 Этот месяц» (issue #35, plan 4.1): one main-menu tap shows the current
-  month (`clock.now()`): total, top 3 Categories and the sum per Spender.
-  Each Currency gets its own block; Currencies are never added together.
+  month (`clock.now()`): total, Categories and the sum per Spender (look B
+  since #104, see the top bullet). Each Currency gets its own block;
+  Currencies are never added together.
   `analytics.month_summary(rows, "YYYY-MM")` computes it for any month and
   `analytics.format_month_summary` writes the text, so the monthly summary on
   the 1st (issue #36) can call them for the previous month. Phones get the
@@ -375,7 +399,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## Open
 
 - New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
-  styles; the rest is spec only): HTML in every message,
+  styles; #104 built: month summary; #106 built: Payment reminder; the rest is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons
