@@ -22,7 +22,7 @@ from tests.known_bugs.fakes import FakeQuery, FakeSheets, known_bug, make_update
 from family_bot.conversation_states import State
 from family_bot.sheet_data import Row
 
-CHOOSE_ACTION, STAT_SHOW_DETAILS = State.CHOOSE_ACTION, State.STAT_SHOW_DETAILS
+CHOOSE_ACTION = State.CHOOSE_ACTION
 
 ROWS = [
     Row(date=date(2026, 10, 5), month="2026-10", category="Food", amount=100.0,
@@ -51,22 +51,30 @@ def last_reply_texts(update):
     return [t for t, _ in update.message.replies]
 
 
+def tap(handler, payload, ctx):
+    """Tap a stats button «st:<payload>» under the questions message."""
+    query = FakeQuery(flow_stats.CALLBACK + payload)
+    return run(handler(make_update(query=query), ctx)), query
+
+
 # 1. Stats "Yes" path left the month behind → a later custom period showed the old month.
 def test_custom_period_after_month_flow_uses_requested_period(ctx):
     run(bot.choose_action(make_update(nav.SHOW_STATS), ctx))
-    run(bot.STATS.on_category(make_update(flow_stats.ALL_BUTTON), ctx))
-    run(bot.STATS.on_type(make_update(flow_stats.MONTHS_BUTTON), ctx))
-    run(bot.STATS.on_month(make_update("2026-10"), ctx))
-    assert run(bot.STATS.on_group_currency(make_update(flow_stats.YES_BUTTON), ctx)) == CHOOSE_ACTION
+    tap(bot.STATS.on_category, flow_stats.ALL, ctx)
+    tap(bot.STATS.on_type, flow_stats.MONTHS, ctx)
+    tap(bot.STATS.on_month, flow_stats.MONTH + "2026-10", ctx)
+    state, _ = tap(bot.STATS.on_group_currency, flow_stats.YES, ctx)
+    assert state == CHOOSE_ACTION
     # second query from the main menu: custom period in November
-    run(bot.choose_action(make_update(nav.SHOW_STATS), ctx))
-    run(bot.STATS.on_category(make_update(flow_stats.ALL_BUTTON), ctx))
-    run(bot.STATS.on_type(make_update(flow_stats.PERIOD_BUTTON), ctx))
+    upd = make_update(nav.SHOW_STATS)
+    run(bot.choose_action(upd, ctx))
+    card = upd.message.bot.sent[-1]
+    tap(bot.STATS.on_category, flow_stats.ALL, ctx)
+    tap(bot.STATS.on_type, flow_stats.PERIOD, ctx)
     run(bot.STATS.on_date_from(make_update("01.11.2026"), ctx))
     run(bot.STATS.on_date_to(make_update("30.11.2026"), ctx))
-    upd = make_update(flow_stats.YES_BUTTON)
-    run(bot.STATS.on_group_currency(upd, ctx))
-    result = last_reply_texts(upd)[0]
+    tap(bot.STATS.on_group_currency, flow_stats.YES, ctx)
+    result = card.bot.sent[-1].text
     assert "с 01.11.2026 по 30.11.2026" in result, result
 
 
@@ -77,20 +85,19 @@ def test_start_clears_previous_flow_state(ctx):
     assert flow_stats.QUERY_KEY not in ctx.user_data, ctx.user_data
 
 
-# 3. "No" grouping + convert to the only currency (or FX failure) → no details →
-#    main menu was shown but state stayed STAT_SHOW_DETAILS → next menu tap was eaten.
+# 3. Conversion with nothing to convert (or FX failure) used to leave the state on
+#    a details question → the next menu tap was eaten.
 def test_no_details_returns_to_menu_state(ctx):
-    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", group_by_currency=False)
+    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10")
     state = run(bot.STATS.on_convert_currency(make_update("дин"), ctx))
-    assert state == CHOOSE_ACTION, f"state={state} (STAT_SHOW_DETAILS={STAT_SHOW_DETAILS})"
+    assert state == CHOOSE_ACTION, f"state={state}"
 
 
-def test_menu_tap_after_no_details_is_not_swallowed(ctx):
-    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10", group_by_currency=False)
-    state = run(bot.STATS.on_convert_currency(make_update("дин"), ctx))
-    handler = {STAT_SHOW_DETAILS: bot.STATS.on_show_details, CHOOSE_ACTION: bot.choose_action}[state]
+def test_menu_tap_after_conversion_is_not_swallowed(ctx):
+    ctx.user_data[flow_stats.QUERY_KEY] = flow_stats.StatQuery(month="2026-10")
+    assert run(bot.STATS.on_convert_currency(make_update("дин"), ctx)) == CHOOSE_ACTION
     upd = make_update(nav.ADD_EXPENSE)
-    run(handler(upd, ctx))
+    run(bot.choose_action(upd, ctx))
     assert "Выберите категорию" in last_reply_texts(upd)[0], last_reply_texts(upd)
 
 

@@ -77,7 +77,7 @@ Finances never share across installs.
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes; item key `large` (Large expense flag: `mark_large` on creation, `large:<i>` toggle, written by `save_drafts`) | Re-implement confirm UI |
 | `live_card.py` | Live card (Telegram adapter). `show(card, text, markup, markup_only=)` edits the card, or in a private chat where `TrackingBot.sent_log` holds a newer bot message, sends it again at the bottom and deletes the old one; returns the card to keep. `drop_reply(message)` deletes the person's answer in a private chat. `TrackingBot` (the Application's bot) records every `send*` result and every `delete_message` per chat (last 20 ids); edits do not count. «Message is not modified» on an edit is ignored | Delete messages in group chats; track the last message by hand in a flow |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
-| `analytics.py` | Filters and totals over `list[Row]`; no I/O. `filter_rows`, `aggregate`, `last_n`, `format_last_n` take `large=False` (Large expenses left out) or `large=True` (only Large expenses; nothing → «🔶 Крупных трат за этот период нет» / «📭 Крупных трат нет»). Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders — Large expenses left out — plus `large`, that month's Large expense rows) and `format_month_summary` for any `YYYY-MM` (HTML, look B: bold total and every Category with a `look.bar` share per Currency; Spenders and «🔶 Крупные (не в итоге)» in one `look.expandable_quote`; «Трат нет» for an empty month) |
+| `analytics.py` | Filters and totals over `list[Row]`; no I/O. `filter_rows`, `last_n`, `format_last_n`, `format_period_stats` take `large=False` (Large expenses left out) or `large=True` (only Large expenses; nothing → «🔶 Крупных трат за этот период нет» / «📭 Крупных трат нет»). Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders — Large expenses left out — plus `large`, that month's Large expense rows) and `format_month_summary` for any `YYYY-MM` (HTML, look B: bold total and every Category with a `look.bar` share per Currency; Spenders and «🔶 Крупные (не в итоге)» in one `look.expandable_quote`; «Трат нет» for an empty month). `format_period_stats(rows, header, …)` builds a statistics answer for a month or a period in the same look (Large expenses of the period in the collapsed block unless they are the subject; with `convert_to` one block in that Currency and «💱 Курс» lines in the collapsed block; `convert_rows` does the conversion). `format_last_n` lines: «<b>Кофе — 350 дин</b> · Еда · 23.11 · Аня» under «📜 <b>Последние записи</b>» (🔶 header for Large expenses) |
 | `large_expense.py` | Large expense decision: `suggest(amount, currency, threshold=, base=, get_rate=)` — above the threshold in the base Currency; no rate → False. `THRESHOLD_ENV`, `DEFAULT_THRESHOLD` | Compare an amount with the threshold elsewhere | Mix Sheets or HTTP into stats |
 | `fx.py` | Exchange rates from exchangerate-api.com: `fetch_rates(base_iso)` (whole table, dashboard) and `rate(from, to)` (one pair, `None` on failure; bot stats via `StatsFlow(get_rate=fx.rate)`). `rate` reads the table of the target Currency from `RATES` (`RateCache`): every source Currency of one stats request shares one call, the table is kept 1 h (`RATE_TTL_SEC`), a failed read is not repeated for 60 s. Tests replace `fx.RATES` (autouse fixture: no network). Blocking: the bot calls it in `asyncio.to_thread` | Call the rates API elsewhere |
 | `llm.py` | `client()`: Claude client with the bot limits `LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`; `reply_text(resp)` and `extract_json_object(text)` for model replies, in the bot and the dashboard | Parse JSON out of a model reply by hand |
@@ -86,7 +86,7 @@ Finances never share across installs.
 | `look.py` | Bot look, no Telegram. Every message is Telegram HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`), so human text reaches a message only through `escape` (`<`, `>`, `&`; quotes stay). Leaf helpers take plain text and escape it: `bold`, `strike`, `code`, `field` («label: <b>value</b>»); `quote` / `expandable_quote` take HTML. `bar(share)` — 10-cell share bar; `plural` / `expenses` — «1 трата / 3 траты / 5 трат». `Button` = (label, callback_data[, style]), `ButtonGrid`, styles `SUCCESS` / `DANGER` | Put user text into a message unescaped; build HTML tags by hand where a helper exists |
 | `navigation.py` | Main-menu labels (`ADD_EXPENSE`, `ADD_PRESET`, `THIS_MONTH`, `SHOW_STATS`, `DASHBOARD`, matched by `bot.choose_action`), «return home» labels/callbacks (old English labels still accepted); `home_fallbacks()` (the only home handler, in the `ConversationHandler` `fallbacks`); `INPUT_TEXT` (text a state reads: not a command, not home); `inline_markup(grid, home=)` — the one adapter from a `look.ButtonGrid` to `InlineKeyboardMarkup`, style → the button's `style` field (Bot API 9.4, python-telegram-bot ≥ 22.7) | Check the home button inside a state handler; build `InlineKeyboardButton` rows from a grid by hand |
 | `flows/manual.py` | Manual add conversation: `ManualFlow` handlers and their `states()`; step values in `user_data` (`cat`, `amt`, `cur`, `spender`, `large`, `comment`); data sources injected from `bot.py` (threshold, base Currency and `fx.rate` for the Large expense step) | Add manual-input handlers to `bot.py` |
-| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`; `this_month` answers «📅 Этот месяц» from the menu without a conversation state; request state in one `StatQuery` (`user_data["stat_query"]`); data sources injected from `bot.py`, each called with the handler's `context` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
+| `flows/stats.py` | Statistics conversation: `StatsFlow` handlers and their `states()`; `this_month` answers «📅 Этот месяц» from the menu without a conversation state; request state in one `StatQuery` (`user_data["stat_query"]`) and the questions message in `user_data["stat_card"]`; data sources injected from `bot.py`, each called with the handler's `context`. Answers: `analytics.format_period_stats` (month / period, month-summary look) and `analytics.format_last_n` | Keep stats parameters as loose `user_data` keys; add stats handlers to `bot.py` |
 | `per_user.py` | `PerUserUpdateProcessor` (python-telegram-bot `concurrent_updates`): updates of different users run together, one user's updates run in order | Turn on plain `concurrent_updates(True)`: a Draft double tap would save twice |
 | `bot.py` | Telegram I/O adapters + wiring. Blocking calls (Sheets, `config.load` / `reload`, Vosk, Claude) go through `asyncio.to_thread`; `flows/stats.py` and `flow_preset.py` do the same for rows, FX and preset saves | Call Sheets or FX directly in a handler: it freezes the event loop for everyone |
 
@@ -114,7 +114,7 @@ One `ConversationHandler` (`bot.py` `build_application()`), states in the
            │                 no amount → TYPING_PRESET_AMT → append_expense → home
            └─ stats      → STAT_CAT [all | one Category | 🔶 only Large] → STAT_TYPE → (date|month path)
                              → STAT_GROUP_CURRENCY → STAT_CONVERT_CURRENCY
-                             → result → [STAT_SHOW_DETAILS] → CHOOSE_ACTION
+                             → answer (new message; questions message deleted) → CHOOSE_ACTION
 ```
 
 Stats (`flows/stats.py`): the menu tap and the category step each start a new
@@ -122,8 +122,15 @@ Stats (`flows/stats.py`): the menu tap and the category step each start a new
 «🔶 Только крупные» choice (`StatQuery.only_large`) never carry over. Every
 request leaves Large expenses out; `only_large` takes the same steps over Large
 expenses only. Every exit returns `CHOOSE_ACTION` and drops the query; `/start`
-drops it too. `STAT_SHOW_DETAILS` is entered only when there are conversion
-details to show. The Conversion target (`STAT_CONVERT_CURRENCY`) uses the
+drops it too. All questions are one bot message (`user_data["stat_card"]`)
+that each step edits; the step buttons are inline (callback prefix `st:`),
+dates and a Currency name are typed and the typed message is deleted (`live_card.drop_reply`, private
+chat only). The answer is a new message, then the questions message is
+deleted. The main-menu keyboard stays on screen: `STATS.states(menu=choose_action)`
+sends a menu tap (and any typed text on a buttons-only step) to the menu after
+deleting the questions. The inline «🏠 В начало» under a question is taken by
+the stats state itself (`StatsFlow.on_home`, deletes the questions); the typed
+home text still reaches the fallback. The Conversion target (`STAT_CONVERT_CURRENCY`) uses the
 Currency picker like manual input (callback prefix `scur:`, typed code or name
 too); any Currency of the rate service, and the pick goes to the User's Recent
 currencies. `bot.py` builds one `StatsFlow` (`bot.STATS`) and merges
@@ -164,7 +171,8 @@ state, which is everyone right after a restart (memory is wiped on deploy).
 `allow_reentry=False`: inside a flow its states read the text.
 Fallbacks: home button, `/cancel`, `/stop`, `/start`.
 Home: state handlers never see it — their filters exclude the home text
-(`navigation.INPUT_TEXT`) and the `to_start` callback. `navigation.home_fallbacks()`
+(`navigation.INPUT_TEXT`) and the `to_start` callback (exception: the stats
+states take the `to_start` callback to delete their questions message). `navigation.home_fallbacks()`
 catches both in every state and calls `navigation.go_home` → `CHOOSE_ACTION`.
 So an old inline home button now works in any state (before #24 only in
 `TYPING_CMNT` / `CHOOSE_DT`), and typed home text works in `CHOOSE_DT` too.

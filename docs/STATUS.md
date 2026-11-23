@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #102: Draft edits in one live card, `live_card.py`)  
-**Product code tip:** branch for issue #102 (2026-11-23) — Draft edit steps on the card itself (live card): the person's answers and the voice message are deleted in a private chat, a buried card moves to the bottom; on top of #101 (Draft card in look B), #104, #106  
+**Updated by:** agent session (issue #105: statistics questions in one message, answers in look B; merged main with #102)  
+**Product code tip:** branch for issue #105 (2026-11-23) — «📊 Статистика» asks in one edited message with inline buttons, the answer is a new message in the month-summary look and the questions are deleted; on top of #102 (Draft edits in one live card, `live_card.py`), #101 (Draft card in look B), #104, #106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,24 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Statistics in look B (issue #105, spec `docs/specs/2026-11-bot-look.md`
+  stories 38–44): every question of «📊 Статистика» (scope, Category, what to
+  show, month, dates, «Разбить по валютам?», Conversion Currency) is one bot
+  message that each step edits; its buttons are inline (`st:` callbacks, month
+  buttons «Октябрь 2026»). Typed dates and Currency names are deleted after
+  reading (private chat only). The answer is a new message, then the
+  questions message is deleted — only the answer stays (the User's menu tap
+  «📊 Статистика» stays too). Month and period answers use the month-summary
+  look: «📊 <b>Траты за октябрь 2026 · Еда · в дин</b>», a block per
+  Currency with Category bars, «👤 По людям», the period's «🔶 Крупные (не в
+  итоге)» and, with Conversion, «💱 Курс» lines («10 € → 1 170 дин (курс
+  117)») in one collapsed block. The «Показать детали» step and
+  `State.STAT_SHOW_DETAILS` are gone. «🔶 Только крупные»: header «🔶
+  <b>Крупные траты …</b>», empty answer as before. «📜 Последние 3 записи»:
+  «<b>Кофе — 350 дин</b> · Еда · 23.11 · Аня» lines. The main-menu keyboard
+  stays on screen; a menu tap mid-questions deletes them and runs the menu,
+  the inline «🏠 В начало» deletes them. `/cancel` mid-questions leaves the
+  questions message in the chat. Not checked in a real Telegram chat yet.
 - Draft edits in one live card (issue #102, spec `docs/specs/2026-11-bot-look.md`
   stories 25–29, 35): every Draft edit step (Категория, Дата, Валюта, Сумма,
   Кто, Крупная) edits the card message. In a private chat the bot deletes the
@@ -56,7 +74,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   « · ») and «🔶 Крупные (не в итоге)» (one line per Large expense) sit in one
   `<blockquote expandable>`. A month without expenses: header and «Трат нет».
   «📅 Этот месяц» and the 1st-of-month post in `DASHBOARD_CHAT_ID` share this
-  text; statistics answers keep the old look until #105. Not checked in a real
+  text; statistics answers use the same look since #105. Not checked in a real
   Telegram yet.
 - Payment reminder in look B (issue #106, spec `docs/specs/2026-11-bot-look.md`
   stories 52–55): title in bold; each payment is a block «<b>Preset</b> — 850 € ·
@@ -123,7 +141,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   траты». None in the period → «🔶 Крупных трат за этот период нет» (last
   records: «📭 Крупных трат нет»). The choice is `StatQuery.only_large`; the
   menu tap and the Category step start a new `StatQuery`, so it is never
-  inherited. Code: `analytics.filter_rows` / `aggregate` / `last_n` /
+  inherited. Code: `analytics.filter_rows` / `format_period_stats` / `last_n` /
   `format_last_n` take `large=False` (only unmarked) or `True` (only marked).
 - Large expense on the Draft card (issue #86, spec stories 2, 3, 7): voice,
   text and photo Drafts mark each item above `LARGE_EXPENSE_THRESHOLD` (same
@@ -181,7 +199,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   kept 1 h (one lock per target, so a slow read blocks only that target); a
   failed read is not repeated for 60 s. «EUR» and «€» count as one Currency
   (compared by ISO code). A missing rate gives «❌ Нет курса для пересчёта в
-  дин: €, GEL.» — no sum. Details show the rate with 6 significant digits.
+  дин: €, GEL.» — no sum. The rate (6 significant digits) is in the
+  answer's collapsed block since #105.
   `analytics.unique_currencies` and `StatsFlow(fallback_currencies=…)` are gone.
 - Currency choice (issue #33, plan 3.6, F6, Q7–Q9, Q12, Q17–Q19): the manual
   Currency step and «💱 Валюта» in the Draft card show the User's Recent
