@@ -25,8 +25,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «👤 По людям» (one line per Spender, amounts in several Currencies joined by
   « · ») and «🔶 Крупные (не в итоге)» (one line per Large expense) sit in one
   `<blockquote expandable>`. A month without expenses: header and «Трат нет».
-  «📅 Этот месяц», the 1st-of-month post in `DASHBOARD_CHAT_ID` and the stats
-  «month» answer share this text. Not checked in a real Telegram yet.
+  «📅 Этот месяц» and the 1st-of-month post in `DASHBOARD_CHAT_ID` share this
+  text; statistics answers keep the old look until #105. Not checked in a real
+  Telegram yet.
 - HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
   first of #100–#108): the Application sends every message with parse mode
   HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`). Human text
