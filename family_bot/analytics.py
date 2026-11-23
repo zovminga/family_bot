@@ -12,14 +12,14 @@ from datetime import date, datetime
 from typing import Any, Callable, Optional
 
 from family_bot.currency import format_amount, to_iso
-from family_bot.look import escape
+from family_bot.look import bar, bold, escape, expandable_quote
 from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
 NO_DATA = "Нет данных 🤷"
+NO_EXPENSES = "Трат нет"
 NO_LARGE = "🔶 Крупных трат за этот период нет"
 NO_LARGE_RECORDS = "📭 Крупных трат нет"
-TOP_CATEGORIES = 3
 NO_CATEGORY = "Без категории"
 NO_SPENDER = "Не указан"
 MONTH_NAMES = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль",
@@ -276,51 +276,76 @@ def month_title(month: str) -> str:
     return f"{MONTH_NAMES[int(number) - 1]} {year}"
 
 
-def _large_line(rows: tuple[Row, ...]) -> str:
-    """«🔶 Ещё крупные траты: 2 000 € · 150 000 дин (билеты, ноутбук)»."""
-    totals: dict[str, float] = {}
-    for r in rows:
-        totals[r.currency] = totals.get(r.currency, 0.0) + r.amount
-    sums = " · ".join(format_amount(amount, cur) for cur, amount in totals.items())
-    # A row without a comment is named by its Category.
-    names = ", ".join(r.comment or r.category or NO_CATEGORY for r in rows)
-    return f"🔶 Ещё крупные траты: {sums} ({names})"
+def _month_header(month: str) -> str:
+    """«📅 <b>Итог за ноябрь 2026</b>» for ``2026-11``."""
+    year, number = month.split("-")
+    return "📅 " + bold(f"Итог за {MONTH_NAMES[int(number) - 1].lower()} {year}")
 
 
-def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> str:
+def _percent(amount: float, total: float) -> int:
+    """Share of ``total`` in whole percent, rounded half up; 0 for a zero total."""
+    return int(amount / total * 100 + 0.5) if total else 0
+
+
+def _currency_block(cur: str, sums: CurrencySummary) -> list[str]:
+    """Total in one Currency, then each Category with its share bar."""
+    lines = ["💰 Итого " + bold(format_amount(sums.total, cur)), ""]
+    for name, amount in sums.categories:
+        share = amount / sums.total if sums.total else 0.0
+        lines += [f"{bold(name)} {format_amount(amount)}",
+                  f"{bar(share)} {_percent(amount, sums.total)}%"]
+    return lines
+
+
+def _details(summary: MonthSummary) -> str:
     """
-    Telegram HTML for a month summary: total, top Categories, Spenders.
+    Body of the collapsed block: Spenders, then Large expenses.
 
-    Each Currency gets its own block; amounts in different Currencies are
-    never added together. Large expenses, if any, are one last line.
+    A Spender with expenses in several Currencies gets one line with the
+    amounts joined by « · »; they are never added together.
+    """
+    spenders: dict[str, list[str]] = {}
+    for cur, sums in summary.by_currency.items():
+        for name, amount in sums.spenders:
+            spenders.setdefault(name, []).append(format_amount(amount, cur))
+    parts: list[str] = []
+    if spenders:
+        parts.append("\n".join(["👤 По людям", *(
+            escape(f"{name} — {' · '.join(amounts)}") for name, amounts in spenders.items())]))
+    if summary.large:
+        # A row without a comment is named by its Category.
+        parts.append("\n".join(["🔶 Крупные (не в итоге)", *(
+            escape(f"{r.comment or r.category or NO_CATEGORY} — "
+                   f"{format_amount(r.amount, r.currency)}") for r in summary.large)]))
+    return "\n\n".join(parts)
+
+
+def format_month_summary(summary: MonthSummary) -> str:
+    """
+    Telegram HTML for a month summary («📅 Этот месяц», the 1st-of-month post).
+
+    Each Currency gets its own block: bold total, then every Category in bold
+    with its amount and a share bar with the percent of that Currency's
+    total. Amounts in different Currencies are never added together.
+    Spenders and Large expenses go into one collapsed block at the end.
 
     Parameters
     ----------
     summary : MonthSummary
         Result of ``month_summary``.
-    top : int
-        How many Categories to list per Currency.
 
     Returns
     -------
     str
         Message text (HTML, human text escaped).
     """
-    lines = [f"📅 {month_title(summary.month)}"]
-    tail = ["", _large_line(summary.large)] if summary.large else []
-    if not summary.by_currency:
-        return escape("\n".join([*lines, NO_DATA, *tail]))
-
-    lines.append("💰 Итого: " + " · ".join(
-        format_amount(sums.total, cur) for cur, sums in summary.by_currency.items()))
-    multi_currency = len(summary.by_currency) > 1
-    for cur, sums in summary.by_currency.items():
-        lines.append("")
-        if multi_currency:
-            lines += [f"— {cur} —", ""]
-        lines.append("🏷 Топ категорий:")
-        lines += [f"{i}. {name} — {format_amount(amount, cur)}"
-                  for i, (name, amount) in enumerate(sums.categories[:top], 1)]
-        lines += ["", "👤 По людям:"]
-        lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in sums.spenders]
-    return escape("\n".join([*lines, *tail]))
+    blocks = [_month_header(summary.month)]
+    if summary.by_currency:
+        blocks += ["\n".join(_currency_block(cur, sums))
+                   for cur, sums in summary.by_currency.items()]
+    else:
+        blocks.append(NO_EXPENSES)
+    details = _details(summary)
+    if details:
+        blocks.append(expandable_quote(details))
+    return "\n\n".join(blocks)

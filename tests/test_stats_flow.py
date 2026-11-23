@@ -99,8 +99,9 @@ def test_this_month_one_tap_summary(monkeypatch: Any) -> None:
     upd = make_update(nav.THIS_MONTH)
     assert run(flow.this_month(upd, ctx)) == states.State.CHOOSE_ACTION
     (text,) = replies(upd)
-    assert text.startswith("📅 Октябрь 2026\n💰 Итого: 100 дин · 10 €"), text
-    assert "Food — 100 дин" in text and "Azat — 10 €" in text
+    assert text.startswith("📅 <b>Итог за октябрь 2026</b>\n\n💰 Итого <b>100 дин</b>"), text
+    assert "💰 Итого <b>10 €</b>" in text and "<b>Food</b> 100" in text
+    assert "Azat — 100 дин · 10 €" in text
 
 
 def test_this_month_error_hides_raw_text() -> None:

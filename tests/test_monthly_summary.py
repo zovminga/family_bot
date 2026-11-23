@@ -10,6 +10,7 @@ from typing import Any, Callable
 import pytest
 from telegram.error import NetworkError
 
+from family_bot import analytics
 from family_bot import bot
 from family_bot import clock
 from family_bot import config
@@ -192,8 +193,11 @@ def test_job_sends_previous_month_summary(monkeypatch: pytest.MonkeyPatch) -> No
     run(ms.send_summary(job_context(lambda: ROWS, telegram)))  # type: ignore[arg-type]
     ((chat_id, text),) = telegram.sent
     assert chat_id == -100
-    assert text.startswith("📅 Ноябрь 2026")
-    assert "Еда" in text and "Кафе" not in text  # December rows stay out
+    # Same look as «📅 Этот месяц».
+    assert text == analytics.format_month_summary(analytics.month_summary(ROWS, "2026-11"))
+    assert text.startswith("📅 <b>Итог за ноябрь 2026</b>\n\n💰 Итого <b>")
+    assert "<b>Еда</b>" in text and "Кафе" not in text  # December rows stay out
+    assert "<blockquote expandable>👤 По людям" in text
 
 
 def test_job_loads_rows_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
