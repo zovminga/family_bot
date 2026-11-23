@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (Render auto-deploy confirmed; test bots answer 429)  
+**Updated by:** agent session (bot look stage 1 closed, #108 without animated emoji)  
 **Product code tip:** branch for issue #107 (2026-11-23) — main menu in two rows without «🏠 В начало», greeting «👋 Что делаем?», every text on «ты», `/whoami` and «нет доступа» with the Telegram ID in `<code>`, dashboard and build-failure messages in HTML; the Payment reminder uses the shared «✅ Сохранено» line; on top of #100–#106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -482,7 +482,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   styles; #101 built: Draft card; #102 built: Draft edits in one live card;
   #103 built: manual input in one live card;
   #104 built: month summary; #105 built: statistics in one message; #106 built: Payment reminder;
-  #107 built: menu and texts on «ты»; #108 (animated header emoji) is spec only): HTML in every message,
+  #107 built: menu and texts on «ты»; #108 closed: the owner checked the look on
+  the live bot 2026-11-23 and found nothing wrong; animated header emoji dropped —
+  getting custom emoji ids needs a bot that answers the Bot API, and new test
+  bots answer 429): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons
