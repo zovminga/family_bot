@@ -7,10 +7,11 @@ from datetime import date
 import pytest
 
 from family_bot.analytics import (
-    aggregate,
+    convert_rows,
     filter_rows,
     format_last_n,
     format_month_summary,
+    format_period_stats,
     last_n,
     month_summary,
 )
@@ -56,61 +57,57 @@ def test_filter_by_date_range():
     assert {r.comment for r in got} == {"a", "b"}
 
 
-def test_aggregate_group_by_currency():
-    text, details = aggregate(ROWS, category="All", month="2026-08", group_by_currency=True)
-    assert text.splitlines() == ["10 дин", "20 €"]
-    assert details == {}
+H = "📊 <b>Траты</b>"
 
 
-def test_aggregate_convert_with_fake_rate():
+def test_period_stats_month_look_block_per_currency():
+    text = format_period_stats(ROWS, H, month="2026-08")
+    assert text.startswith(f"{H}\n\n💰 Итого <b>10 дин</b>\n\n<b>Food</b> 10\n██████████ 100%")
+    assert "💰 Итого <b>20 €</b>" in text
+    assert "<blockquote expandable>👤 По людям\nAzat — 10 дин\nLisa — 20 €</blockquote>" in text
+
+
+def test_period_stats_convert_puts_rate_in_collapsed_block():
     def fake_rate(frm, to):
         assert to == "дин"
-        if frm == "€":
-            return 100.0
-        return 1.0
+        return 100.0 if frm == "€" else 1.0
 
-    text, details = aggregate(
-        ROWS,
-        category="All",
-        month="2026-08",
-        group_by_currency=False,
-        convert_to_currency="дин",
-        get_rate=fake_rate,
-    )
+    text = format_period_stats(ROWS, H, month="2026-08", convert_to="дин", get_rate=fake_rate)
     # 10 дин + 20€*100 = 2010
-    assert text == "💰 Итого: 2 010 дин"
-    assert details["€"]["rate"] == 100.0
-    assert details["€"]["original_amount"] == 20.0
-    assert details["€"]["converted_amount"] == 2000.0
+    assert "💰 Итого <b>2 010 дин</b>" in text and "Итого <b>20 €" not in text
+    collapsed = text[text.index("<blockquote expandable>"):]
+    assert "💱 Курс\n20 € → 2 000 дин (курс 100)" in collapsed
 
 
-def test_aggregate_missing_rate():
-    text, details = aggregate(
-        ROWS,
-        month="2026-08",
-        convert_to_currency="дин",
-        get_rate=lambda *_: None,
-    )
-    assert text == "❌ Нет курса для пересчёта в дин: €."
-    assert details == {}
+def test_period_stats_missing_rate():
+    text = format_period_stats(ROWS, H, month="2026-08", convert_to="дин",
+                               get_rate=lambda *_: None)
+    assert text == f"{H}\n\n❌ Нет курса для пересчёта в дин: €."
 
 
-def test_aggregate_names_every_missing_currency():
+def test_convert_rows_names_every_missing_currency():
     rows = [*ROWS, Row(date=date(2026, 8, 3), month="2026-08", category="Food", amount=5.0,
                        currency="GEL", who="Ann", comment="")]
-    text, _ = aggregate(rows, month="2026-08", convert_to_currency="дин",
-                        get_rate=lambda src, dst: 100.0 if src == "€" else None)
-    assert text == "❌ Нет курса для пересчёта в дин: GEL."
+    _, rates, missing = convert_rows(rows, "дин", lambda src, dst: 100.0 if src == "€" else None)
+    assert missing == ["GEL"] and rates == {}
 
 
-def test_format_last_n_shows_date_text():
-    text = format_last_n(ROWS, n=1)
-    assert "📅 10.07.2026 | Transport" in text
+def test_format_last_n_lines_like_saved_line():
+    text = format_last_n(ROWS, n=2)
+    assert text == ("📜 <b>Последние записи</b>\n"
+                    "<b>c — 5 дин</b> · Transport · 10.07 · Azat\n"
+                    "<b>b — 20 €</b> · Food · 05.08 · Lisa")
 
 
-def test_aggregate_convert_needs_rate_source():
+def test_format_last_n_without_comment_category_leads():
+    row = Row(date=date(2026, 11, 23), month="2026-11", category="Еда", amount=350.0,
+              currency="дин", who="Аня", comment="")
+    assert format_last_n([row], n=1).endswith("\n<b>Еда — 350 дин</b> · 23.11 · Аня")
+
+
+def test_period_stats_convert_needs_rate_source():
     with pytest.raises(ValueError):
-        aggregate(ROWS, month="2026-08", convert_to_currency="дин")
+        format_period_stats(ROWS, H, month="2026-08", convert_to="дин")
 
 
 # ---------- month summary (issue #35) ----------
@@ -199,15 +196,15 @@ def test_month_summary_blank_category_and_spender_get_labels():
     assert din.spenders == [("Не указан", 10.0)]
 
 
-def test_aggregate_same_currency_as_code_and_symbol_needs_no_rate():
+def test_convert_same_currency_as_code_and_symbol_needs_no_rate():
     rows = [Row(date=date(2026, 8, 3), month="2026-08", category="Food", amount=5.0,
                 currency="EUR", who="Ann", comment=""),
             Row(date=date(2026, 8, 4), month="2026-08", category="Food", amount=2.5,
                 currency="€", who="Ann", comment="")]
-    text, details = aggregate(rows, month="2026-08", group_by_currency=False,
-                              convert_to_currency="€", get_rate=lambda *_: None)
-    assert text == "💰 Итого: 7,50 €"
-    assert details == {}
+    text = format_period_stats(rows, H, month="2026-08", convert_to="€",
+                               get_rate=lambda *_: None)
+    assert "💰 Итого <b>7,50 €</b>" in text
+    assert "💱 Курс" not in text
 
 
 # Large expense (issue #87): every stats request leaves marked rows out,
@@ -230,23 +227,24 @@ def test_filter_rows_only_large():
     assert [r.comment for r in out] == ["tickets"]
 
 
-def test_aggregate_leaves_large_out_by_default():
-    text, _ = aggregate(LARGE_ROWS, month="2026-08")
-    assert text == "10 дин\n20 €"
+def test_period_stats_leave_large_out_but_list_them_collapsed():
+    text = format_period_stats(LARGE_ROWS, H, month="2026-08")
+    assert "💰 Итого <b>20 €</b>" in text
+    collapsed = text[text.index("<blockquote expandable>"):]
+    assert "🔶 Крупные (не в итоге)\ntickets — 2 000 €" in collapsed
 
 
-def test_aggregate_only_large_same_period_and_conversion():
-    text, details = aggregate(
-        LARGE_ROWS, month="2026-08", large=True, group_by_currency=False,
-        convert_to_currency="дин", get_rate=lambda src, dst: 117.0)
-    assert text == "💰 Итого: 234 000 дин"
-    assert details["€"]["original_amount"] == 2000.0
+def test_period_stats_only_large_same_period_and_conversion():
+    text = format_period_stats(LARGE_ROWS, H, month="2026-08", large=True, convert_to="дин",
+                               get_rate=lambda src, dst: 117.0)
+    assert "💰 Итого <b>234 000 дин</b>" in text
+    assert "Крупные (не в итоге)" not in text
+    assert "2 000 € → 234 000 дин (курс 117)" in text
 
 
-def test_aggregate_only_large_says_there_are_none():
-    text, details = aggregate(LARGE_ROWS, month="2026-07", large=True)
-    assert text == "🔶 Крупных трат за этот период нет"
-    assert details == {}
+def test_period_stats_only_large_says_there_are_none():
+    text = format_period_stats(LARGE_ROWS, H, month="2026-07", large=True)
+    assert text == f"{H}\n\n🔶 Крупных трат за этот период нет"
 
 
 def test_last_n_leaves_large_out_by_default():
@@ -254,5 +252,6 @@ def test_last_n_leaves_large_out_by_default():
 
 
 def test_format_last_n_only_large():
-    assert "tickets" in format_last_n(LARGE_ROWS, n=3, large=True)
+    text = format_last_n(LARGE_ROWS, n=3, large=True)
+    assert text.startswith("🔶 <b>Последние крупные траты</b>\n") and "tickets" in text
     assert format_last_n(ROWS, n=3, large=True) == "📭 Крупных трат нет"

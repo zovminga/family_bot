@@ -757,7 +757,7 @@ def build_application(bot_token: str) -> Application:
                for state, handlers in MANUAL.states().items()},
             State.CHOOSE_PRESET: [MessageHandler(nav.INPUT_TEXT, choose_preset)],
             State.TYPING_PRESET_AMT: [MessageHandler(nav.INPUT_TEXT, type_preset_amount)],
-            **STATS.states(),
+            **STATS.states(menu=choose_action),
         },
         fallbacks=[
             *nav.home_fallbacks(),
