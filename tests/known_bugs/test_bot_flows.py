@@ -98,7 +98,7 @@ def test_menu_tap_after_conversion_is_not_swallowed(ctx):
     assert run(bot.STATS.on_convert_currency(make_update("дин"), ctx)) == CHOOSE_ACTION
     upd = make_update(nav.ADD_EXPENSE)
     run(bot.choose_action(upd, ctx))
-    assert "Выберите категорию" in last_reply_texts(upd)[0], last_reply_texts(upd)
+    assert "Введите сумму" in last_reply_texts(upd)[0], last_reply_texts(upd)
 
 
 # 4. Manual amount accepted nan / inf / negative / zero (R6).

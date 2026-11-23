@@ -597,6 +597,18 @@ async def choose_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await text_expense(update, context)
 
 
+async def menu_mid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """A main-menu button during manual input: drop its card, then do what the button says.
+
+    The manual card has inline buttons only, so the menu keyboard stays on the phone.
+    """
+    await nav.leave_flow(context)
+    return await choose_action(update, context)
+
+
+MENU_MID_INPUT = MessageHandler(nav.MENU_TEXT, menu_mid_input)
+
+
 # ----- Preset flow -----
 async def choose_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await flow_preset.choose_preset(
@@ -741,7 +753,8 @@ def build_application(bot_token: str) -> Application:
         ],
         states={
             State.CHOOSE_ACTION: [MessageHandler(nav.INPUT_TEXT, choose_action)],
-            **MANUAL.states(),
+            **{state: [MENU_MID_INPUT, *handlers]
+               for state, handlers in MANUAL.states().items()},
             State.CHOOSE_PRESET: [MessageHandler(nav.INPUT_TEXT, choose_preset)],
             State.TYPING_PRESET_AMT: [MessageHandler(nav.INPUT_TEXT, type_preset_amount)],
             **STATS.states(menu=choose_action),
