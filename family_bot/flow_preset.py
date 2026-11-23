@@ -2,20 +2,22 @@
 """Preset expense flow: pick a ⚡ template and save it.
 
 A Preset with an amount saves at once. A Preset without one (``amount=None``)
-first asks the amount, checked like manual input (`amount_input`).
+first asks the amount on a live card (``live_card``), checked like manual input
+(`amount_input`): the typed answers are deleted, a wrong one shows the reason
+on the card. Either save ends as «✅ Сохранено» with «↩️ Отменить»; the card
+becomes that line.
 """
 from __future__ import annotations
 
 import asyncio
 from typing import cast
 
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import Message, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from family_bot import amount_input, clock
-from family_bot.currency import format_amount
-from family_bot.look import escape
+from family_bot import amount_input, clock, live_card, look, undo
 from family_bot.conversation_states import State
+from family_bot.draft_expense import AMOUNT_ERROR
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot import navigation as nav
 
@@ -67,9 +69,8 @@ async def choose_preset(
 
     if preset["amount"] is None:
         context.user_data.update({KEY_PRESET: preset})
-        await update.message.reply_text(
-            escape(f"💵 Введите сумму для «{preset['name']}» ({preset['currency']}):"),
-            reply_markup=ReplyKeyboardMarkup([nav.home_row()], resize_keyboard=True))
+        cast(dict, context.user_data)[live_card.KEY_CARD] = await update.message.reply_text(
+            _amount_card(preset), reply_markup=nav.inline_markup([], home=True))
         return State.TYPING_PRESET_AMT
     return await _save(update, context, preset, preset["amount"], preset["currency"],
                        sheets=sheets, date_fmt=date_fmt, resolve_who=resolve_who)
@@ -85,10 +86,18 @@ async def type_preset_amount(
 ) -> int:
     """Save the waiting Preset with the typed amount; a typed Currency wins."""
     # Set by choose_preset, the only way into this state.
-    preset: dict = cast(dict, context.user_data)[KEY_PRESET]
-    parsed = amount_input.parse_amount_text(update.message.text or "")
+    user_data = cast(dict, context.user_data)
+    message = cast(Message, update.message)  # this state reads text messages only
+    preset: dict = user_data[KEY_PRESET]
+    await live_card.drop_reply(message)
+    parsed = amount_input.parse_amount_text(message.text or "")
     if parsed is None:
-        await update.message.reply_text(amount_input.RETRY_TEXT)
+        card = user_data.get(live_card.KEY_CARD)
+        text = _amount_card(preset, AMOUNT_ERROR)
+        markup = nav.inline_markup([], home=True)
+        user_data[live_card.KEY_CARD] = (
+            await live_card.show(card, text, markup) if card is not None
+            else await message.reply_text(text, reply_markup=markup))
         return State.TYPING_PRESET_AMT
     amount, typed = parsed
     cur = typed.symbol if typed is not None else preset["currency"]
@@ -96,20 +105,43 @@ async def type_preset_amount(
                        sheets=sheets, date_fmt=date_fmt, resolve_who=resolve_who)
 
 
+def _amount_card(preset: dict, error: str = "") -> str:
+    """Card asking the amount of a Preset without one (HTML)."""
+    lines = [f"⚡ {look.bold(preset['name'])}",
+             look.field("Категория", preset["category"])]
+    if preset.get("who"):
+        lines.append(look.field("Кто", preset["who"]))
+    lines.append("")
+    if error:
+        lines.append(look.escape(error))
+    lines.append(look.escape(f"💵 Введите сумму ({preset['currency']}):"))
+    return "\n".join(lines)
+
+
 async def _save(update: Update, context: ContextTypes.DEFAULT_TYPE, preset: dict,
                 amount: float, cur: str, *, sheets, date_fmt: str, resolve_who) -> int:
-    """Write the Preset as today's Expense, its name as the comment; go home."""
+    """Write the Preset as today's Expense, its name as the comment; go home.
+
+    The amount card (if any) becomes «✅ Сохранено» with «↩️ Отменить».
+    """
     who = preset.get("who") or resolve_who(update)
-    date_str = clock.now().strftime(date_fmt)
-    await asyncio.to_thread(append_expense, sheets, ExpenseRecord(
-        date=date_str,
+    record = ExpenseRecord(
+        date=clock.now().strftime(date_fmt),
         category=preset["category"],
         amount=amount,
         currency=cur,
         who=who,
         comment=preset["name"],
         large=False,  # a Preset is routine even above the threshold
-    ))
-    await update.message.reply_text(
-        escape(f"✅ Сохранено: {preset['name']} — {format_amount(amount, cur)} · {date_str}"))
+    )
+    await asyncio.to_thread(append_expense, sheets, record)
+    text = undo.saved_text([record])
+    user_data = cast(dict, context.user_data)
+    markup = nav.inline_markup(undo.remember(user_data, [record], clock.now()))
+    card = user_data.pop(live_card.KEY_CARD, None)  # a result now: go_home keeps it
+    if card is None:
+        await update.message.reply_text(text, reply_markup=markup)
+    else:
+        await live_card.show(card, text, markup)
+    # The ⚡ keyboard replaced the menu: send the menu again.
     return await nav.go_home(update, context)

@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
-"""Manual add-expense conversation flow.
+"""Manual add-expense conversation flow, shown as one live card.
 
-Category → amount → Currency → [Large expense?] → comment → date → save. The
-Currency step is the shared picker (``currency_picker``): Recent currencies of
-this User, «🌍 Другая» pages, or a code / Russian name typed as text. A
+amount → Currency → [Large expense?] → Category → comment → date → save. Every
+step edits one bot message, the card (``live_card``): filled fields on top,
+the current step's question and buttons below. The person's answers are
+deleted (private chat); a wrong answer shows the reason on the card and keeps
+the step. After the save the card becomes the «✅ Сохранено» line with
+«↩️ Отменить»; leaving the flow (``navigation.leave_flow``) removes it.
+
+The Currency step is the shared picker (``currency_picker``): Recent currencies
+of this User, «🌍 Другая» pages, or a code / Russian name typed as text. A
 Currency typed with the amount («350 дин») skips the step. Above the Large
-expense threshold (``large_expense.suggest``) the bot asks «Это крупная
-трата?» before the comment step, so no comment-step button skips it. On the
-comment step «✅ Сегодня, без комментария» saves at once with today's date
-and no comment. Step values live in ``user_data`` (``cat``, ``amt``, ``cur``,
-``spender``, ``large``, ``comment``) until the save; every exit goes through ``navigation.go_home``.
-The home button is not checked here: ``navigation.home_fallbacks()`` handles
-it for every state.
+expense threshold (``large_expense.suggest``) the card asks «Это крупная
+трата?». On the comment step «✅ Сегодня, без комментария» saves at once with
+today's date and no comment. Step values live in ``user_data`` (``amt``,
+``cur``, ``spender``, ``large``, ``cat``, ``comment``, the card under
+``live_card.KEY_CARD``) until the save. The home button is not checked here:
+``navigation.home_fallbacks()`` handles it for every state.
 """
 from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Mapping, Optional, TypeVar
 
 from dateutil import parser as dparser
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
+from telegram import Update
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler
 
 from family_bot import amount_input
@@ -28,11 +33,13 @@ from family_bot import clock
 from family_bot import currency
 from family_bot import currency_picker as picker
 from family_bot import large_expense
-from family_bot.currency import format_amount
-from family_bot.look import escape
+from family_bot import live_card
+from family_bot import look
 from family_bot import navigation as nav
 from family_bot import undo
 from family_bot.conversation_states import State
+from family_bot.currency import format_amount
+from family_bot.draft_expense import AMOUNT_ERROR, LARGE_LINE
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot.sheet_data import DATE_FMT
 from family_bot.sheets import SheetsClient
@@ -42,31 +49,85 @@ Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
 Who = Callable[[Update, ContextTypes.DEFAULT_TYPE], str]
 GetRate = Callable[[str, str], Optional[float]]
 
+CARD_TITLE = "Новая трата"
 TODAY_NO_COMMENT = "today_no_comment"
+SKIP_COMMENT = "skip"
 # Callback data prefix of the Currency picker buttons in this flow.
 CURRENCY_CALLBACK = "cur:"
+# Callback data prefix of the Category buttons: «mcat:<index in the list>».
+CATEGORY_CALLBACK = "mcat:"
+CATEGORY_COLUMNS = 2
 # Large expense step: question and its two buttons.
 LARGE_CALLBACK = "large:"
 LARGE_YES = LARGE_CALLBACK + "yes"
 LARGE_NO = LARGE_CALLBACK + "no"
 LARGE_QUESTION = "🔶 Это крупная трата?"
 YES_LABEL, NO_LABEL = "Да", "Нет"
+# Step questions shown under the fields.
+ASK_AMOUNT = "💵 Введите сумму:"
+ASK_CATEGORY = "📂 Выберите категорию:"
+UNKNOWN_CATEGORY = "❌ Такой категории нет. Выберите из списка:"
+ASK_COMMENT = "💬 Напишите комментарий или нажмите кнопку"
+ASK_DATE = "📅 Дата траты:"
+TYPE_DATE = "📅 Введите дату в формате ДД.ММ.ГГГГ:"
+BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
+LARGE_HINT = f"Нажмите «{YES_LABEL}» или «{NO_LABEL}» под вопросом «{LARGE_QUESTION}»."
+COMMENT_BUTTONS: look.ButtonGrid = [
+    [("✅ Сегодня, без комментария", TODAY_NO_COMMENT, look.SUCCESS)],
+    [("⏭️ Пропустить", SKIP_COMMENT)],
+]
+DATE_BUTTONS: look.ButtonGrid = [
+    [("📅 Сегодня", "today"), ("📆 Вчера", "yesterday")],
+    [("📆 Другая дата", "custom")],
+]
+LARGE_BUTTONS: look.ButtonGrid = [[(YES_LABEL, LARGE_YES), (NO_LABEL, LARGE_NO)]]
 
 
-async def _ask_from_list(update: Update, prompt: str, options: list[str]) -> None:
-    """Reply with prompt and one button per option, plus the home button."""
-    kb = [[c] for c in options]
-    kb.append(nav.home_row())
-    await update.message.reply_text(
-        prompt,
-        reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-    )
+def card_text(data: Mapping[str, Any], prompt: str, error: str = "") -> str:
+    """
+    The card: title, filled fields, then the error (if any) and the step's question.
+
+    Parameters
+    ----------
+    data : Mapping[str, Any]
+        Step values so far (``user_data``).
+    prompt : str
+        Plain-text question of the current step.
+    error : str
+        Plain-text reason the last answer was not taken.
+
+    Returns
+    -------
+    str
+        HTML.
+    """
+    lines = [f"💰 {look.bold(CARD_TITLE)}"]
+    if "amt" in data:
+        lines.append(look.field("Сумма", format_amount(data["amt"], data.get("cur"))))
+    if "cat" in data:
+        lines.append(look.field("Категория", data["cat"]))
+    if data.get("comment"):
+        lines.append(look.field("Комментарий", data["comment"]))
+    if "spender" in data:
+        lines.append(look.field("Кто", data["spender"]))
+    if data.get("large"):
+        lines.append(LARGE_LINE)
+    lines.append("")
+    if error:
+        lines.append(look.escape(error))
+    lines.append(look.escape(prompt))
+    return "\n".join(lines)
 
 
 def _known_category(text: str, categories: list[str]) -> Optional[str]:
     """Category from the list matching text (case and outer spaces ignored)."""
     key = text.strip().casefold()
     return next((c for c in categories if c.casefold() == key), None)
+
+
+def _category_grid(categories: list[str]) -> look.ButtonGrid:
+    buttons: list[look.Button] = [(c, f"{CATEGORY_CALLBACK}{i}") for i, c in enumerate(categories)]
+    return [buttons[i:i + CATEGORY_COLUMNS] for i in range(0, len(buttons), CATEGORY_COLUMNS)]
 
 
 def _on_buttons(found: Optional[currency.Currency], currencies: list[str]) -> Optional[str]:
@@ -78,9 +139,12 @@ def _picker_cb(payload: str) -> str:
     return CURRENCY_CALLBACK + payload
 
 
-def _inline(grid: picker.Grid) -> InlineKeyboardMarkup:
-    """Picker grid plus the home button as an inline keyboard."""
-    return nav.inline_markup(grid, home=True)
+async def _answered(update: Update) -> None:
+    """Stop the tapped button spinning, or delete the typed answer (private chat)."""
+    if update.callback_query:
+        await update.callback_query.answer()
+    elif update.message:
+        await live_card.drop_reply(update.message)
 
 
 class ManualFlow:
@@ -133,7 +197,6 @@ class ManualFlow:
             return [MessageHandler(nav.INPUT_TEXT, callback)]
 
         return {
-            State.CHOOSE_CAT: text(self.choose_cat),
             State.TYPING_AMT: text(self.type_amount),
             State.CHOOSE_CUR: [
                 *text(self.choose_cur),
@@ -143,116 +206,102 @@ class ManualFlow:
                 *text(self.on_large_text),
                 CallbackQueryHandler(self.on_large_button, pattern=f"^{LARGE_CALLBACK}"),
             ],
+            State.CHOOSE_CAT: [
+                *text(self.choose_cat),
+                CallbackQueryHandler(self.on_category_button, pattern=f"^{CATEGORY_CALLBACK}"),
+            ],
             State.TYPING_CMNT: [
                 *text(self.type_comment),
-                CallbackQueryHandler(self.type_comment, pattern="^skip$"),
+                CallbackQueryHandler(self.type_comment, pattern=f"^{SKIP_COMMENT}$"),
                 CallbackQueryHandler(self.today_no_comment, pattern=f"^{TODAY_NO_COMMENT}$"),
             ],
             State.CHOOSE_DT: [CallbackQueryHandler(self.choose_dt, pattern=nav.NOT_HOME_CALLBACK)],
             State.TYPING_DT: text(self.type_dt),
         }
 
+    async def _show(self, update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str,
+                    grid: Optional[look.ButtonGrid] = None, error: str = "") -> None:
+        """Put the current step on the card (sent first if there is none yet)."""
+        data = context.user_data
+        text = card_text(data, prompt, error)
+        markup = nav.inline_markup(grid or [], home=True)
+        query = update.callback_query
+        card = query.message if query and query.message else data.get(live_card.KEY_CARD)
+        if card is None:
+            card = await update.effective_message.reply_text(text, reply_markup=markup)
+        else:
+            card = await live_card.show(card, text, markup)
+        data[live_card.KEY_CARD] = card
+
     async def begin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Main-menu entry: ask for the Category."""
-        await _ask_from_list(update, "📂 Выберите категорию:", self._categories(context))
-        return State.CHOOSE_CAT
-
-    async def choose_cat(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        text = update.message.text
-
-        categories = self._categories(context)
-        cat = _known_category(text, categories)
-        if cat is None:
-            await _ask_from_list(update, "❌ Такой категории нет. Выберите из списка:", categories)
-            return State.CHOOSE_CAT
-
-        context.user_data["cat"] = cat
-        kb = [nav.home_row()]
-        await update.message.reply_text(
-            "💵 Введите сумму:",
-            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True)
-        )
+        """Main-menu entry: a new card asking the amount (a card left by /start goes)."""
+        old = context.user_data.pop(live_card.KEY_CARD, None)
+        if old is not None:
+            await live_card.remove(old)
+        await self._show(update, context, ASK_AMOUNT)
         return State.TYPING_AMT
 
     async def type_amount(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        text = update.message.text
-
-        parsed = amount_input.parse_amount_text(text)
+        await _answered(update)
+        parsed = amount_input.parse_amount_text(update.message.text)
         if parsed is None:
-            await update.message.reply_text(amount_input.RETRY_TEXT)
+            await self._show(update, context, ASK_AMOUNT, error=AMOUNT_ERROR)
             return State.TYPING_AMT
         amt, typed_currency = parsed
         context.user_data["amt"] = amt
-        currencies = self._currencies(context)
-        cur = _on_buttons(typed_currency, currencies)
+        cur = _on_buttons(typed_currency, self._currencies(context))
         if cur is not None:
-            return await self._set_currency_and_ask_comment(update, context, cur)
+            return await self._set_currency(update, context, cur)
         await self._ask_currency(update, context, picker.ASK)
         return State.CHOOSE_CUR
 
     async def _ask_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                            prompt: str) -> None:
-        """Reply with the Recent currencies of this User and «🌍 Другая»."""
+                            prompt: str, error: str = "") -> None:
+        """The Recent currencies of this User and «🌍 Другая» on the card."""
         recent = await asyncio.to_thread(
             picker.load_recent, context.user_data, self._sheets(context),
             update.effective_user.id)
-        await update.effective_message.reply_text(
-            prompt, reply_markup=_inline(picker.recent_grid(recent, _picker_cb)))
+        await self._show(update, context, prompt, picker.recent_grid(recent, _picker_cb), error)
 
     async def choose_cur(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Typed Currency: symbol, ISO code or Russian name («дин», «GEL», «юань»)."""
-        text = update.message.text
+        await _answered(update)
         codes = await asyncio.to_thread(self._all_codes)
-        found = picker.search(text, codes)
+        found = picker.search(update.message.text, codes)
         if len(found) == 1:
-            return await self._set_currency_and_ask_comment(
-                update, context, currency.stored_value(found[0]))
+            return await self._set_currency(update, context, currency.stored_value(found[0]))
         if found:
-            await update.message.reply_text(
-                f"{picker.SEVERAL} {picker.TYPE_HINT}",
-                reply_markup=_inline(picker.choice_grid(found[:picker.PAGE_SIZE], _picker_cb)))
+            await self._show(update, context, f"{picker.SEVERAL} {picker.TYPE_HINT}",
+                             picker.choice_grid(found[:picker.PAGE_SIZE], _picker_cb))
             return State.CHOOSE_CUR
-        await self._ask_currency(update, context, f"{picker.NOT_FOUND} {picker.TYPE_HINT}")
+        await self._ask_currency(update, context, picker.TYPE_HINT, error=picker.NOT_FOUND)
         return State.CHOOSE_CUR
 
     async def on_currency_button(self, update: Update,
                                  context: ContextTypes.DEFAULT_TYPE) -> int:
         """Picker button: choose a Currency or turn a «🌍 Другая» page."""
-        query = update.callback_query
-        await query.answer()
-        payload = query.data[len(CURRENCY_CALLBACK):]
+        await _answered(update)
+        payload = update.callback_query.data[len(CURRENCY_CALLBACK):]
         code = picker.picked_code(payload)
         if code is not None:
-            cur = currency.stored_value(code)
-            await query.edit_message_text(escape(f"💱 Валюта: {currency.label(cur)}"))
-            return await self._set_currency_and_ask_comment(update, context, cur)
+            return await self._set_currency(update, context, currency.stored_value(code))
         page = picker.page_number(payload)
         if page is not None:
             codes = await asyncio.to_thread(self._all_codes)
-            await query.edit_message_text(
-                picker.page_text(codes, page),
-                reply_markup=_inline(picker.page_grid(codes, page, _picker_cb)))
+            await self._show(update, context, picker.page_text(codes, page),
+                             picker.page_grid(codes, page, _picker_cb))
         return State.CHOOSE_CUR
 
-    async def _set_currency_and_ask_comment(self, update: Update,
-                                            context: ContextTypes.DEFAULT_TYPE,
-                                            cur: str) -> int:
+    async def _set_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                            cur: str) -> int:
+        """Keep the Currency; ask «Это крупная трата?» above the threshold, else the Category."""
         context.user_data["cur"] = cur
-
-        # Automatically detect user
         context.user_data["spender"] = self._who(update, context)
         context.user_data["large"] = False
-
         if await self._above_threshold(context):
-            await update.effective_message.reply_text(
-                LARGE_QUESTION,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(YES_LABEL, callback_data=LARGE_YES),
-                     InlineKeyboardButton(NO_LABEL, callback_data=LARGE_NO)],
-                    [nav.home_inline_button()],
-                ]))
+            await self._show(update, context, LARGE_QUESTION, LARGE_BUTTONS)
             return State.ASK_LARGE
-        return await self._ask_comment(update, context)
+        return await self._ask_category(update, context)
 
     async def _above_threshold(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Whether to ask the Large expense question for the amount and Currency."""
@@ -265,122 +314,113 @@ class ManualFlow:
     async def on_large_button(self, update: Update,
                               context: ContextTypes.DEFAULT_TYPE) -> int:
         """«Да» / «Нет» under «Это крупная трата?»."""
-        query = update.callback_query
-        await query.answer()
-        large = query.data == LARGE_YES
-        context.user_data["large"] = large
-        await query.edit_message_text(
-            f"{LARGE_QUESTION} {YES_LABEL if large else NO_LABEL}")
-        return await self._ask_comment(update, context)
+        await _answered(update)
+        context.user_data["large"] = update.callback_query.data == LARGE_YES
+        return await self._ask_category(update, context)
 
     async def on_large_text(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE) -> int:
         """Typed «да» / «нет» instead of a button; anything else repeats the hint."""
+        await _answered(update)
         answer = update.message.text.strip().casefold()
         if answer not in (YES_LABEL.casefold(), NO_LABEL.casefold()):
-            await update.message.reply_text(
-                f"Нажмите «{YES_LABEL}» или «{NO_LABEL}» под вопросом «{LARGE_QUESTION}».")
+            await self._show(update, context, LARGE_QUESTION, LARGE_BUTTONS, error=LARGE_HINT)
             return State.ASK_LARGE
         context.user_data["large"] = answer == YES_LABEL.casefold()
+        return await self._ask_category(update, context)
+
+    async def _ask_category(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                            prompt: str = ASK_CATEGORY) -> int:
+        await self._show(update, context, prompt, _category_grid(self._categories(context)))
+        return State.CHOOSE_CAT
+
+    async def choose_cat(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Typed Category name (case and outer spaces ignored)."""
+        await _answered(update)
+        cat = _known_category(update.message.text, self._categories(context))
+        if cat is None:
+            return await self._ask_category(update, context, UNKNOWN_CATEGORY)
+        context.user_data["cat"] = cat
+        return await self._ask_comment(update, context)
+
+    async def on_category_button(self, update: Update,
+                                 context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Category button; a stale index (the list was reloaded) asks again."""
+        await _answered(update)
+        categories = self._categories(context)
+        index = update.callback_query.data[len(CATEGORY_CALLBACK):]
+        if not index.isdigit() or int(index) >= len(categories):
+            return await self._ask_category(update, context)
+        context.user_data["cat"] = categories[int(index)]
         return await self._ask_comment(update, context)
 
     async def _ask_comment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        user_name = context.user_data["spender"]
-        buttons = [
-            [InlineKeyboardButton("✅ Сегодня, без комментария", callback_data=TODAY_NO_COMMENT)],
-            [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip")],
-            [nav.home_inline_button()]
-        ]
-        await update.effective_message.reply_text(
-            f"👤 Кто: {escape(user_name)}\n\n💬 Напишите комментарий или нажмите кнопку",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        await self._show(update, context, ASK_COMMENT, COMMENT_BUTTONS)
         return State.TYPING_CMNT
 
     async def type_comment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        # This handler is called for both text messages and "skip" button press
-        if update.callback_query:
-            await update.callback_query.answer()
-            context.user_data["comment"] = ""
-        else:
-            context.user_data["comment"] = update.message.text
-
-        # Choose date
-        buttons = [
-            [InlineKeyboardButton("📅 Сегодня", callback_data="today"),
-             InlineKeyboardButton("📆 Вчера", callback_data="yesterday")],
-            [InlineKeyboardButton("📆 Другая дата", callback_data="custom")],
-            [nav.home_inline_button()]
-        ]
-        # Use update.effective_message for reply, as it can be both Message and CallbackQuery
-        await update.effective_message.reply_text(
-            "📅 Дата траты:",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        """Typed comment or «⏭️ Пропустить»; then the date step."""
+        await _answered(update)
+        context.user_data["comment"] = "" if update.callback_query else update.message.text
+        await self._show(update, context, ASK_DATE, DATE_BUTTONS)
         return State.CHOOSE_DT
 
     async def today_no_comment(self, update: Update,
                                context: ContextTypes.DEFAULT_TYPE) -> int:
         """Comment-step button: save with today's date and an empty comment."""
-        await update.callback_query.answer()
+        await _answered(update)
         context.user_data["comment"] = ""
         return await self.save_row(update, context, clock.now().strftime(DATE_FMT))
 
     async def choose_dt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        query = update.callback_query
-        await query.answer()
-
-        if query.data == "today":
-            date_str = clock.now().strftime(DATE_FMT)
-            return await self.save_row(update, context, date_str)
-        elif query.data == "yesterday":
+        await _answered(update)
+        data = update.callback_query.data
+        if data == "today":
+            return await self.save_row(update, context, clock.now().strftime(DATE_FMT))
+        if data == "yesterday":
             date_str = (clock.now() - timedelta(days=1)).strftime(DATE_FMT)
             return await self.save_row(update, context, date_str)
-        else:
-            await query.edit_message_text("📅 Введите дату в формате ДД.ММ.ГГГГ:")
-            return State.TYPING_DT
+        await self._show(update, context, TYPE_DATE)
+        return State.TYPING_DT
 
     async def type_dt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        text = update.message.text
-
+        await _answered(update)
         try:
-            date_str = dparser.parse(text, dayfirst=True).strftime(DATE_FMT)
-        except Exception:
-            await update.message.reply_text("❌ Не понял дату. Пример: 13.07.2025")
+            date_str = dparser.parse(update.message.text, dayfirst=True).strftime(DATE_FMT)
+        except (ValueError, OverflowError):
+            await self._show(update, context, TYPE_DATE, error=BAD_DATE)
             return State.TYPING_DT
         return await self.save_row(update, context, date_str)
 
     async def save_row(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                        date_str: str) -> int:
-        cat = context.user_data["cat"]
-        amt = context.user_data["amt"]
-        cur = context.user_data["cur"]
-        who = context.user_data["spender"]
-        cmnt = context.user_data.get("comment", "")
-        large = context.user_data.get("large", False)
+        """Write the Expense; the card becomes «✅ Сохранено» with «↩️ Отменить»."""
+        data = context.user_data
         record = ExpenseRecord(
             date=date_str,
-            category=cat,
-            amount=amt,
-            currency=cur,
-            who=who,
-            comment=cmnt,
-            large=large,
+            category=data["cat"],
+            amount=data["amt"],
+            currency=data["cur"],
+            who=data["spender"],
+            comment=data.get("comment", ""),
+            large=data.get("large", False),
         )
         await asyncio.to_thread(append_expense, self._sheets(context), record)
         await asyncio.to_thread(
-            picker.remember, context.user_data, self._sheets(context),
-            update.effective_user.id, who, cur)
+            picker.remember, data, self._sheets(context),
+            update.effective_user.id, record.who, record.currency)
 
-        text = escape(f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}")
-        if large:
-            text += "\n🔶 Крупная трата"
-        markup = nav.inline_markup(undo.remember(context.user_data, [record], clock.now()))
-
-        # Reply to chat depending on whether it was a message or button press
-        if update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=markup)
+        text = undo.saved_text([record])
+        if record.large:
+            text += f"\n{LARGE_LINE}"
+        markup = nav.inline_markup(undo.remember(data, [record], clock.now()))
+        query = update.callback_query
+        card = query.message if query and query.message else data.get(live_card.KEY_CARD)
+        data.pop(live_card.KEY_CARD, None)  # a result now: leave_flow keeps it
+        if card is None:
+            await update.effective_message.reply_text(text, reply_markup=markup)
         else:
-            await update.message.reply_text(text, reply_markup=markup)
-
-        return await nav.go_home(update, context)
+            await live_card.show(card, text, markup)
+        # Only inline buttons were sent: the main menu keyboard is still on the phone.
+        await nav.leave_flow(context)
+        return State.CHOOSE_ACTION

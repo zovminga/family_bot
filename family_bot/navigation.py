@@ -11,6 +11,7 @@ import re
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
+from family_bot import live_card
 from family_bot.conversation_states import State
 from family_bot.currency_picker import KEY_RECENT
 from family_bot.draft_expense import KEY_DRAFTS
@@ -122,15 +123,24 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
-async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Clear flow state and return to the main menu.
+async def leave_flow(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Clear flow state; remove the flow's live card if it is still open.
 
-    Open Drafts, the last save and the Recent currencies cache stay.
+    Open Drafts, the last save and the Recent currencies cache stay. A flow
+    that turned its card into a result takes it out of ``live_card.KEY_CARD`` first.
     """
+    card = context.user_data.get(live_card.KEY_CARD)
     kept = {k: v for k, v in context.user_data.items()
             if k in (KEY_DRAFTS, KEY_LAST_SAVE, KEY_RECENT) and v}
     context.user_data.clear()
     context.user_data.update(kept)
+    if card is not None:
+        await live_card.remove(card)
+
+
+async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Clear flow state (``leave_flow``) and return to the main menu."""
+    await leave_flow(context)
     await show_main_menu(update, context)
     return State.CHOOSE_ACTION
 

@@ -91,7 +91,7 @@ def test_menu_tap_after_no_details_is_not_swallowed(ctx):
     handler = {STAT_SHOW_DETAILS: bot.STATS.on_show_details, CHOOSE_ACTION: bot.choose_action}[state]
     upd = make_update(nav.ADD_EXPENSE)
     run(handler(upd, ctx))
-    assert "Выберите категорию" in last_reply_texts(upd)[0], last_reply_texts(upd)
+    assert "Введите сумму" in last_reply_texts(upd)[0], last_reply_texts(upd)
 
 
 # 4. Manual amount accepted nan / inf / negative / zero (R6).

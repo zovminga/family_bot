@@ -40,7 +40,7 @@ Each Draft card has its own short id; several can be open at once.
 _Avoid_: Pending expense, suggestion
 
 **Live card**:
-One bot message that a step-by-step flow keeps editing instead of sending a new question per step (Draft edits; manual input next). The person's answers to it are deleted in a private chat; when newer bot messages bury it, it is sent again at the bottom.
+One bot message that a step-by-step flow keeps editing instead of sending a new question per step (Draft edits, manual input, the amount of a ⚡ Preset without one). The person's answers to it are deleted in a private chat; when newer bot messages bury it, it is sent again at the bottom.
 _Avoid_: Chain of questions, prompt message
 
 **Preset**:
