@@ -23,10 +23,19 @@ class FakeMessage:
         self.text = text
         self.replies: list[tuple[str, dict[str, Any]]] = []
         self.edits: list[tuple[str, dict[str, Any]]] = []
+        self.bot_replies: list["FakeMessage"] = []  # messages returned by reply_text
+        self.deleted = False
+        self.chat = SimpleNamespace(id=111, type="private")
 
     async def reply_text(self, text: str, **kw: Any) -> "FakeMessage":
         self.replies.append((text, kw))
-        return FakeMessage(text)
+        sent = FakeMessage(text)
+        self.bot_replies.append(sent)
+        return sent
+
+    async def delete(self) -> bool:
+        self.deleted = True
+        return True
 
     async def edit_text(self, text: str, **kw: Any) -> None:
         self.edits.append((text, kw))

@@ -65,11 +65,11 @@ def test_stats_result_does_not_block_on_rows_and_fx() -> None:
                            sheets=lambda _ctx: None, who=lambda _upd, _ctx: "Azat",
                            all_codes=lambda: ["RSD"], get_rate=slow_rate)
     ctx = SimpleNamespace(user_data={stats.QUERY_KEY: stats.StatQuery(
-        category="Food", month="2026-10", group_by_currency=False)})
+        category="Food", month="2026-10")})
     upd = make_update("дин")
     ticks = run(ticks_during(lambda: flow.on_convert_currency(upd, ctx)))
     assert ticks >= 5, "event loop frozen while loading rows / FX rate"
-    assert "(в дин)" in upd.message.replies[0][0]
+    assert "· в дин</b>" in upd.message.replies[0][0]
 
 
 def test_manual_today_no_comment_save_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:

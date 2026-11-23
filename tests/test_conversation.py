@@ -51,7 +51,7 @@ def matches(handlers: list[Any], update: Update) -> bool:
 
 def test_states_are_an_int_enum_without_duplicates() -> None:
     assert issubclass(State, IntEnum)
-    assert len({s.value for s in State}) == len(State) == 18
+    assert len({s.value for s in State}) == len(State) == 17
 
 
 def test_every_state_has_a_handler() -> None:
@@ -67,6 +67,11 @@ def test_every_state_has_a_handler() -> None:
 def test_home_skips_every_state_and_hits_fallback(update: Update) -> None:
     conv = conversation()
     for state, handlers in conv.states.items():
+        if update.callback_query and state.name.startswith("STAT_"):
+            # Statistics steps take the inline home button themselves: it also
+            # deletes the questions message.
+            assert matches(handlers[:1], update), state
+            continue
         assert not matches(handlers, update), state
     assert matches(conv.fallbacks, update)
 
