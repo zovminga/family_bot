@@ -21,8 +21,7 @@ from typing import Any, Callable, Coroutine, Optional, TypeVar
 
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Message,
-                      ReplyKeyboardMarkup, Update)
+from telegram import InlineKeyboardMarkup, Message, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler
 
 from family_bot import analytics
@@ -31,6 +30,7 @@ from family_bot import currency
 from family_bot import currency_picker as picker
 from family_bot import errors
 from family_bot import navigation as nav
+from family_bot.look import escape
 from family_bot.conversation_states import State
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
 from family_bot.sheets import SheetsClient
@@ -115,10 +115,7 @@ def _picker_cb(payload: str) -> str:
 
 def _inline(grid: picker.Grid) -> InlineKeyboardMarkup:
     """Picker grid plus the home button as an inline keyboard."""
-    rows = [[InlineKeyboardButton(label, callback_data=data) for label, data in row]
-            for row in grid]
-    rows.append([nav.home_inline_button()])
-    return InlineKeyboardMarkup(rows)
+    return nav.inline_markup(grid, home=True)
 
 
 Source = Callable[[ContextTypes.DEFAULT_TYPE], T]
@@ -329,7 +326,8 @@ class StatsFlow:
         code = picker.picked_code(payload)
         if code is not None:
             target = currency.stored_value(code)
-            await button.edit_message_text(PICKED_TARGET.format(label=currency.label(target)))
+            await button.edit_message_text(
+                escape(PICKED_TARGET.format(label=currency.label(target))))
             return await self._convert(update, context, target)
         page = picker.page_number(payload)
         if page is not None:
@@ -417,9 +415,9 @@ class StatsFlow:
                             query: StatQuery) -> None:
         """Send the statistics text and store conversion details in the query."""
         if query.month:
-            period_text = f"за {query.month}"
+            period_text = escape(f"за {query.month}")
         elif query.date_from and query.date_to:
-            period_text = f"с {query.date_from} по {query.date_to}"
+            period_text = escape(f"с {query.date_from} по {query.date_to}")
         else:
             await _message(update).reply_text(
                 f"📊 Статистика, {_scope_label(query)}:\n❌ Не задан период")
@@ -428,7 +426,7 @@ class StatsFlow:
         # Sheets read and FX requests block, so they run in a worker thread.
         stats, query.conversion_details = await asyncio.to_thread(
             self._aggregate, context, query)
-        suffix = f" (в {query.convert_to})" if query.convert_to else ""
+        suffix = escape(f" (в {query.convert_to})") if query.convert_to else ""
         await _message(update).reply_text(
             f"📊 Статистика {period_text}, {_scope_label(query)}{suffix}:\n{stats}")
 
@@ -445,13 +443,13 @@ def _scope_label(query: StatQuery) -> str:
     Returns
     -------
     str
-        «все категории», «категория «Еда»» or «только крупные траты».
+        «все категории», «категория «Еда»» or «только крупные траты» (HTML).
     """
     if query.only_large:
         return "только крупные траты"
     if query.category == ALL_CATEGORIES:
         return "все категории"
-    return f"категория «{query.category}»"
+    return escape(f"категория «{query.category}»")
 
 
 def _details_text(query: StatQuery) -> str:
@@ -459,10 +457,10 @@ def _details_text(query: StatQuery) -> str:
     for from_cur, details in query.conversion_details.items():
         # Significant digits, so a rate into a costly Currency (дин → KWD) is not 0,0000.
         rate = f"{details['rate']:.6g}".replace(".", ",")
-        lines.append(
+        lines.append(escape(
             f"{from_cur} → {query.convert_to}:\n"
             f"  Курс: {rate}\n"
             f"  Было: {currency.format_amount(details['original_amount'], from_cur)}\n"
             f"  Стало: {currency.format_amount(details['converted_amount'], query.convert_to)}\n"
-        )
+        ))
     return "\n".join(lines)

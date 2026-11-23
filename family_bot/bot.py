@@ -6,12 +6,11 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from telegram import (
-    BotCommand, Message, Update, InlineKeyboardButton, InlineKeyboardMarkup
-)
+from telegram import BotCommand, Message, Update
+from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
+    Application, CommandHandler, Defaults, MessageHandler, filters,
     ConversationHandler, CallbackQueryHandler, ContextTypes,
     TypeHandler, ApplicationHandlerStop,
 )
@@ -23,6 +22,7 @@ from family_bot import currency_picker as picker
 from family_bot import errors
 from family_bot import logs
 from family_bot import fx
+from family_bot import look
 from family_bot import voice_input as vx
 from family_bot import photo_input as px
 from family_bot import text_input
@@ -178,28 +178,28 @@ async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     uid = user.id if user else "?"
     text = (
         "⛔ Этот бот работает только для семьи, которая его установила.\n"
-        f"Ваш Telegram ID: `{uid}`\n\n"
-        "Если это *ваша* установка, добавьте этот ID в `ALLOWED_USERS` в `.env` "
-        "и перезапустите бота."
+        f"Ваш Telegram ID: {look.code(str(uid))}\n\n"
+        "Если это <b>ваша</b> установка, добавьте этот ID в <code>ALLOWED_USERS</code> "
+        "в <code>.env</code> и перезапустите бота."
     )
     if update.callback_query:
         await update.callback_query.answer("Нет доступа", show_alert=True)
         try:
-            await update.callback_query.message.reply_text(text, parse_mode="Markdown")
+            await update.callback_query.message.reply_text(text)
         except Exception:  # noqa: BLE001 - best-effort notice
             pass
     elif update.effective_message:
-        await update.effective_message.reply_text(text, parse_mode="Markdown")
+        await update.effective_message.reply_text(text)
     raise ApplicationHandlerStop
 
 
 async def _reply_not_set_up(update: Update, settings: config.Config) -> None:
     """Tell an allowed User that Google Sheets is not set up yet and what to fix."""
-    text = "\n".join([
+    text = look.escape("\n".join([
         "⚙️ Бот ещё не подключён к Google Sheets. Что исправить в .env:",
         *settings.problems,
         "После правки перезапустите бота. /whoami работает и сейчас.",
-    ])
+    ]))
     if update.callback_query:
         await update.callback_query.answer()
     if update.effective_message:
@@ -264,21 +264,14 @@ class AmountEdit:
     currency: bool = False  # waits for a Currency code or name, not an amount
 
 
-def _inline_markup(rows: draft.ButtonGrid) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(label, callback_data=cb) for label, cb in row]
-        for row in rows
-    ])
-
-
 async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
     if outcome.markup_only and outcome.buttons is not None:
-        await query.edit_message_reply_markup(reply_markup=_inline_markup(outcome.buttons))
+        await query.edit_message_reply_markup(reply_markup=nav.inline_markup(outcome.buttons))
         return
     if outcome.text is not None:
         kwargs = {}
         if outcome.buttons is not None:
-            kwargs["reply_markup"] = _inline_markup(outcome.buttons)
+            kwargs["reply_markup"] = nav.inline_markup(outcome.buttons)
         await query.edit_message_text(outcome.text, **kwargs)
 
 
@@ -298,7 +291,7 @@ async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
     draft.add_draft(context.user_data, session)
     await status.edit_text(
         draft.card_text(session),
-        reply_markup=_inline_markup(draft.main_buttons(session)),
+        reply_markup=nav.inline_markup(draft.main_buttons(session)),
     )
 
 
@@ -362,15 +355,16 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             today, who, settings.default_currency)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Voice extract", e)
-        await status.edit_text(f"🎧 «{transcript}»\n\n{errors.NOT_PARSED}")
+        await status.edit_text(f"🎧 «{look.escape(transcript)}»\n\n{errors.NOT_PARSED}")
         return
 
     items = result.get("expenses", [])
     if not items:
         note = result.get("note", "")
         await status.edit_text(
-            f"🎧 «{transcript}»\n\n🤔 Не понял трату. Скажи товар, сумму и валюту, "
-            "например: «чипсы сто динар сегодня»." + (f"\nℹ️ {note}" if note else ""))
+            f"🎧 «{look.escape(transcript)}»\n\n🤔 Не понял трату. Скажи товар, сумму и валюту, "
+            "например: «чипсы сто динар сегодня»."
+            + (f"\nℹ️ {look.escape(note)}" if note else ""))
         return
 
     session = draft.session_from_voice(
@@ -421,7 +415,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         note = result.get("note", "")
         await status.edit_text(
             "🧾 Не нашёл позиций на чеке. Сфотографируй чётче, при хорошем свете."
-            + (f"\nℹ️ {note}" if note else ""))
+            + (f"\nℹ️ {look.escape(note)}" if note else ""))
         return
 
     session = draft.session_from_receipt(
@@ -500,7 +494,7 @@ async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         raise ApplicationHandlerStop
     context.user_data.pop(KEY_AMOUNT_EDIT, None)
     await edit.card.edit_text(
-        draft.card_text(session), reply_markup=_inline_markup(draft.main_buttons(session)))
+        draft.card_text(session), reply_markup=nav.inline_markup(draft.main_buttons(session)))
     raise ApplicationHandlerStop
 
 
@@ -528,7 +522,7 @@ async def _draft_currency_text(update: Update, context: ContextTypes.DEFAULT_TYP
             update.effective_user.id, who, outcome.picked)
     if outcome.text is not None:
         await edit.card.edit_text(outcome.text,
-                                  reply_markup=_inline_markup(outcome.buttons or []))
+                                  reply_markup=nav.inline_markup(outcome.buttons or []))
     raise ApplicationHandlerStop
 
 
@@ -608,7 +602,7 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = "❌ Категории не загружены"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(look.escape(text))
 
 
 async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -629,7 +623,7 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Статус: нет в ALLOWED_USERS\n\n"
             f"Добавьте в .env и перезапустите бота:\nALLOWED_USERS={user_id}:{display}"
         )
-    await update.message.reply_text(text)
+    await update.message.reply_text(look.escape(text))
 
 
 async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -645,7 +639,7 @@ async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"ALLOWED_USERS={merged}\n\n"
         f"Ваш ID: {user_id}"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(look.escape(text))
 
 
 async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -664,7 +658,7 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         errors.log_exception("Connection test", e)
         text = "❌ Нет подключения к Google Sheets"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(look.escape(text))
 
 
 async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -681,7 +675,7 @@ async def reload_cats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if problems:
         text = "\n".join([text, "", *problems])
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(look.escape(text))
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -697,7 +691,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Main ----------
 def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
+    # Every message is Telegram HTML: builders escape human text (look).
     app = (Application.builder().token(bot_token).post_init(post_init)
+           .defaults(Defaults(parse_mode=ParseMode.HTML))
            .concurrent_updates(PerUserUpdateProcessor()).build())
 
     # Run before every other handler: drop edits (group -3), then the allowlist

@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (spec: new bot look, stage 1)  
-**Product code tip:** `main` with the threshold-Currency fix (2026-11-20) — with `BASE_CURRENCY=RSD` almost every voice Draft was marked «🔶 Крупная трата»; the threshold now carries its own Currency (default 1000 €)  
+**Updated by:** agent session (issue #100: HTML in every message, button styles)  
+**Product code tip:** branch for issue #100 (2026-11-23) — every message is Telegram HTML, human text escaped, buttons can carry a style; look almost unchanged  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,23 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
+  first of #100–#108): the Application sends every message with parse mode
+  HTML (`Defaults(parse_mode=HTML)` in `bot.build_application`). Human text
+  (comment, Category, receipt item, merchant, voice transcript, Preset name,
+  Spender, Currency, setup problem lines) goes through `look.escape`, so
+  «M&M's <3» shows as typed. «нет доступа» shows the Telegram ID in
+  `<code>` (the old `parse_mode="Markdown"` is gone). New Telegram-free module
+  `look.py`: `escape`, `bold`, `strike`, `code`, `quote`, `expandable_quote`,
+  `field` («Сумма: <b>350 дин</b>»), `bar` (10 cells, rounded half up: 41% →
+  4 cells, 4% → none), `plural` / `expenses` («1 трата», «3 траты», «5 трат»;
+  the multi-item Draft card now says «3 траты» instead of «трат(ы)»). Button
+  grids take an optional style, `look.SUCCESS` / `look.DANGER`, which
+  `navigation.inline_markup` (the one grid → inline keyboard adapter) puts in
+  Telegram's `style` field; no button is coloured yet (#101, #106 do that).
+  python-telegram-bot lower bound is 22.7. Other texts look as before; the
+  redesign is #101–#108. Tests: `tests/test_look.py`. Not checked in a real
+  Telegram chat yet.
 - Payment reminder (issue #89, spec
   `docs/specs/2026-11-large-receipt-reminders.md`): on the 5th and 20th at
   `PAYMENT_REMINDER_HOUR` (default 10) in `TZ_NAME` the bot sends to
@@ -342,7 +359,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## Open
 
-- New bot look, stage 1 (spec only, nothing built): HTML in every message,
+- New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
+  styles; the rest is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons
@@ -350,7 +368,9 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «ты» everywhere. Spec: [`docs/specs/2026-11-bot-look.md`](specs/2026-11-bot-look.md);
   research: [`docs/research/2026-11-telegram-formatting.md`](research/2026-11-telegram-formatting.md).
   Mini App is stage 2, no spec yet. Issues #100–#108 (`ready-for-agent`);
-  #100 (HTML + button styles) blocks the rest.
+  #100 (HTML + button styles) blocks the rest. Rule for every later ticket:
+  any new text with human input goes through `look` helpers, or Telegram
+  rejects the message («can't parse entities»).
 
 - New features planned (partly built): Large expense (#83 done: manual input
   and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard done), receipt

@@ -428,7 +428,7 @@ bot = [
     { name = "av", specifier = ">=14.0,<17" },
     { name = "babel", specifier = ">=2.16" },
     { name = "python-dateutil", specifier = ">=2.9" },
-    { name = "python-telegram-bot", extras = ["webhooks", "job-queue"], specifier = ">=22.2,<23" },
+    { name = "python-telegram-bot", extras = ["webhooks", "job-queue"], specifier = ">=22.7,<23" },
     { name = "vosk", specifier = ">=0.3.44" },
 ]
 dashboard = [
