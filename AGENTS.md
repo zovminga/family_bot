@@ -80,6 +80,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   payment_reminder_bot.py  Payment reminder job on the 5th/20th, its buttons and amount reply
   errors.py           Error handler: short user text, masked log
   logs.py             Logging setup for entry points (LOG_LEVEL, secrets masked)
+  look.py             HTML text helpers + button styles (every message is HTML: escape human text)
   analytics.py        Stats over Row lists (no I/O; rate function passed in)
   voice_input.py      Vosk STT + Claude extract (model in <repo>/models/)
   photo_input.py      Claude Vision receipt → drafts

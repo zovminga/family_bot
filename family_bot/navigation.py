@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Shared navigation for Telegram conversation flows.
 
-go_home is the single locality for «return to main menu» behaviour.
+go_home is the single locality for «return to main menu» behaviour;
+inline_markup is the one place a Telegram-free button grid becomes an inline keyboard.
 """
 from __future__ import annotations
 
 import re
 
-from telegram import InlineKeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 from family_bot.conversation_states import State
 from family_bot.currency_picker import KEY_RECENT
 from family_bot.draft_expense import KEY_DRAFTS
+from family_bot.look import Button, ButtonGrid
 from family_bot.undo import KEY_LAST_SAVE
 
 HOME_BUTTON = "🏠 В начало"
@@ -66,6 +68,34 @@ def home_row() -> list[str]:
 
 def home_inline_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(HOME_BUTTON, callback_data=HOME_CALLBACK)
+
+
+def _inline_button(button: Button) -> InlineKeyboardButton:
+    """(label, data) or (label, data, style) -> button; style is Telegram's ``style`` field."""
+    label, data, *style = button
+    return InlineKeyboardButton(label, callback_data=data, style=style[0] if style else None)
+
+
+def inline_markup(grid: ButtonGrid, *, home: bool = False) -> InlineKeyboardMarkup:
+    """
+    Inline keyboard from a button grid.
+
+    Parameters
+    ----------
+    grid : ButtonGrid
+        Rows of (label, callback_data[, style]).
+    home : bool
+        Add the home button as the last row.
+
+    Returns
+    -------
+    InlineKeyboardMarkup
+        Keyboard for ``reply_markup``.
+    """
+    rows = [[_inline_button(b) for b in row] for row in grid]
+    if home:
+        rows.append([home_inline_button()])
+    return InlineKeyboardMarkup(rows)
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:

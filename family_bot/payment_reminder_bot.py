@@ -14,7 +14,7 @@ import asyncio
 from datetime import time
 from typing import Callable, cast
 
-from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram import ForceReply, Message, Update
 from telegram.ext import (
     ApplicationHandlerStop, CallbackContext, ContextTypes, JobQueue, MessageHandler, filters,
 )
@@ -23,10 +23,11 @@ from family_bot import amount_input
 from family_bot import clock
 from family_bot import config
 from family_bot import errors
+from family_bot import look
+from family_bot import navigation as nav
 from family_bot import payment_reminder as pr
 from family_bot import undo
 from family_bot.currency import format_amount
-from family_bot.draft_expense import ButtonGrid
 from family_bot.expense import append_expense
 from family_bot.monthly_summary import job_tz
 from family_bot.sheet_data import DATE_FMT, MONTH_FMT, Row
@@ -36,11 +37,6 @@ JOB_NAME = "payment_reminder"
 
 # Reads (Presets, Data rows) from the sheet; blocking, called in a thread.
 LoadInputs = Callable[[], tuple[list[dict], list[Row]]]
-
-
-def _markup(grid: ButtonGrid) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(label, callback_data=cb) for label, cb in row] for row in grid])
 
 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -65,7 +61,8 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         reminder = pr.new_reminder(due, month)
         sent = await context.bot.send_message(
-            job.chat_id, pr.message_text(reminder), reply_markup=_markup(pr.buttons(reminder)))
+            job.chat_id, pr.message_text(reminder),
+            reply_markup=nav.inline_markup(pr.buttons(reminder)))
         reminder.chat_id, reminder.message_id = sent.chat_id, sent.message_id
         pr.add(context.bot_data, reminder)
     except Exception as e:  # noqa: BLE001 - a failed reminder must not stop the bot
@@ -104,7 +101,7 @@ async def _redraw(context: ContextTypes.DEFAULT_TYPE, reminder: pr.Reminder) -> 
     grid = pr.buttons(reminder)
     await context.bot.edit_message_text(
         pr.message_text(reminder), chat_id=reminder.chat_id, message_id=reminder.message_id,
-        reply_markup=_markup(grid) if grid else None)
+        reply_markup=nav.inline_markup(grid) if grid else None)
     pr.forget_if_closed(context.bot_data, reminder)
 
 
@@ -132,8 +129,9 @@ async def _save(context: ContextTypes.DEFAULT_TYPE, reply_to: Message, reminder:
     undo_grid = undo.remember(cast(dict, context.user_data), [record], clock.now())
     await _redraw(context, reminder)
     await reply_to.reply_text(
-        f"✅ Сохранено: {preset['name']} — {format_amount(amount, currency)} · {today}",
-        reply_markup=_markup(undo_grid))
+        look.escape(
+            f"✅ Сохранено: {preset['name']} — {format_amount(amount, currency)} · {today}"),
+        reply_markup=nav.inline_markup(undo_grid))
 
 
 async def _ask_amount(context: ContextTypes.DEFAULT_TYPE, reply_to: Message,
@@ -141,7 +139,8 @@ async def _ask_amount(context: ContextTypes.DEFAULT_TYPE, reply_to: Message,
                       prefix: str = "") -> None:
     """Send the amount prompt as a ForceReply and remember who must answer it."""
     preset = reminder.payments[index].preset
-    text = prefix + pr.PROMPT_TEXT.format(name=preset["name"], currency=preset["currency"])
+    text = look.escape(
+        prefix + pr.PROMPT_TEXT.format(name=preset["name"], currency=preset["currency"]))
     prompt = await reply_to.reply_text(text, reply_markup=ForceReply())
     pr.prompts(context.bot_data)[(prompt.chat_id, prompt.message_id)] = pr.AmountPrompt(
         reminder_id=reminder.id, index=index, user_id=user_id)

@@ -14,6 +14,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from family_bot import look
 from family_bot.currency import format_amount
 from family_bot.draft_expense import ButtonGrid
 from family_bot.expense import ExpenseRecord, delete_expenses
@@ -41,7 +42,10 @@ class LastSave:
 
 @dataclass(frozen=True)
 class UndoResult:
-    """Text for the User; done means the button has no further use."""
+    """Text for the User; done means the button has no further use.
+
+    A done text replaces the message (HTML); the others go to a plain alert.
+    """
 
     text: str
     done: bool
@@ -59,7 +63,7 @@ def _done_text(records: tuple[ExpenseRecord, ...]) -> str:
         r = records[0]
         amount = parse_amount(r.amount)
         shown = format_amount(amount, r.currency) if amount is not None else str(r.amount)
-        return f"↩️ Отменено, трата удалена: {r.category} — {shown}, {r.date}"
+        return look.escape(f"↩️ Отменено, трата удалена: {r.category} — {shown}, {r.date}")
     return f"↩️ Отменено, удалено трат: {len(records)}"
 
 

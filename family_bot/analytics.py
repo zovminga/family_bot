@@ -12,6 +12,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Optional
 
 from family_bot.currency import format_amount, to_iso
+from family_bot.look import escape
 from family_bot.sheet_data import DATE_FMT, Row
 
 GetRate = Callable[[str, str], Optional[float]]
@@ -49,13 +50,13 @@ def format_last_n(
     category: Optional[str] = None,
     large: bool = False,
 ) -> str:
-    """Human-readable last-N listing for Telegram."""
+    """Last-N listing as Telegram HTML (human text escaped)."""
     records = last_n(rows, n=n, category=category, large=large)
     if not records:
         if large:
             return NO_LARGE_RECORDS
         if category and category != "All":
-            return f"📭 Нет записей в категории «{category}»"
+            return escape(f"📭 Нет записей в категории «{category}»")
         return "📭 Записей нет"
 
     lines = [f"📋 Последние записи ({len(records)}):\n"]
@@ -66,7 +67,7 @@ def format_last_n(
             f"{format_amount(record.amount, record.currency or '?')} | "
             f"👤 {record.who or '?'}{comment_text}"
         )
-    return "\n".join(lines)
+    return escape("\n".join(lines))
 
 
 def _parse_date(value: str) -> Optional[date]:
@@ -115,7 +116,7 @@ def aggregate(
     get_rate: Optional[GetRate] = None,
     large: bool = False,
 ) -> tuple[str, dict]:
-    """Aggregate filtered expenses into Telegram text + conversion details.
+    """Aggregate filtered expenses into Telegram HTML text + conversion details.
 
     get_rate(from_currency, to_currency) -> rate | None; required when
     convert_to_currency is set. Large expenses are left out; ``large=True``
@@ -154,8 +155,8 @@ def aggregate(
         if missing:
             # Never sum without a rate: say which Currencies could not be converted.
             return (
-                f"❌ Нет курса для пересчёта в {convert_to_currency}: "
-                f"{', '.join(missing)}.",
+                escape(f"❌ Нет курса для пересчёта в {convert_to_currency}: "
+                       f"{', '.join(missing)}."),
                 {},
             )
         rates = {c: rate for c, rate in found.items() if rate is not None}
@@ -176,7 +177,7 @@ def aggregate(
         for w in working:
             totals[w["currency"]] = totals.get(w["currency"], 0.0) + w["amount"]
         lines = [format_amount(amt, cur) for cur, amt in totals.items()]
-        return ("\n".join(lines) if lines else NO_DATA), conversion_details
+        return (escape("\n".join(lines)) if lines else NO_DATA), conversion_details
 
     total = sum(w["amount"] for w in working)
     currency = (
@@ -184,7 +185,7 @@ def aggregate(
         if convert_to_currency
         else (working[0]["currency"] if working else "?")
     )
-    return f"💰 Итого: {format_amount(total, currency)}", conversion_details
+    return escape(f"💰 Итого: {format_amount(total, currency)}"), conversion_details
 
 
 @dataclass(frozen=True)
@@ -288,7 +289,7 @@ def _large_line(rows: tuple[Row, ...]) -> str:
 
 def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> str:
     """
-    Telegram text for a month summary: total, top Categories, Spenders.
+    Telegram HTML for a month summary: total, top Categories, Spenders.
 
     Each Currency gets its own block; amounts in different Currencies are
     never added together. Large expenses, if any, are one last line.
@@ -303,12 +304,12 @@ def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> st
     Returns
     -------
     str
-        Message text.
+        Message text (HTML, human text escaped).
     """
     lines = [f"📅 {month_title(summary.month)}"]
     tail = ["", _large_line(summary.large)] if summary.large else []
     if not summary.by_currency:
-        return "\n".join([*lines, NO_DATA, *tail])
+        return escape("\n".join([*lines, NO_DATA, *tail]))
 
     lines.append("💰 Итого: " + " · ".join(
         format_amount(sums.total, cur) for cur, sums in summary.by_currency.items()))
@@ -322,4 +323,4 @@ def format_month_summary(summary: MonthSummary, top: int = TOP_CATEGORIES) -> st
                   for i, (name, amount) in enumerate(sums.categories[:top], 1)]
         lines += ["", "👤 По людям:"]
         lines += [f"{name} — {format_amount(amount, cur)}" for name, amount in sums.spenders]
-    return "\n".join([*lines, *tail])
+    return escape("\n".join([*lines, *tail]))
