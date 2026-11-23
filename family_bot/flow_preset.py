@@ -14,6 +14,7 @@ from telegram.ext import ContextTypes
 
 from family_bot import amount_input, clock
 from family_bot.currency import format_amount
+from family_bot.look import escape
 from family_bot.conversation_states import State
 from family_bot.expense import ExpenseRecord, append_expense
 from family_bot import navigation as nav
@@ -67,7 +68,7 @@ async def choose_preset(
     if preset["amount"] is None:
         context.user_data.update({KEY_PRESET: preset})
         await update.message.reply_text(
-            f"💵 Введите сумму для «{preset['name']}» ({preset['currency']}):",
+            escape(f"💵 Введите сумму для «{preset['name']}» ({preset['currency']}):"),
             reply_markup=ReplyKeyboardMarkup([nav.home_row()], resize_keyboard=True))
         return State.TYPING_PRESET_AMT
     return await _save(update, context, preset, preset["amount"], preset["currency"],
@@ -110,5 +111,5 @@ async def _save(update: Update, context: ContextTypes.DEFAULT_TYPE, preset: dict
         large=False,  # a Preset is routine even above the threshold
     ))
     await update.message.reply_text(
-        f"✅ Сохранено: {preset['name']} — {format_amount(amount, cur)} · {date_str}")
+        escape(f"✅ Сохранено: {preset['name']} — {format_amount(amount, cur)} · {date_str}"))
     return await nav.go_home(update, context)

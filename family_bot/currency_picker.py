@@ -32,10 +32,11 @@ from babel.numbers import get_currency_name
 from family_bot import currency
 from family_bot import errors
 from family_bot import fx
+from family_bot import look
 from family_bot.sheet_data import parse_rows
 from family_bot.sheets import SheetsClient
 
-Grid = list[list[tuple[str, str]]]  # (label, callback_data)
+Grid = look.ButtonGrid  # (label, callback_data)
 Callback = Callable[[str], str]  # picker payload -> caller's callback_data
 
 # user_data key: this User's Recent currencies (stored values), newest first.
@@ -112,7 +113,7 @@ def search(text: str, codes: Iterable[str]) -> list[str]:
 
 # ---------- buttons ----------
 
-def _pick_button(value: str, cb: Callback) -> tuple[str, str]:
+def _pick_button(value: str, cb: Callback) -> look.Button:
     return currency.label(value), cb(PICK + currency.to_iso(value))
 
 
