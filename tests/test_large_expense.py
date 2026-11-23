@@ -186,26 +186,43 @@ def _save_today(ctx: Any, monkeypatch: pytest.MonkeyPatch) -> list:
     return settings_of(ctx).sheets.appended_rows
 
 
-def test_above_threshold_asks_before_comment(ctx: Any, rates: None) -> None:
+def _card_view(ctx: Any) -> tuple[str, dict[str, str]]:
+    """Text and button labels of the manual-input card as shown now."""
+    from family_bot import live_card
+
+    card = ctx.user_data[live_card.KEY_CARD]
+    text, kw = card.edits[-1] if card.edits else (card.text, card.kw)
+    return text, _labels(kw["reply_markup"])
+
+
+def _tap_on_card(ctx: Any, label: str, handler: Any) -> Any:
+    from family_bot import live_card
+
+    card = ctx.user_data[live_card.KEY_CARD]
+    query = FakeQuery(_card_view(ctx)[1][label], message=card)
+    return run(handler(make_update(query=query), ctx))
+
+
+def test_above_threshold_asks_on_the_card_before_category(ctx: Any, rates: None) -> None:
     upd = make_update("1500 €")
     assert run(bot.MANUAL.type_amount(upd, ctx)) == State.ASK_LARGE
-    text, kw = upd.message.replies[-1]
-    assert text == "🔶 Это крупная трата?"
-    labels = _labels(kw["reply_markup"])
-    assert {"Да", "Нет"} <= set(labels)
+    text, labels = _card_view(ctx)
+    assert text.endswith("\n\n🔶 Это крупная трата?")
+    assert "Сумма: <b>1 500 €</b>" in text
+    assert list(labels) == ["Да", "Нет", "🏠 В начало"]
 
 
 def test_other_currency_above_threshold_asks(ctx: Any, rates: None) -> None:
     assert run(bot.MANUAL.type_amount(make_update("150000 дин"), ctx)) == State.ASK_LARGE
 
 
-def test_below_threshold_goes_straight_to_comment(ctx: Any, rates: None) -> None:
-    assert run(bot.MANUAL.type_amount(make_update("350 €"), ctx)) == State.TYPING_CMNT
+def test_below_threshold_goes_straight_to_category(ctx: Any, rates: None) -> None:
+    assert run(bot.MANUAL.type_amount(make_update("350 €"), ctx)) == State.CHOOSE_CAT
 
 
-def test_no_rate_goes_straight_to_comment(ctx: Any) -> None:
+def test_no_rate_goes_straight_to_category(ctx: Any) -> None:
     # conftest: the rate service is offline
-    assert run(bot.MANUAL.type_amount(make_update("150000 дин"), ctx)) == State.TYPING_CMNT
+    assert run(bot.MANUAL.type_amount(make_update("150000 дин"), ctx)) == State.CHOOSE_CAT
 
 
 def test_threshold_setting_is_used(ctx: Any, rates: None) -> None:
@@ -215,33 +232,41 @@ def test_threshold_setting_is_used(ctx: Any, rates: None) -> None:
 
 def test_yes_then_today_no_comment_saves_marked(ctx: Any, rates: None,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
-    upd = make_update("1500 €")
-    run(bot.MANUAL.type_amount(upd, ctx))
-    yes = _labels(upd.message.replies[-1][1]["reply_markup"])["Да"]
-    query = FakeQuery(yes)
-    assert run(bot.MANUAL.on_large_button(make_update(query=query), ctx)) == State.TYPING_CMNT
-    comment_markup = query.message.replies[-1][1]["reply_markup"]
-    assert "✅ Сегодня, без комментария" in _labels(comment_markup)
+    run(bot.MANUAL.type_amount(make_update("1500 €"), ctx))
+    assert _tap_on_card(ctx, "Да", bot.MANUAL.on_large_button) == State.CHOOSE_CAT
+    assert "🔶 Крупная трата" in _card_view(ctx)[0]
+    assert _tap_on_card(ctx, "Trips", bot.MANUAL.on_category_button) == State.TYPING_CMNT
+    assert "✅ Сегодня, без комментария" in _card_view(ctx)[1]
     rows = _save_today(ctx, monkeypatch)
     assert rows[-1] == ["19.11.2026", "2026-11", "Trips", 1500.0, "€", "Ann", "", "да"]
     assert settings_of(ctx).sheets.read_data_headers() == [*HEADERS, "Large"]
 
 
 def test_no_saves_unmarked(ctx: Any, rates: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    upd = make_update("1500 €")
-    run(bot.MANUAL.type_amount(upd, ctx))
-    no = _labels(upd.message.replies[-1][1]["reply_markup"])["Нет"]
-    run(bot.MANUAL.on_large_button(make_update(query=FakeQuery(no)), ctx))
+    run(bot.MANUAL.type_amount(make_update("1500 €"), ctx))
+    _tap_on_card(ctx, "Нет", bot.MANUAL.on_large_button)
+    assert "Крупная" not in _card_view(ctx)[0]
     rows = _save_today(ctx, monkeypatch)
     assert rows[-1] == ["19.11.2026", "2026-11", "Trips", 1500.0, "€", "Ann", ""]
     assert settings_of(ctx).sheets.read_data_headers() == HEADERS
 
 
-@pytest.mark.parametrize("text,state", [("да", State.TYPING_CMNT), ("Нет", State.TYPING_CMNT),
+@pytest.mark.parametrize("text,state", [("да", State.CHOOSE_CAT), ("Нет", State.CHOOSE_CAT),
                                         ("может", State.ASK_LARGE)])
-def test_typed_answer(ctx: Any, rates: None, text: str, state: State) -> None:
+def test_typed_answer_is_deleted(ctx: Any, rates: None, text: str, state: State) -> None:
     run(bot.MANUAL.type_amount(make_update("1500 €"), ctx))
-    assert run(bot.MANUAL.on_large_text(make_update(text), ctx)) == state
+    upd = make_update(text)
+    assert run(bot.MANUAL.on_large_text(upd, ctx)) == state
+    assert upd.message.deleted
+
+
+def test_wrong_typed_answer_shows_the_hint_on_the_card(ctx: Any, rates: None) -> None:
+    from family_bot.flows import manual
+
+    run(bot.MANUAL.type_amount(make_update("1500 €"), ctx))
+    run(bot.MANUAL.on_large_text(make_update("может"), ctx))
+    text, labels = _card_view(ctx)
+    assert manual.LARGE_HINT in text and {"Да", "Нет"} <= set(labels)
 
 
 def test_large_step_has_handlers() -> None:
@@ -349,6 +374,6 @@ def test_manual_input_with_dinar_base_asks_only_above_1000_euro(
     ctx = bot_context(categories=["Food"], currencies=["дин", "€"],
                       default_currency="дин", sheets=FakeSheetsClient())
     ctx.user_data["cat"] = "Food"
-    assert run(bot.MANUAL.type_amount(make_update("1500 дин"), ctx)) == State.TYPING_CMNT
+    assert run(bot.MANUAL.type_amount(make_update("1500 дин"), ctx)) == State.CHOOSE_CAT
     ctx.user_data["cat"] = "Food"
     assert run(bot.MANUAL.type_amount(make_update("150000 дин"), ctx)) == State.ASK_LARGE

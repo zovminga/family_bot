@@ -10,6 +10,11 @@ and calls:
   and sends it again at the bottom. Returns the card to keep (maybe a new one).
 - ``drop_reply(message)`` for the person's answer to a step (accepted or not):
   deleted in a private chat, kept in a group chat (no admin rights there).
+- ``remove(card)`` when the flow is left without a result («🏠 В начало»,
+  ``/cancel``): the card goes from the chat.
+
+A conversation flow (manual input, a ⚡ Preset amount) keeps its card in
+``user_data[KEY_CARD]``; ``navigation.leave_flow`` removes a card still there.
 
 The bot remembers its own recent message ids per chat (``SentLog`` on
 ``TrackingBot``); the person's messages do not count. After a restart the log
@@ -36,6 +41,8 @@ CONNECTION_POOL_SIZE = 256
 SEND_PREFIX = "send"
 # Telegram's answer to an edit that changes nothing (same text, same buttons).
 NOT_MODIFIED = "message is not modified"
+# user_data key: the open conversation flow's card (Message) until it shows a result.
+KEY_CARD = "live_card"
 
 
 class SentLog:
@@ -104,6 +111,11 @@ async def _delete(message: Message) -> None:
         await message.delete()
     except TelegramError as e:  # too old or already gone: the chat is just less tidy
         logger.info("Could not delete message %s: %s", message.message_id, e)
+
+
+async def remove(card: Message) -> None:
+    """Delete a card left without a result (in any chat: it is the bot's own message)."""
+    await _delete(card)
 
 
 async def drop_reply(message: Message) -> None:

@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #102: Draft edits in one live card, `live_card.py`)  
-**Product code tip:** branch for issue #102 (2026-11-23) — Draft edit steps on the card itself (live card): the person's answers and the voice message are deleted in a private chat, a buried card moves to the bottom; on top of #101 (Draft card in look B), #104, #106  
+**Updated by:** agent session (issue #103: manual input in one live card)  
+**Product code tip:** branch for issue #103 (2026-11-23) — «💰 Добавить трату» is one live card (amount → Currency → Large? → Category → comment/date), answers deleted, the card becomes «✅ Сохранено» + «↩️ Отменить»; a ⚡ Preset without an amount asks it on a card; on top of #102 (Draft edits in one live card), #101, #104, #106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,26 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Manual input in one live card (issue #103, spec `docs/specs/2026-11-bot-look.md`
+  stories 17–25): «💰 Добавить трату» sends one card «💰 <b>Новая трата</b>»
+  and every step edits it: amount → Currency (Recent currencies, «🌍 Другая»
+  pages, typed code or name) → «🔶 Это крупная трата?» (above the threshold) →
+  Category (inline buttons, two per row, or typed) → comment → date. **The
+  order changed**: the amount comes first, Category after it (was Category
+  first), as the issue and spec say. Filled fields («Сумма», «Категория»,
+  «Комментарий», «Кто», «🔶 Крупная трата») on top, the step's question and
+  buttons below, «🏠 В начало» on every step. In a private chat every typed
+  answer is deleted; a wrong one shows the reason on the card and keeps the
+  step. The save turns the card into the #101 line «✅ Сохранено» (quote) with
+  red «↩️ Отменить»; no main-menu message follows (the card has inline
+  buttons only, so the menu keyboard stays on the phone). «🏠 В начало»,
+  `/cancel` and any main-menu button mid-input delete the card (a menu button
+  then does its job: `bot.menu_mid_input`). A buried card moves to the bottom
+  (#102 mechanism). A ⚡ Preset without an amount asks it on a card
+  «⚡ <b>name</b> / Категория / Кто» with the same rules; every ⚡ save (with or
+  without amount) is now «✅ Сохранено» + «↩️ Отменить». Step texts are the
+  old ones («Введите…», «вы»); #107 rewrites texts. Not checked in a real
+  Telegram chat yet.
 - Draft edits in one live card (issue #102, spec `docs/specs/2026-11-bot-look.md`
   stories 25–29, 35): every Draft edit step (Категория, Дата, Валюта, Сумма,
   Кто, Крупная) edits the card message. In a private chat the bot deletes the
@@ -29,7 +49,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   again at the bottom with the same text and buttons. Save and cancel stay in
   place. Group chats: nothing deleted or moved. After a restart the id log is
   empty, so nothing moves until the bot sends again. The mechanism is
-  `live_card.show` / `drop_reply`, ready for manual input (#103). Not checked
+  `live_card.show` / `drop_reply`, also used by manual input (#103). Not checked
   in a real Telegram chat yet.
 - Draft card in variant B (issue #101, spec `docs/specs/2026-11-bot-look.md`
   stories 1–3, 6, 8, 10–12, 30–34, 36–37): voice, typed text and receipt
@@ -43,8 +63,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   them all; undo (any save) turns the message into «↩️ Отменено» with the
   records struck through and no buttons; a tap after 30 minutes drops the
   button. «❌ Отмена» leaves «Черновик отменён». Code: `draft_expense.card_text`,
-  `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves keep their old
-  one-line «✅ Сохранено: …» until #103; the Payment reminder builds the same
+  `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves use them since
+  #103; the Payment reminder builds the same
   look with its own `payment_reminder.saved_text` (#106); editing
   inside the card is #102 (above). Not checked in a real Telegram chat yet.
 - Month summary in look B (issue #104, spec `docs/specs/2026-11-bot-look.md`,
@@ -137,7 +157,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Large expense, part 1 (issue #83, spec
   `docs/specs/2026-11-large-receipt-reminders.md`): manual input asks
   «🔶 Это крупная трата?» («Да» / «Нет», typed «да»/«нет» too) after the
-  Currency and before the comment step, only when the amount is above
+  Currency and before the Category step (#103; was before the comment step), only when the amount is above
   `LARGE_EXPENSE_THRESHOLD` — an amount with its own Currency («1000 EUR»,
   «117 000 дин»; a bare number and the default are €, never `BASE_CURRENCY`,
   so `BASE_CURRENCY=RSD` no longer makes it 1000 дин; a bad value → one setup
@@ -245,13 +265,13 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   (`sheets.DEFAULT_CATEGORIES`) stays English: dashboard tiers map those names.
   `tests/test_russian_ui.py` walks the flows and fails on an English word.
 - Per-household isolation: `BOT_TOKEN` + sheet + `ALLOWED_USERS`
-- Manual expense ConversationHandler (category → amount → currency → comment → date),
+- Manual expense ConversationHandler (amount → currency → [large] → category → comment → date since #103),
   in `flows/manual.py` since issue #24. The home button is handled once, in the
   `ConversationHandler` fallbacks (`navigation.home_fallbacks()`); states are
   the `IntEnum` `conversation_states.State`, and a test checks each has a handler.
   Issue #32 (plan 3.4): the comment step has «✅ Сегодня, без комментария» —
   one tap saves with today's date (`clock.now()`) and an empty comment.
-  «кофе 350 дин сегодня» by hand is now 3 taps (menu, Category, this button);
+  «кофе 350 дин сегодня» by hand is now 3 taps (menu, Category, this button; «350 дин» is typed);
   before it was 4, and 5 when U2 was written (Currency tap, removed in #15).
 - Preset (⚡) one-tap save from `Regular_expenses`
 - In-bot statistics with FX conversion (`analytics.py`)
@@ -414,6 +434,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 - New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
   styles; #101 built: Draft card; #102 built: Draft edits in one live card;
+  #103 built: manual input in one live card;
   #104 built: month summary; #106 built: Payment reminder; the rest is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
