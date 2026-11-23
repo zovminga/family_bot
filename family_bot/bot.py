@@ -109,24 +109,30 @@ def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
         return None
 
 
+DASHBOARD_CAPTION = "📈 <b>Дашборд</b>\nОткрой файл в браузере."
+NO_CONNECTION = ("❌ Нет подключения к Google Sheets. Проверь в .env GOOGLE_CREDS_PATH и "
+                 "SHEET_NAME, потом перезапусти бота")
+
+
 async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the latest built dashboard to the chat by its stored file_id."""
     msg = update.effective_message
     file_id = await asyncio.to_thread(get_dashboard_file_id, cfg(context).sheets)
     if not file_id:
         await msg.reply_text(
-            "📊 Дашборд ещё не собран. Собери его на компьютере "
-            "(dashboard/run.sh) — после сборки он появится здесь."
+            "📈 <b>Дашборда пока нет</b>\n"
+            "Собери его на компьютере: <code>dashboard/run.sh</code>. "
+            "После сборки он появится здесь."
         )
         return
     try:
         await msg.reply_document(
             document=file_id,
-            caption="Открой файл в браузере — актуальный дашборд трат. 💰",
+            caption=DASHBOARD_CAPTION,
         )
     except Exception as e:  # noqa: BLE001 - report failures to the user
         errors.log_exception("Dashboard send", e)
-        await msg.reply_text("❌ Не удалось отправить дашборд. Попробуйте ещё раз")
+        await msg.reply_text("❌ Не получилось отправить дашборд. Нажми «📈 Дашборд» ещё раз")
 
 
 async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,10 +184,11 @@ async def enforce_allowlist(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     uid = user.id if user else "?"
     text = (
-        "⛔ Этот бот работает только для семьи, которая его установила.\n"
-        f"Ваш Telegram ID: {look.code(str(uid))}\n\n"
-        "Если это <b>ваша</b> установка, добавьте этот ID в <code>ALLOWED_USERS</code> "
-        "в <code>.env</code> и перезапустите бота."
+        "⛔ <b>Нет доступа</b>\n"
+        "Этот бот работает только для семьи, которая его установила.\n"
+        f"Твой Telegram ID: {look.code(str(uid))}\n\n"
+        "Если это <b>твоя</b> установка, добавь этот ID в <code>ALLOWED_USERS</code> "
+        "в <code>.env</code> и перезапусти бота."
     )
     if update.callback_query:
         await update.callback_query.answer("Нет доступа", show_alert=True)
@@ -199,7 +206,7 @@ async def _reply_not_set_up(update: Update, settings: config.Config) -> None:
     text = look.escape("\n".join([
         "⚙️ Бот ещё не подключён к Google Sheets. Что исправить в .env:",
         *settings.problems,
-        "После правки перезапустите бота. /whoami работает и сейчас.",
+        "После правки перезапусти бота. /whoami работает и сейчас.",
     ]))
     if update.callback_query:
         await update.callback_query.answer()
@@ -343,7 +350,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buf = await tg_file.download_as_bytearray()
     except Exception as e:  # noqa: BLE001 - report to user
         errors.log_exception("Voice download", e)
-        await status.edit_text("❌ Не смог скачать голосовое. Попробуйте ещё раз")
+        await status.edit_text("❌ Не смог скачать голосовое. Отправь его ещё раз")
         return
 
     # STT + LLM parsing are blocking (CPU + network) — keep the event loop free.
@@ -365,16 +372,16 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             today, who, settings.default_currency)
     except Exception as e:  # noqa: BLE001
         errors.log_exception("Voice extract", e)
-        await status.edit_text(f"🎧 «{look.escape(transcript)}»\n\n{errors.NOT_PARSED}")
+        await status.edit_text(f"{look.quote(transcript)}\n{errors.NOT_PARSED}")
         return
 
     items = result.get("expenses", [])
     if not items:
         note = result.get("note", "")
         await status.edit_text(
-            f"🎧 «{look.escape(transcript)}»\n\n🤔 Не понял трату. Скажи товар, сумму и валюту, "
+            f"{look.quote(transcript)}\n🤔 Не понял трату. Скажи товар, сумму и валюту, "
             "например: «чипсы сто динар сегодня»."
-            + (f"\nℹ️ {look.escape(note)}" if note else ""))
+            + (f"\n{look.escape(note)}" if note else ""))
         return
 
     session = draft.session_from_voice(
@@ -407,7 +414,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buf = await tg_file.download_as_bytearray()
     except Exception as e:  # noqa: BLE001 - report to user
         errors.log_exception("Photo download", e)
-        await status.edit_text("❌ Не смог скачать фото. Попробуйте ещё раз")
+        await status.edit_text("❌ Не смог скачать фото. Отправь его ещё раз")
         return
 
     today = clock.now().strftime(DATE_FMT)
@@ -426,7 +433,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         note = result.get("note", "")
         await status.edit_text(
             "🧾 Не нашёл позиций на чеке. Сфотографируй чётче, при хорошем свете."
-            + (f"\nℹ️ {look.escape(note)}" if note else ""))
+            + (f"\n{look.escape(note)}" if note else ""))
         return
 
     session = draft.session_from_receipt(
@@ -649,18 +656,15 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     display = _telegram_display_name(user)
 
     allowed = cfg(context).allowed_users
+    head = (f"👤 <b>Твой профиль</b>\nTelegram ID: {look.code(str(user_id))}\n"
+            f"Имя: {look.escape(display)}\n")
     if auth.is_allowed(user_id, allowed):
-        text = (
-            f"👤 Ваш профиль:\nID: {user_id}\nИмя: {display}\n"
-            f"В списке как: {allowed[user_id]}"
-        )
+        text = head + f"В списке как: {look.escape(allowed[user_id])}"
     else:
-        text = (
-            f"👤 Ваш профиль:\nID: {user_id}\nИмя: {display}\n"
-            f"Статус: нет в ALLOWED_USERS\n\n"
-            f"Добавьте в .env и перезапустите бота:\nALLOWED_USERS={user_id}:{display}"
-        )
-    await update.message.reply_text(look.escape(text))
+        text = (head + "Тебя нет в <code>ALLOWED_USERS</code>.\n\n"
+                "Добавь строку в <code>.env</code> и перезапусти бота:\n"
+                + look.code(f"ALLOWED_USERS={user_id}:{display}"))
+    await update.message.reply_text(text)
 
 
 async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -672,11 +676,12 @@ async def allowlist_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = ",".join(f"{uid}:{n}" for uid, n in cfg(context).allowed_users.items())
     merged = f"{existing},{user_id}:{name}" if existing else f"{user_id}:{name}"
     text = (
-        f"📝 Чтобы добавить члена семьи, впишите строку в .env и перезапустите бота:\n\n"
-        f"ALLOWED_USERS={merged}\n\n"
-        f"Ваш ID: {user_id}"
+        "📝 Чтобы добавить члена семьи, впиши строку в <code>.env</code> "
+        "и перезапусти бота:\n\n"
+        f"{look.code(f'ALLOWED_USERS={merged}')}\n\n"
+        f"Твой Telegram ID: {look.code(str(user_id))}"
     )
-    await update.message.reply_text(look.escape(text))
+    await update.message.reply_text(text)
 
 
 async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -686,14 +691,15 @@ async def test_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sheets is not None and await asyncio.to_thread(sheets.test_connection):
             test_cats = await asyncio.to_thread(sheets.read_categories)
             if test_cats:
-                text = f"✅ Подключение работает!\n📋 Категорий: {len(test_cats)}\n{', '.join(test_cats)}"
+                text = f"✅ Подключение работает\nКатегорий: {len(test_cats)}\n{', '.join(test_cats)}"
             else:
-                text = "⚠️ Подключение работает, но в листе Config нет категорий"
+                text = ("⚠️ Подключение работает, но в листе Config нет категорий. "
+                        "Заполни столбец A и отправь /reloadcats")
         else:
-            text = "❌ Нет подключения к Google Sheets"
+            text = NO_CONNECTION
     except Exception as e:  # noqa: BLE001 - details go to the log
         errors.log_exception("Connection test", e)
-        text = "❌ Нет подключения к Google Sheets"
+        text = NO_CONNECTION
 
     await update.message.reply_text(look.escape(text))
 
@@ -720,7 +726,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Clears temporary data and returns user to action selection.
     """
     await update.message.reply_text(
-        "❌ Действие отменено. Начинаем заново 🙂"
+        "❌ Действие отменено"
     )
     return await nav.go_home(update, context)
 
@@ -795,7 +801,7 @@ def main():
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise SystemExit(config.problem(
-            "BOT_TOKEN не задан", "получите токен у @BotFather и впишите его в .env"))
+            "BOT_TOKEN не задан", "получи токен у @BotFather и впиши его в .env"))
 
     app = build_application(bot_token)
 

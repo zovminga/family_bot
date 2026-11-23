@@ -117,7 +117,7 @@ def test_preset_without_amount_asks_amount_on_a_card_and_writes_nothing(
     text, labels = view(card)
     assert text.splitlines()[:3] == ["⚡ <b>Utilities</b>", "Категория: <b>Bills</b>",
                                      "Кто: <b>Ann</b>"]
-    assert text.endswith("Введите сумму (€):")
+    assert text.endswith("Введи сумму (€):")
     assert labels == ["🏠 В начало"]
 
 
@@ -150,7 +150,7 @@ def test_bad_amount_is_deleted_and_card_shows_reason(now: None, tg: FakeBot, tex
     assert update.message.deleted
     assert in_chat(tg) == [card]
     shown, _ = view(card)
-    assert "❌ Нужна сумма больше нуля" in shown and shown.endswith("Введите сумму (€):")
+    assert "❌ Нужна сумма больше нуля" in shown and shown.endswith("Введи сумму (€):")
 
 
 def test_typed_currency_wins_over_sheet_currency(now: None, tg: FakeBot) -> None:

@@ -64,14 +64,14 @@ LARGE_NO = LARGE_CALLBACK + "no"
 LARGE_QUESTION = "🔶 Это крупная трата?"
 YES_LABEL, NO_LABEL = "Да", "Нет"
 # Step questions shown under the fields.
-ASK_AMOUNT = "💵 Введите сумму:"
-ASK_CATEGORY = "📂 Выберите категорию:"
-UNKNOWN_CATEGORY = "❌ Такой категории нет. Выберите из списка:"
-ASK_COMMENT = "💬 Напишите комментарий или нажмите кнопку"
+ASK_AMOUNT = "💵 Введи сумму:"
+ASK_CATEGORY = "📂 Выбери категорию:"
+UNKNOWN_CATEGORY = "❌ Такой категории нет. Выбери из списка:"
+ASK_COMMENT = "💬 Напиши комментарий или нажми кнопку"
 ASK_DATE = "📅 Дата траты:"
-TYPE_DATE = "📅 Введите дату в формате ДД.ММ.ГГГГ:"
+TYPE_DATE = "📅 Введи дату в формате ДД.ММ.ГГГГ:"
 BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
-LARGE_HINT = f"Нажмите «{YES_LABEL}» или «{NO_LABEL}» под вопросом «{LARGE_QUESTION}»."
+LARGE_HINT = f"Нажми «{YES_LABEL}» или «{NO_LABEL}» под вопросом «{LARGE_QUESTION}»."
 COMMENT_BUTTONS: look.ButtonGrid = [
     [("✅ Сегодня, без комментария", TODAY_NO_COMMENT, look.SUCCESS)],
     [("⏭️ Пропустить", SKIP_COMMENT)],

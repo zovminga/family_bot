@@ -33,7 +33,7 @@ async def begin_preset_picker(
     """Show ⚡ preset buttons. Returns CHOOSE_PRESET or stays on menu if empty."""
     if not presets:
         await update.message.reply_text(
-            "📭 Заготовок нет. Заполни лист Regular_expenses и жми /reloadcats.")
+            "📭 Заготовок нет. Заполни лист Regular_expenses и отправь /reloadcats.")
         return State.CHOOSE_ACTION
     labels = [f"⚡ {t['name']}" for t in presets]
     kb = [labels[i:i + 2] for i in range(0, len(labels), 2)]
@@ -114,7 +114,7 @@ def _amount_card(preset: dict, error: str = "") -> str:
     lines.append("")
     if error:
         lines.append(look.escape(error))
-    lines.append(look.escape(f"💵 Введите сумму ({preset['currency']}):"))
+    lines.append(look.escape(f"💵 Введи сумму ({preset['currency']}):"))
     return "\n".join(lines)
 
 

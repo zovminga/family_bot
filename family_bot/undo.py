@@ -123,11 +123,11 @@ def undo(user_data: dict, callback_data: str, client: SheetsClient,
     if not isinstance(save, LastSave) or callback_data != CALLBACK_PREFIX + save.id:
         return UndoResult(
             "Отменить можно только свою последнюю трату, пока бот не перезапускался. "
-            "Удалите строку в таблице.", done=False)
+            "Удали строку в таблице.", done=False)
     if now - save.saved_at > UNDO_WINDOW:
         return UndoResult(
             f"Отменить можно только в первые {UNDO_WINDOW_MINUTES} минут после сохранения. "
-            "Удалите строку в таблице.", done=False, drop_button=True)
+            "Удали строку в таблице.", done=False, drop_button=True)
     del user_data[KEY_LAST_SAVE]
     try:
         deleted = delete_expenses(client, list(save.records))

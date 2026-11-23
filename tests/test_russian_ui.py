@@ -9,15 +9,18 @@ ISO currency codes such as ``CNY`` and ``GEL`` — owner decision Q12).
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import re
 from datetime import date, datetime
 from types import SimpleNamespace
+from pathlib import Path
 from typing import Any
 
 import pytest
 from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
 
+import family_bot
 from family_bot import analytics
 from family_bot import bot
 from family_bot import draft_expense as draft
@@ -50,6 +53,16 @@ ALLOWED_LATIN = re.compile(
 LATIN_WORD = re.compile(r"[A-Za-z]{2,}")
 # Telegram HTML tags (parse mode HTML): the User sees the text, not the tags.
 HTML_TAG = re.compile(r"</?[a-z-]+(?: [^>]*)?>")
+
+
+# «вы»-address (spec story 7): the pronoun and plural imperatives such as
+# «введите», «нажмите», «отправьте». The bot says «ты» everywhere.
+YOU_PLURAL = re.compile(
+    r"(?<![а-яё])(?:вы|вас|вам|вами|ваш[а-яё]*)(?![а-яё])"
+    r"|[а-яё]+(?:ите|йте|ьте)(?![а-яё])", re.IGNORECASE)
+# «трат(ы)» and the like: a word form with its ending in brackets (spec story 8).
+BRACKET_ENDING = re.compile(r"[а-яё]\([а-яё]+\)", re.IGNORECASE)
+PACKAGE = Path(family_bot.__file__).parent
 
 
 def run(coro: Any) -> Any:
@@ -124,9 +137,17 @@ def ctx() -> SimpleNamespace:
                        sheets=FakeSheetsClient(categories=list(CATEGORIES)))
 
 
+def wording_problems(text: str) -> list[str]:
+    """«вы»-address and bracketed word endings in what the User sees."""
+    plain = HTML_TAG.sub("", text)
+    return YOU_PLURAL.findall(plain) + BRACKET_ENDING.findall(plain)
+
+
 def assert_russian(texts: list[str]) -> None:
     found = {t: english_words(t) for t in texts if english_words(t)}
     assert not found, found
+    wording = {t: wording_problems(t) for t in texts if wording_problems(t)}
+    assert not wording, wording
 
 
 def test_main_menu_and_commands(seen: Seen, ctx: SimpleNamespace) -> None:
@@ -298,3 +319,28 @@ def test_payment_reminder_texts() -> None:
     texts.append(pr.message_text(rem))
     assert "уже есть: 03.11.2026 — 300 дин — кофе" in texts[0]
     assert_russian(texts)
+
+
+def test_check_catches_polite_address_and_bracket_endings() -> None:
+    assert wording_problems("Попробуйте ещё раз") == ["Попробуйте"]
+    assert wording_problems("Ваш Telegram ID") == ["Ваш"]
+    assert wording_problems("Черновик: 3 трат(ы)") == ["т(ы)"]
+    assert wording_problems("Введи сумму, нажми кнопку, отправь /whoami") == []
+
+
+def string_literals(path: Path) -> list[str]:
+    """Every string constant in a module, f-string parts included."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+
+
+def test_no_polite_address_anywhere_in_the_package() -> None:
+    """Texts the walks above do not reach (setup problems, dashboard, alerts) say «ты» too.
+
+    Docstrings are English, so only Cyrillic text can match.
+    """
+    found = {f"{path.relative_to(PACKAGE)}: {text!r}": wording_problems(text)
+             for path in sorted(PACKAGE.rglob("*.py"))
+             for text in string_literals(path) if wording_problems(text)}
+    assert not found, found
