@@ -3,7 +3,7 @@ import os
 import json
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from telegram import BotCommand, Message, Update
@@ -28,6 +28,7 @@ from family_bot import photo_input as px
 from family_bot import text_input
 from family_bot import draft_expense as draft
 from family_bot import large_expense
+from family_bot import live_card
 from family_bot import flow_preset
 from family_bot import monthly_summary
 from family_bot import navigation as nav
@@ -246,12 +247,11 @@ MANUAL = flow_manual.ManualFlow(
 
 # ---------- Voice / photo Draft confirmation ----------
 # Extraction lives in voice_input / photo_input; review/edit/save lives in
-# draft_expense. Handlers here are thin Telegram adapters.
+# draft_expense. Handlers here are thin Telegram adapters. Edit steps run on
+# the card as a live card (live_card): it moves to the bottom when buried, the
+# person's typed answers and the voice message are deleted, a receipt photo stays.
 # user_data key: AmountEdit while the User types a new amount («✏️ Сумма»).
 KEY_AMOUNT_EDIT = "draft_amount_edit"
-BAD_DRAFT_AMOUNT = (
-    "❌ Нужна сумма больше нуля, не больше двух знаков после запятой. "
-    "Например: 1 200 или 350 дин. Попробуйте ещё раз или нажмите «⬅️ Назад» в карточке.")
 
 
 @dataclass(frozen=True)
@@ -273,6 +273,16 @@ async def _apply_draft_outcome(query, outcome: draft.CallbackOutcome) -> None:
         if outcome.buttons is not None:
             kwargs["reply_markup"] = nav.inline_markup(outcome.buttons)
         await query.edit_message_text(outcome.text, **kwargs)
+
+
+async def _show_step(card: Message, session: draft.DraftSession,
+                     outcome: draft.CallbackOutcome) -> Message:
+    """Show an edit step of an open Draft on its live card; return the card to keep."""
+    if outcome.text is None and outcome.buttons is None:
+        return card
+    markup = nav.inline_markup(outcome.buttons) if outcome.buttons is not None else None
+    text = draft.card_text(session) if outcome.markup_only else outcome.text
+    return await live_card.show(card, text or "", markup, markup_only=outcome.markup_only)
 
 
 async def _show_draft(status, context: ContextTypes.DEFAULT_TYPE,
@@ -370,6 +380,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = draft.session_from_voice(
         items, who=who, transcript=transcript, note=result.get("note", ""))
     await _show_draft(status, context, session)
+    await live_card.drop_reply(msg)  # the card quotes the transcript
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -456,17 +467,21 @@ async def vx_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # A save writes to Sheets, so the whole callback runs in a worker thread.
     outcome = await asyncio.to_thread(apply)
+    if session.closed:
+        # Saved or cancelled: the card turns into its result line where it is.
+        if outcome.saved:
+            buttons = undo.remember(context.user_data, list(outcome.saved), clock.now())
+            outcome = draft.CallbackOutcome(text=outcome.text, buttons=buttons)
+        await _apply_draft_outcome(query, outcome)
+        return
+    card = await _show_step(query.message, session, outcome)
     if outcome.await_amount is not None:
         context.user_data[KEY_AMOUNT_EDIT] = AmountEdit(
-            draft_id=session.id, index=outcome.await_amount, card=query.message)
+            draft_id=session.id, index=outcome.await_amount, card=card)
     if outcome.await_currency is not None:
         context.user_data[KEY_AMOUNT_EDIT] = AmountEdit(
-            draft_id=session.id, index=outcome.await_currency, card=query.message,
+            draft_id=session.id, index=outcome.await_currency, card=card,
             currency=True)
-    if outcome.saved:
-        buttons = undo.remember(context.user_data, list(outcome.saved), clock.now())
-        outcome = draft.CallbackOutcome(text=outcome.text, buttons=buttons)
-    await _apply_draft_outcome(query, outcome)
 
 
 async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -475,7 +490,8 @@ async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     Runs before the conversation (its own handler group). The wait ends and
     the text passes on to the conversation as usual when the Draft is gone, or
     the text is a command or has no digit (a menu button, a word): the User
-    has moved on. Text with a digit that fails the amount checks is asked again.
+    has moved on. Text with a digit that fails the amount checks is asked again
+    on the card. Either way the answer is deleted (private chat).
     """
     edit = context.user_data.get(KEY_AMOUNT_EDIT)
     if not isinstance(edit, AmountEdit):
@@ -489,12 +505,16 @@ async def draft_amount_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if session is None or session.closed or moved_on:
         context.user_data.pop(KEY_AMOUNT_EDIT, None)
         return
+    await live_card.drop_reply(update.message)
     if not draft.set_amount(session, edit.index, text, cfg(context).currencies):
-        await update.message.reply_text(BAD_DRAFT_AMOUNT)
+        step = draft.amount_step(session, edit.index, draft.AMOUNT_ERROR)
+        card = await _show_step(edit.card, session, step)
+        context.user_data[KEY_AMOUNT_EDIT] = replace(edit, card=card)
         raise ApplicationHandlerStop
     context.user_data.pop(KEY_AMOUNT_EDIT, None)
-    await edit.card.edit_text(
-        draft.card_text(session), reply_markup=nav.inline_markup(draft.main_buttons(session)))
+    shown = draft.CallbackOutcome(text=draft.card_text(session),
+                                  buttons=draft.main_buttons(session))
+    await _show_step(edit.card, session, shown)
     raise ApplicationHandlerStop
 
 
@@ -503,7 +523,8 @@ async def _draft_currency_text(update: Update, context: ContextTypes.DEFAULT_TYP
     """Typed Currency after «🌍 Другая» in a Draft card («GEL», «юань»).
 
     Text with a digit, a command or a menu button means the User moved on: the
-    wait ends and the text goes to the conversation.
+    wait ends and the text goes to the conversation. Otherwise the answer is
+    deleted (private chat) and the card shows the result.
     """
     text = (update.message.text or "").strip()
     session = draft.get_draft(context.user_data, edit.draft_id)
@@ -512,6 +533,7 @@ async def _draft_currency_text(update: Update, context: ContextTypes.DEFAULT_TYP
     if session is None or session.closed or moved_on:
         context.user_data.pop(KEY_AMOUNT_EDIT, None)
         return
+    await live_card.drop_reply(update.message)
     codes = await asyncio.to_thread(picker.CATALOG.codes)
     outcome = draft.search_currency(session, edit.index, text, codes)
     if outcome.picked:
@@ -520,9 +542,9 @@ async def _draft_currency_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await asyncio.to_thread(
             picker.remember, context.user_data, cfg(context).sheets,
             update.effective_user.id, who, outcome.picked)
-    if outcome.text is not None:
-        await edit.card.edit_text(outcome.text,
-                                  reply_markup=nav.inline_markup(outcome.buttons or []))
+    card = await _show_step(edit.card, session, outcome)
+    if not outcome.picked:
+        context.user_data[KEY_AMOUNT_EDIT] = replace(edit, card=card)
     raise ApplicationHandlerStop
 
 
@@ -695,8 +717,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def build_application(bot_token: str) -> Application:
     """Build the Telegram Application with all handlers and the error handler."""
     # Every message is Telegram HTML: builders escape human text (look).
-    app = (Application.builder().token(bot_token).post_init(post_init)
-           .defaults(Defaults(parse_mode=ParseMode.HTML))
+    # TrackingBot remembers the bot's own messages, so a buried live card moves down.
+    tg_bot = live_card.TrackingBot(bot_token, defaults=Defaults(parse_mode=ParseMode.HTML))
+    app = (Application.builder().bot(tg_bot).post_init(post_init)
            .concurrent_updates(PerUserUpdateProcessor()).build())
 
     # Run before every other handler: drop edits (group -3), then the allowlist

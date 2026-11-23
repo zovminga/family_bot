@@ -94,6 +94,7 @@ files = [
     "family_bot/flow_preset.py",
     "family_bot/flows",
     "family_bot/fx.py",
+    "family_bot/live_card.py",
     "family_bot/llm.py",
     "family_bot/logs.py",
     "family_bot/look.py",
