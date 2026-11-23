@@ -13,14 +13,14 @@ import pytest
 from family_bot import bot
 from family_bot import sheets
 from family_bot.flows import stats as flow_stats
-from tests.known_bugs.fakes import make_update
+from tests.known_bugs.fakes import FakeQuery, make_update
 
 
 def test_by_months_lists_last_twelve_months_newest_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(flow_stats.clock, "now", lambda: datetime(2026, 3, 31, 12, 0))
-    update = make_update(flow_stats.MONTHS_BUTTON)
+    update = make_update(query=FakeQuery(flow_stats.CALLBACK + flow_stats.MONTHS))
 
     # A private loop: asyncio.run() would unset the main-thread loop that
     # tests/test_navigation.py still reaches via asyncio.get_event_loop().
@@ -32,9 +32,11 @@ def test_by_months_lists_last_twelve_months_newest_first(
     finally:
         loop.close()
 
-    _, kwargs = update.message.replies[-1]
-    labels = [row[0].text for row in kwargs["reply_markup"].keyboard]
-    assert labels[:12] == [
+    _, kwargs = update.callback_query.message.edits[-1]
+    labels = [b.callback_data.removeprefix(flow_stats.CALLBACK + flow_stats.MONTH)
+              for row in kwargs["reply_markup"].inline_keyboard for b in row
+              if b.callback_data.startswith(flow_stats.CALLBACK)]
+    assert labels == [
         "2026-03", "2026-02", "2026-01", "2025-12", "2025-11", "2025-10",
         "2025-09", "2025-08", "2025-07", "2025-06", "2025-05", "2025-04",
     ]

@@ -81,6 +81,7 @@ class Seen:
         self.texts: list[str] = []
         self.updates: list[SimpleNamespace] = []
         self.bot = FakeBot()  # live cards are bot messages edited later
+        self.messages: list[Any] = []  # bot messages edited or replied to directly
 
     def update(self, text: str | None = None, query: FakeQuery | None = None,
                user_id: int = 111) -> SimpleNamespace:
@@ -93,6 +94,9 @@ class Seen:
         out = list(self.texts)
         for msg in self.bot.sent:
             for text, kw in [(msg.text, msg.kw), *msg.edits]:
+                out += [text, *markup_labels(kw.get("reply_markup"))]
+        for msg in self.messages:
+            for text, kw in [*msg.replies, *msg.edits]:
                 out += [text, *markup_labels(kw.get("reply_markup"))]
         for upd in self.updates:
             messages = [m for m in (upd.message, upd.effective_message) if m is not None]
@@ -192,32 +196,45 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
         all_codes=lambda: ["RSD", "EUR"],
         get_rate=lambda src, dst: 1.0 if src == dst else 117.0,
     )
-    run(s.begin(seen.update(nav.SHOW_STATS), ctx))
-    run(s.on_category(seen.update(flow_stats.ONE_BUTTON), ctx))
-    run(s.on_category(seen.update("Еда"), ctx))
-    run(s.on_type(seen.update("что-то"), ctx))
-    run(s.on_type(seen.update(flow_stats.LAST_BUTTON), ctx))
-    run(s.on_category(seen.update(flow_stats.ALL_BUTTON), ctx))
-    run(s.on_type(seen.update(flow_stats.MONTHS_BUTTON), ctx))
-    run(s.on_month(seen.update("2026-10"), ctx))
-    run(s.on_group_currency(seen.update(flow_stats.YES_BUTTON), ctx))
-    run(s.on_category(seen.update(flow_stats.ALL_BUTTON), ctx))
-    run(s.on_type(seen.update(flow_stats.PERIOD_BUTTON), ctx))
+    def tap(handler: Any, payload: str) -> None:
+        run(handler(seen.update(query=FakeQuery(flow_stats.CALLBACK + payload, card)), ctx))
+
+    opened = seen.update(nav.SHOW_STATS)
+    run(s.begin(opened, ctx))
+    card = opened.message.bot.sent[-1]
+    seen.messages.append(card)
+    tap(s.on_category, flow_stats.ONE)
+    tap(s.on_category, flow_stats.CATEGORY + "0")
+    tap(s.on_type, flow_stats.LAST)
+    run(s.begin(opened, ctx))
+    card = opened.message.bot.sent[-1]
+    seen.messages.append(card)
+    tap(s.on_category, flow_stats.ALL)
+    tap(s.on_type, flow_stats.MONTHS)
+    tap(s.on_month, flow_stats.MONTH + "2026-10")
+    tap(s.on_group_currency, flow_stats.YES)
+    run(s.begin(opened, ctx))
+    card = opened.message.bot.sent[-1]
+    seen.messages.append(card)
+    tap(s.on_category, flow_stats.ALL)
+    tap(s.on_type, flow_stats.PERIOD)
     run(s.on_date_from(seen.update("никогда"), ctx))
     run(s.on_date_from(seen.update("01.10.2026"), ctx))
     run(s.on_date_to(seen.update("31.10.2026"), ctx))
-    run(s.on_group_currency(seen.update(flow_stats.NO_BUTTON), ctx))
+    tap(s.on_group_currency, flow_stats.NO)
     run(s.on_convert_currency(seen.update("дин"), ctx))
-    run(s.on_show_details(seen.update(flow_stats.DETAILS_BUTTON), ctx))
-    run(s.on_category(seen.update(flow_stats.ONLY_LARGE_BUTTON), ctx))
-    run(s.on_type(seen.update(flow_stats.LAST_BUTTON), ctx))
-    run(s.on_category(seen.update(flow_stats.ONLY_LARGE_BUTTON), ctx))
-    run(s.on_month(seen.update("2026-10"), ctx))
-    run(s.on_group_currency(seen.update(flow_stats.YES_BUTTON), ctx))
+    for scope_type in (flow_stats.LAST, flow_stats.MONTHS):
+        run(s.begin(opened, ctx))
+        card = opened.message.bot.sent[-1]
+        seen.messages.append(card)
+        tap(s.on_category, flow_stats.LARGE)
+        tap(s.on_type, scope_type)
+    tap(s.on_month, flow_stats.MONTH + "2026-10")
+    tap(s.on_group_currency, flow_stats.YES)
     run(s.this_month(seen.update(nav.THIS_MONTH), ctx))
     seen.texts.append(analytics.format_last_n([], category="Еда"))
     texts = seen.collect()
-    assert any(t.endswith("💰 Итого: 2 404,50 дин") for t in texts), texts
+    assert any("💰 Итого <b>2 404,50 дин</b>" in t for t in texts), texts
     assert_russian(texts)
 
 

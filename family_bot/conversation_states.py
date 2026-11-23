@@ -32,4 +32,3 @@ class State(IntEnum):
     STAT_MONTH = auto()
     STAT_GROUP_CURRENCY = auto()
     STAT_CONVERT_CURRENCY = auto()
-    STAT_SHOW_DETAILS = auto()
