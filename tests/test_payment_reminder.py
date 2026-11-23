@@ -143,9 +143,9 @@ def test_pay_is_green_and_already_has_no_style() -> None:
     assert pr.parse_callback(datas[1]) == (rem.id, 0, pr.ACTION_ALREADY)
 
 
-def test_saved_text_quotes_the_payment_like_the_saved_line() -> None:
+def test_saved_payment_uses_the_shared_saved_line() -> None:
     record = pr.record({**RENT, "name": "M&M"}, 850.0, "€", "20.11.2026")
-    assert pr.saved_text(record) == (
+    assert undo.saved_text([record]) == (
         "✅ Сохранено\n<blockquote><b>M&amp;M — 850 €</b>\nЖильё · 20.11 · Оба</blockquote>")
 
 
@@ -380,7 +380,7 @@ def test_stale_button_after_restart_explains_in_an_alert() -> None:
     update, query = tap(f"{pr.CALLBACK_PREFIX}dead:0:{pr.ACTION_PAY}")
     run(prb.on_button(update, ctx))  # type: ignore[arg-type]
     assert query.answers == [(pr.STALE_TEXT,)]
-    assert pr.STALE_TEXT == "Напоминание устарело после обновления бота"
+    assert pr.STALE_TEXT.startswith("Напоминание устарело после обновления бота")
     assert query.edits == [("markup", {"reply_markup": None})]
 
 

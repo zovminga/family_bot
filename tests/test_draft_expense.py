@@ -253,7 +253,7 @@ def test_amount_button_asks_for_amount_and_waits():
     session = DraftSession(id="ab12", items=[_item()])
     outcome = apply_callback("amt:0", session, ["Food"], ["дин"], FakeSheetsClient())
     assert outcome.await_amount == 0
-    assert "Введите новую сумму" in outcome.text
+    assert "Введи новую сумму" in outcome.text
     assert _labels(outcome.buttons) == ["⬅️ Назад"]
 
 

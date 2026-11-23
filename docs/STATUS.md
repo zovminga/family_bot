@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #103: manual input in one live card; merged main with #105)  
-**Product code tip:** branch for issue #103 (2026-11-23) — «💰 Добавить трату» is one live card (amount → Currency → Large? → Category → comment/date), answers deleted, the card becomes «✅ Сохранено» + «↩️ Отменить»; a ⚡ Preset without an amount asks it on a card; on top of #105 (statistics in one message), #102 (Draft edits in one live card), #101, #104, #106  
+**Updated by:** agent session (issue #107: menu, greeting and texts on «ты»)  
+**Product code tip:** branch for issue #107 (2026-11-23) — main menu in two rows without «🏠 В начало», greeting «👋 Что делаем?», every text on «ты», `/whoami` and «нет доступа» with the Telegram ID in `<code>`, dashboard and build-failure messages in HTML; the Payment reminder uses the shared «✅ Сохранено» line; on top of #100–#106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,27 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Menu and texts on «ты» (issue #107, spec `docs/specs/2026-11-bot-look.md`
+  stories 7, 9, 14–16, 56–59): the main menu is two rows — «💰 Добавить трату»,
+  «🧾 Заготовка» / «📅 Этот месяц», «📊 Статистика», «📈 Дашборд» — without
+  «🏠 В начало». Old keyboards on phones keep working: «🏠 В начало» and the
+  English labels are still recognised (`navigation.HOME_LABELS`,
+  `MENU_ACTIONS`); the ⚡ Preset picker and every step keep their own home
+  button. Greeting: «👋 Что делаем?» (`navigation.GREETING`). Every text says
+  «ты»; errors say what happened and what to do («❌ Не смог скачать фото.
+  Отправь его ещё раз», «❌ Не разобрал. Введи вручную: «💰 Добавить трату»»).
+  `/whoami`, `/register` and «⛔ <b>Нет доступа</b>» show the Telegram ID (and
+  the `ALLOWED_USERS=` line) in `<code>`. A voice that was not understood shows
+  the transcript in a quote (as on the Draft card). Dashboard: caption
+  «📈 <b>Дашборд</b>» from the bot, «📈 <b>Дашборд обновлён</b>» on publish,
+  «📈 <b>Дашборда пока нет</b>» before the first build; build failure:
+  «⚠️ <b>Дашборд не собрался</b>» with the reason in `<code>` (both raw Bot API
+  calls now send `parse_mode=HTML`). Setup problem lines (`config.py`) say «ты».
+  The Payment reminder's «✅ Сохранено» now comes from `undo.saved_text` (the
+  local `payment_reminder.saved_text` is gone; same text). `test_russian_ui`
+  checks every walked text and every string literal in the package: no
+  «вы»-address, no bracketed endings like «трат(ы)». Not checked in a real
+  Telegram chat yet.
 - Manual input in one live card (issue #103, spec `docs/specs/2026-11-bot-look.md`
   stories 17–25): «💰 Добавить трату» sends one card «💰 <b>Новая трата</b>»
   and every step edits it: amount → Currency (Recent currencies, «🌍 Другая»
@@ -35,7 +56,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   (#102 mechanism). A ⚡ Preset without an amount asks it on a card
   «⚡ <b>name</b> / Категория / Кто» with the same rules; every ⚡ save (with or
   without amount) is now «✅ Сохранено» + «↩️ Отменить». Step texts are the
-  old ones («Введите…», «вы»); #107 rewrites texts. Not checked in a real
+  now on «ты» (#107). Not checked in a real
   Telegram chat yet.
 - Statistics in look B (issue #105, spec `docs/specs/2026-11-bot-look.md`
   stories 38–44): every question of «📊 Статистика» (scope, Category, what to
@@ -82,8 +103,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   records struck through and no buttons; a tap after 30 minutes drops the
   button. «❌ Отмена» leaves «Черновик отменён». Code: `draft_expense.card_text`,
   `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves use them since
-  #103; the Payment reminder builds the same
-  look with its own `payment_reminder.saved_text` (#106); editing
+  #103, the Payment reminder since #107; editing
   inside the card is #102 (above). Not checked in a real Telegram chat yet.
 - Month summary in look B (issue #104, spec `docs/specs/2026-11-bot-look.md`,
   stories 45–51): `analytics.format_month_summary` writes «📅 <b>Итог за
@@ -103,8 +123,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   escaped. «⚡ Внести: <name>» is `success` (green), «✅ Уже внесено» has no
   style. The reply after «⚡ Внести» is «✅ Сохранено» with
   «<b>Аренда — 850 €</b> / Жильё · 20.11 · Оба» in a quote
-  (`payment_reminder.saved_text`, local to the reminder). Follow-up after #101:
-  build it with #101's saved-line helper instead. The amount prompt says
+  (`undo.saved_text` since #107). The amount prompt says
   «Ответь на это сообщение суммой.» (was «Ответьте»). The bot deletes nothing in
   the group chat. Not checked in a real Telegram chat yet.
 - HTML in every message (issue #100, spec `docs/specs/2026-11-bot-look.md`,
@@ -310,7 +329,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - Typed text (issue #30): «кофе 350» in the main menu → same Draft card,
   parsed by `voice_input.extract_expenses` (`text_input.py`). Text without a
   digit or with no expense found gets a hint; a Claude error gets
-  «❌ Не разобрал, введите вручную».
+  «❌ Не разобрал. Введи вручную: «💰 Добавить трату»».
 - `/whoami`, `/register` hint, `/dashboard` (resends stored Telegram `file_id`)
 - Sheet bootstrap: `scripts/bootstrap_sheet.py`
 - Webhook (issue #28): Telegram posts to `<RENDER_EXTERNAL_URL>/telegram`, the
@@ -377,8 +396,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `/start` drops it, and every exit returns to the main menu (R7, R8 fixed).
 - Error handler (issue #12): `errors.on_error` is registered in
   `bot.build_application()`. A failing handler logs a masked traceback and the
-  user gets «❌ Не сохранилось. Попробуйте ещё раз»; a Vosk/Claude failure on
-  voice or photo gets «❌ Не разобрал, введите вручную». No raw exception text
+  user gets «❌ Не сохранилось. Попробуй ещё раз»; a Vosk/Claude failure on
+  voice or photo gets «❌ Не разобрал. Введи вручную: «💰 Добавить трату»». No raw exception text
   reaches the user (R3, U5 fixed).
 - Slow calls do not freeze the bot (issue #18, R11): handlers run Sheets reads
   and writes, FX requests (stats) and `config.load` / `reload` through
@@ -454,7 +473,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
   styles; #101 built: Draft card; #102 built: Draft edits in one live card;
   #103 built: manual input in one live card;
-  #104 built: month summary; #105 built: statistics in one message; #106 built: Payment reminder; the rest is spec only): HTML in every message,
+  #104 built: month summary; #105 built: statistics in one message; #106 built: Payment reminder;
+  #107 built: menu and texts on «ты»; #108 (animated header emoji) is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons
@@ -505,7 +525,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   first (menu buttons are `entry_points` since issue #27). Text without a digit
   («кофе триста») gets the hint without a Claude call, to avoid paid calls on
   chat text; voice still parses number words. Without `ANTHROPIC_API_KEY`,
-  text with a digit gets «❌ Не разобрал, введите вручную».
+  text with a digit gets «❌ Не разобрал. Введи вручную: «💰 Добавить трату»».
 - Lint and type checks are relaxed so CI passed without product-code edits
   (issue #10). `ruff` uses only its default rules (`E4`, `E7`, `E9`, `F`) with
   per-file ignores; the wider set (`I`, `UP`, `B`) is not on. `mypy` skips

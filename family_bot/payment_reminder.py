@@ -32,19 +32,16 @@ PAY_LABEL = "⚡ Внести: {name}"
 ALREADY_LABEL = "✅ Уже внесено"
 # Reminder id length in random bytes (3 bytes = 6 hex chars).
 REMINDER_ID_BYTES = 3
-# «20.11» out of «20.11.2026» in the saved line.
-DAY_MONTH_LEN = 5
 
 TITLE = "🔔 <b>{month}: ещё не внесены платежи</b>"
 ALL_CLOSED_TEXT = "🔔 <b>{month}</b>: все платежи из напоминания разобраны."
 HINT = "«⚡ Внести» запишет платёж сегодняшним числом, «✅ Уже внесено» уберёт строку."
-STALE_TEXT = "Напоминание устарело после обновления бота"
+STALE_TEXT = "Напоминание устарело после обновления бота. Внеси платёж через «🧾 Заготовка»"
 CLOSED_TEXT = "Этот платёж уже убран из напоминания."
 # Text of the amount prompt that a reply must answer; the reply handler looks for it.
 PROMPT_MARK = "Ответь на это сообщение суммой."
 # HTML: {name} and {currency} come escaped.
 PROMPT_TEXT = "💵 Сколько внести за «<b>{name}</b>» ({currency})? " + PROMPT_MARK
-SAVED_TITLE = "✅ Сохранено"
 NOT_YOURS_TEXT = "Сумму вводит тот, кто нажал «⚡ Внести»."
 
 
@@ -146,20 +143,6 @@ def prompt_text(preset: dict) -> str:
     """HTML amount prompt for a payment without an amount."""
     return PROMPT_TEXT.format(name=look.escape(preset["name"]),
                               currency=look.escape(preset["currency"]))
-
-
-def saved_text(record: ExpenseRecord) -> str:
-    """
-    HTML reply after «⚡ Внести»: the saved payment in a quote.
-
-    Same look as the saved line of a Draft (spec «Как выглядит»): name and
-    amount in bold, then Category · day.month · Spender.
-    """
-    amount = format_amount(float(record.amount), record.currency)
-    day = record.date[:DAY_MONTH_LEN]
-    body = (f"{look.bold(f'{record.comment} — {amount}')}\n"
-            f"{look.escape(f'{record.category} · {day} · {record.who}')}")
-    return f"{SAVED_TITLE}\n{look.quote(body)}"
 
 
 def buttons(reminder: Reminder) -> ButtonGrid:

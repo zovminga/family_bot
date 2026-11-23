@@ -172,12 +172,12 @@ def _allowed_users(raw: Optional[str], problems: list[str]) -> dict[int, str]:
     except ValueError as e:
         problems.append(problem(
             f"ALLOWED_USERS задан неверно ({_first_line(e)})",
-            "запишите в .env так: 111111111:Имя,222222222:Имя и перезапустите бота"))
+            "запиши в .env так: 111111111:Имя,222222222:Имя и перезапусти бота"))
         return {}
     if not users:
         problems.append(problem(
             "ALLOWED_USERS пуст, ботом никто не может пользоваться",
-            "отправьте боту /whoami, добавьте ID в ALLOWED_USERS в .env и перезапустите бота"))
+            "отправь боту /whoami, добавь ID в ALLOWED_USERS в .env и перезапусти бота"))
     return users
 
 
@@ -186,7 +186,7 @@ def _client_email(creds: Path, problems: list[str]) -> Optional[str]:
     if not creds.exists():
         problems.append(problem(
             f"GOOGLE_CREDS_PATH: файл {creds} не найден",
-            "скачайте JSON-ключ сервисного аккаунта (README → Google Sheets) и исправьте путь"))
+            "скачай JSON-ключ сервисного аккаунта (README → Google Sheets) и исправь путь"))
         return None
     try:
         key = json.loads(creds.read_text(encoding="utf-8"))
@@ -196,7 +196,7 @@ def _client_email(creds: Path, problems: list[str]) -> Optional[str]:
         problems.append(problem(
             f"GOOGLE_CREDS_PATH: {creds} — не ключ сервисного аккаунта "
             "(нет client_email / private_key)",
-            "скачайте новый JSON-ключ на вкладке Keys сервисного аккаунта"))
+            "скачай новый JSON-ключ на вкладке Keys сервисного аккаунта"))
         return None
     return str(key["client_email"])
 
@@ -210,7 +210,7 @@ def _check_time_zone(name: Optional[str], problems: list[str]) -> None:
     except (ZoneInfoNotFoundError, ValueError):
         problems.append(problem(
             f"{clock.TZ_ENV}={name!r} — неизвестный часовой пояс",
-            f"укажите имя IANA, например {clock.DEFAULT_TZ}, или удалите строку из .env"))
+            f"укажи имя IANA, например {clock.DEFAULT_TZ}, или удали строку из .env"))
 
 
 def _summary_chat_id(raw: Optional[str], problems: list[str]) -> Optional[int]:
@@ -219,14 +219,14 @@ def _summary_chat_id(raw: Optional[str], problems: list[str]) -> Optional[int]:
     if not raw:
         problems.append(problem(
             f"{env} не задан, сводка за месяц и напоминания о платежах не придут",
-            f"впишите в {env} id чата семьи (например, из /whoami) и перезапустите бота"))
+            f"впиши в {env} id чата семьи (например, из /whoami) и перезапусти бота"))
         return None
     try:
         return int(raw.strip())
     except ValueError:
         problems.append(problem(
             f"{env}={raw!r} — не id чата, сводка за месяц и напоминания о платежах не придут",
-            "укажите число, например 111111111 или -1001234567890"))
+            "укажи число, например 111111111 или -1001234567890"))
         return None
 
 
@@ -240,7 +240,7 @@ def _summary_hour(raw: Optional[str], problems: list[str]) -> int:
     env = SUMMARY_HOUR_ENV
     problems.append(problem(
         f"{env}={raw!r} — не час от 0 до {HOURS_IN_DAY - 1}, сводка придёт в {default}:00",
-        f"укажите час числом, например {env}={default}, или удалите строку"))
+        f"укажи час числом, например {env}={default}, или удали строку"))
     return default
 
 
@@ -254,7 +254,7 @@ def _reminder_hour(raw: Optional[str], problems: list[str]) -> int:
     env = REMINDER_HOUR_ENV
     problems.append(problem(
         f"{env}={raw!r} — не час от 0 до {HOURS_IN_DAY - 1}, напоминание о платежах придёт в {default}:00",
-        f"укажите час числом, например {env}={default}, или удалите строку"))
+        f"укажи час числом, например {env}={default}, или удали строку"))
     return default
 
 
@@ -286,7 +286,7 @@ def _large_threshold(raw: Optional[str], problems: list[str]) -> tuple[float, st
     env = large_expense.THRESHOLD_ENV
     problems.append(problem(
         f"{env}={raw!r} — не сумма больше нуля, порог крупной траты {default[0]:g} {default[1]}",
-        f"укажите сумму и валюту, например {env}=1000 EUR, или удалите строку"))
+        f"укажи сумму и валюту, например {env}=1000 EUR, или удали строку"))
     return default
 
 
@@ -313,7 +313,7 @@ def _default_currency(code: Optional[str], problems: list[str]) -> str:
     if found is None or found.code != code.strip().upper():
         problems.append(problem(
             f"{currency.BASE_CURRENCY_ENV}={code!r} — неизвестная валюта, взята {fallback.code}",
-            "укажите ISO-код одной из валют бота: "
+            "укажи ISO-код одной из валют бота: "
             + ", ".join(c.code for c in currency.CURRENCIES)))
         return fallback.symbol
     return found.symbol
@@ -326,11 +326,11 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
     if not creds_raw:
         problems.append(problem(
             "GOOGLE_CREDS_PATH не задан",
-            "укажите в .env путь к JSON-ключу сервисного аккаунта, например secrets/creds.json"))
+            "укажи в .env путь к JSON-ключу сервисного аккаунта, например secrets/creds.json"))
     if not sheet_name:
         problems.append(problem(
             "SHEET_NAME не задан",
-            "укажите в .env точное название таблицы Google"))
+            "укажи в .env точное название таблицы Google"))
     if not creds_raw or not sheet_name:
         return None
     creds = resolve_creds_path(creds_raw)
@@ -342,11 +342,11 @@ def _open_sheets(env: Mapping[str, str], open_sheets: OpenSheets,
     except SpreadsheetNotFound:
         problems.append(problem(
             f"таблица {sheet_name!r} не найдена",
-            f"проверьте SHEET_NAME и дайте {email} доступ к таблице как редактору"))
+            f"проверь SHEET_NAME и дай {email} доступ к таблице как редактору"))
     except Exception as e:  # noqa: BLE001 - any open failure is a setup problem
         problems.append(problem(
             f"не открывается Google Sheets ({_first_line(e)})",
-            "проверьте файл ключа, SHEET_NAME и сеть, потом запустите "
+            "проверь файл ключа, SHEET_NAME и сеть, потом запусти "
             "python scripts/test_google_sheets.py"))
     return None
 
@@ -374,12 +374,12 @@ def reload(cfg: Config) -> list[str]:
         categories = []
         problems.append(problem(
             f"не читается лист Config ({_first_line(e)})",
-            "проверьте лист Config и отправьте /reloadcats"))
+            "проверь лист Config и отправь /reloadcats"))
     else:
         if not categories:
             problems.append(problem(
                 "в листе Config нет категорий, взяты " + ", ".join(FALLBACK_CATEGORIES),
-                "заполните столбец A листа Config и отправьте /reloadcats"))
+                "заполни столбец A листа Config и отправь /reloadcats"))
     cfg.categories = categories or list(FALLBACK_CATEGORIES)
     try:
         cfg.presets = regular.load_presets(cfg.sheets, cfg.default_currency)
@@ -387,7 +387,7 @@ def reload(cfg: Config) -> list[str]:
         cfg.presets = []
         problems.append(problem(
             f"не читается лист Regular_expenses ({_first_line(e)})",
-            "проверьте лист Regular_expenses и отправьте /reloadcats"))
+            "проверь лист Regular_expenses и отправь /reloadcats"))
     return problems
 
 

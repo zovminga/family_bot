@@ -18,8 +18,8 @@ from typing import Any
 
 logger = logging.getLogger("family_bot.errors")
 
-SAVE_FAILED = "❌ Не сохранилось. Попробуйте ещё раз"
-NOT_PARSED = "❌ Не разобрал, введите вручную"
+SAVE_FAILED = "❌ Не сохранилось. Попробуй ещё раз"
+NOT_PARSED = "❌ Не разобрал. Введи вручную: «💰 Добавить трату»"
 
 MASK = "***"
 SECRET_ENV_VARS = ("BOT_TOKEN", "ANTHROPIC_API_KEY")
