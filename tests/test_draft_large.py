@@ -41,7 +41,7 @@ def _session(*items: dict) -> draft.DraftSession:
 
 
 def _labels(grid: draft.ButtonGrid) -> dict[str, str]:
-    return {label: data for row in grid for label, data in row}
+    return {button[0]: button[1] for row in grid for button in row}
 
 
 def _tap(session: draft.DraftSession, payload: str,
@@ -88,15 +88,15 @@ def test_mark_large_sets_every_item() -> None:
 
 def test_single_card_shows_mark_only_when_large() -> None:
     assert "🔶" not in draft.card_text(_session(_item(large=False)))
-    assert "• 🔶 Крупная трата" in draft.card_text(_session(_item(large=True)))
+    assert draft.card_text(_session(_item(large=True))).endswith("\n🔶 Крупная трата")
 
 
 def test_multi_card_marks_the_large_line() -> None:
     text = draft.card_text(_session(_item(comment="кофе", amount=3.0, large=False),
                                     _item(large=True)))
     lines = text.splitlines()
-    assert any(line.startswith("1. кофе") for line in lines)
-    assert any(line.startswith("2. 🔶 билеты") for line in lines)
+    assert "1. кофе — <b>3 €</b> · Trips · 19.11.2026" in lines
+    assert "2. 🔶 билеты — <b>1 500 €</b> · Trips · 19.11.2026" in lines
 
 
 def test_item_without_flag_is_not_large() -> None:

@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #104: month summary in look B; merged main with #106)  
-**Product code tip:** branch for issue #104 (2026-11-23) — «📅 Этот месяц» and the summary on the 1st in look B: bold totals, share bars per Category, details collapsed; on top of #106 (Payment reminder in look B)  
+**Updated by:** agent session (issue #101: Draft card in variant B, saved/undone lines; merged main with #104, #106)  
+**Product code tip:** branch for issue #101 (2026-11-23) — Draft card with labelled bold fields, green «✅ Сохранить» / red «❌ Отмена», «✅ Сохранено» / «↩️ Отменено» quote lines; on top of #104 (month summary in look B) and #106 (Payment reminder in look B)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,22 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Draft card in variant B (issue #101, spec `docs/specs/2026-11-bot-look.md`
+  stories 1–3, 6, 8, 10–12, 30–34, 36–37): voice, typed text and receipt
+  Drafts show «📝 <b>Черновик траты</b>», the transcript / typed text /
+  «Чек · <merchant>» in a quote, then «Сумма: <b>350 дин</b>», Что, Категория,
+  Дата, Кто and «🔶 Крупная трата». Several items: «1. Хлеб — <b>120 дин</b> ·
+  Еда · 23.11.2026» lines and «Итого» per Currency. «✅ Сохранить» is green
+  (`success`), «❌ Отмена» red (`danger`), the others plain; the category
+  button is «🏷 Категория». Save turns the card into «✅ Сохранено» with the
+  records in a quote (one line per item) and a red «↩️ Отменить» that undoes
+  them all; undo (any save) turns the message into «↩️ Отменено» with the
+  records struck through and no buttons; a tap after 30 minutes drops the
+  button. «❌ Отмена» leaves «Черновик отменён». Code: `draft_expense.card_text`,
+  `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves keep their old
+  one-line «✅ Сохранено: …» until #103; the Payment reminder builds the same
+  look with its own `payment_reminder.saved_text` (#106); editing
+  inside the card (#102) is not done. Not checked in a real Telegram chat yet.
 - Month summary in look B (issue #104, spec `docs/specs/2026-11-bot-look.md`,
   stories 45–51): `analytics.format_month_summary` writes «📅 <b>Итог за
   ноябрь 2026</b>», then one block per Currency: «💰 Итого <b>сумма</b>» and
@@ -52,7 +68,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   the multi-item Draft card now says «3 траты» instead of «трат(ы)»). Button
   grids take an optional style, `look.SUCCESS` / `look.DANGER`, which
   `navigation.inline_markup` (the one grid → inline keyboard adapter) puts in
-  Telegram's `style` field; no button is coloured yet (#101, #106 do that).
+  Telegram's `style` field (#101 colours the Draft and undo buttons).
   python-telegram-bot lower bound is 22.7. Other texts look as before; the
   redesign is #101–#108. Tests: `tests/test_look.py`. Not checked in a real
   Telegram chat yet.

@@ -151,7 +151,7 @@ def test_undo_deletes_a_large_expense_even_after_hand_unmark() -> None:
     sheets._data_values[-1][-1] = "нет"  # someone unmarked it in the sheet
     user_data: dict = {}
     now = datetime(2026, 8, 8, 12)
-    [[(_, data)]] = undo.remember(user_data, [record], now)
+    [[(_, data, _)]] = undo.remember(user_data, [record], now)
     assert undo.undo(user_data, data, sheets, now).done
     assert sheets.read_data_values() == [[*HEADERS, "Large"]]
 
