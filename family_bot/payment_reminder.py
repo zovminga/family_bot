@@ -32,15 +32,19 @@ PAY_LABEL = "⚡ Внести: {name}"
 ALREADY_LABEL = "✅ Уже внесено"
 # Reminder id length in random bytes (3 bytes = 6 hex chars).
 REMINDER_ID_BYTES = 3
+# «20.11» out of «20.11.2026» in the saved line.
+DAY_MONTH_LEN = 5
 
-TITLE = "🔔 {month}: ещё не внесены платежи"
-ALL_CLOSED_TEXT = "🔔 {month}: все платежи из напоминания разобраны."
+TITLE = "🔔 <b>{month}: ещё не внесены платежи</b>"
+ALL_CLOSED_TEXT = "🔔 <b>{month}</b>: все платежи из напоминания разобраны."
 HINT = "«⚡ Внести» запишет платёж сегодняшним числом, «✅ Уже внесено» уберёт строку."
 STALE_TEXT = "Напоминание устарело после обновления бота"
 CLOSED_TEXT = "Этот платёж уже убран из напоминания."
 # Text of the amount prompt that a reply must answer; the reply handler looks for it.
-PROMPT_MARK = "Ответьте на это сообщение суммой."
-PROMPT_TEXT = "💵 Сколько внести за «{name}» ({currency})? " + PROMPT_MARK
+PROMPT_MARK = "Ответь на это сообщение суммой."
+# HTML: {name} and {currency} come escaped.
+PROMPT_TEXT = "💵 Сколько внести за «<b>{name}</b>» ({currency})? " + PROMPT_MARK
+SAVED_TITLE = "✅ Сохранено"
 NOT_YOURS_TEXT = "Сумму вводит тот, кто нажал «⚡ Внести»."
 
 
@@ -114,26 +118,48 @@ def new_reminder(payments: list[DuePayment], month: str) -> Reminder:
                     payments=tuple(payments), open=set(range(len(payments))))
 
 
-def _payment_lines(payment: DuePayment) -> list[str]:
+def _payment_block(payment: DuePayment) -> str:
+    """HTML: the Preset name in bold, then its Category's rows of the month in a quote."""
     preset = payment.preset
     amount = ("сумма не задана" if preset["amount"] is None
               else format_amount(preset["amount"], preset["currency"]))
-    lines = [f"• {preset['name']} — {amount} ({preset['category']})"]
+    head = f"{look.bold(preset['name'])} — " + look.escape(f"{amount} · {preset['category']}")
+    have = []
     for r in payment.same_category:
         tail = f" — {r.comment}" if r.comment.strip() else ""
-        lines.append(f"   уже есть: {r.date_text} — {format_amount(r.amount, r.currency)}{tail}")
-    return lines
+        have.append(look.escape(
+            f"уже есть: {r.date_text} — {format_amount(r.amount, r.currency)}{tail}"))
+    return "\n".join([head, look.quote("\n".join(have))]) if have else head
 
 
 def message_text(reminder: Reminder) -> str:
     """Reminder text (HTML) with the open lines; a closing line once all are closed."""
-    month = month_title(reminder.month)
+    month = look.escape(month_title(reminder.month))
     if not reminder.open:
         return ALL_CLOSED_TEXT.format(month=month)
-    lines = [TITLE.format(month=month), ""]
-    for i in sorted(reminder.open):
-        lines += _payment_lines(reminder.payments[i])
-    return look.escape("\n".join([*lines, "", HINT]))
+    blocks = [TITLE.format(month=month)]
+    blocks += [_payment_block(reminder.payments[i]) for i in sorted(reminder.open)]
+    return "\n\n".join([*blocks, look.escape(HINT)])
+
+
+def prompt_text(preset: dict) -> str:
+    """HTML amount prompt for a payment without an amount."""
+    return PROMPT_TEXT.format(name=look.escape(preset["name"]),
+                              currency=look.escape(preset["currency"]))
+
+
+def saved_text(record: ExpenseRecord) -> str:
+    """
+    HTML reply after «⚡ Внести»: the saved payment in a quote.
+
+    Same look as the saved line of a Draft (spec «Как выглядит»): name and
+    amount in bold, then Category · day.month · Spender.
+    """
+    amount = format_amount(float(record.amount), record.currency)
+    day = record.date[:DAY_MONTH_LEN]
+    body = (f"{look.bold(f'{record.comment} — {amount}')}\n"
+            f"{look.escape(f'{record.category} · {day} · {record.who}')}")
+    return f"{SAVED_TITLE}\n{look.quote(body)}"
 
 
 def buttons(reminder: Reminder) -> ButtonGrid:
@@ -142,7 +168,7 @@ def buttons(reminder: Reminder) -> ButtonGrid:
     for i in sorted(reminder.open):
         name = reminder.payments[i].preset["name"]
         base = f"{CALLBACK_PREFIX}{reminder.id}:{i}:"
-        grid.append([(PAY_LABEL.format(name=name), base + ACTION_PAY),
+        grid.append([(PAY_LABEL.format(name=name), base + ACTION_PAY, look.SUCCESS),
                      (ALREADY_LABEL, base + ACTION_ALREADY)])
     return grid
 
