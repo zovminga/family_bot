@@ -36,7 +36,7 @@ def test_whoami_answers_without_google() -> None:
     upd = make_update("/whoami", user_id=111)
     run(bot.enforce_allowlist(upd, ctx))  # does not stop the update
     run(bot.whoami(upd, ctx))
-    assert "ID: 111" in replies(upd)[0]
+    assert "Telegram ID: <code>111</code>" in replies(upd)[0]
     assert "В списке как: Ann" in replies(upd)[0]
 
 

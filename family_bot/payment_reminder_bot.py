@@ -127,7 +127,7 @@ async def _save(context: ContextTypes.DEFAULT_TYPE, reply_to: Message, reminder:
         return
     undo_grid = undo.remember(cast(dict, context.user_data), [record], clock.now())
     await _redraw(context, reminder)
-    await reply_to.reply_text(pr.saved_text(record), reply_markup=nav.inline_markup(undo_grid))
+    await reply_to.reply_text(undo.saved_text([record]), reply_markup=nav.inline_markup(undo_grid))
 
 
 async def _ask_amount(context: ContextTypes.DEFAULT_TYPE, reply_to: Message,

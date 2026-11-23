@@ -42,7 +42,7 @@ ButtonGrid = look.ButtonGrid
 
 # Reply to a card whose Draft is not in memory. Drafts live only in memory, so
 # that is a card from before a restart (or a closed Draft past MAX_CLOSED_DRAFTS).
-STALE_TEXT = "Черновик устарел после обновления бота, отправьте ещё раз"
+STALE_TEXT = "Черновик устарел после обновления бота. Отправь трату ещё раз"
 
 # Item key of the Large expense flag; an item without it is not large.
 LARGE_KEY = "large"
@@ -364,7 +364,7 @@ def amount_prompt(session: DraftSession, i: int, error: str = "") -> str:
     target = f" для #{i + 1}" if len(session.items) > 1 else ""
     reason = f"\n{error}" if error else ""
     return (card_text(session) + reason
-            + f"\n\n✏️ Введите новую сумму{target}. Например: 1 200 или 350 дин")
+            + f"\n\n✏️ Введи новую сумму{target}. Например: 1 200 или 350 дин")
 
 
 def amount_step(session: DraftSession, i: int, error: str = "") -> CallbackOutcome:

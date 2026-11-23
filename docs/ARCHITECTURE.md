@@ -210,7 +210,7 @@ are unaffected, sheet-side date formulas and sorting see text.
 
 **Manual** (`flows/manual.py`, one live card since #103): amount → Currency → [«🔶 Это крупная трата?», `ASK_LARGE`, callback `large:yes` / `large:no`, only when `large_expense.suggest` says so] → Category → comment → date. Every step goes through `ManualFlow._show` → `live_card.show` on the card kept in `user_data[live_card.KEY_CARD]` (a callback uses `query.message`); `card_text` puts the title, the filled fields (`look.field`), the error and the question; the step's buttons plus «🏠 В начало» are inline. Typed answers are deleted (`live_card.drop_reply`) before the card is redrawn; a wrong one shows the reason with the same step. `save_row` turns the card into `undo.saved_text` + «↩️ Отменить», pops the card key and calls `navigation.leave_flow` (no main-menu message). The Large question comes before the comment step, so «✅ Сегодня, без комментария» never skips it; ⚡ Presets always write `large=False`. Category: inline buttons `mcat:<index>` (a stale index asks again) or typed text matching `Config.categories` (case ignored); amount goes through `amount_input.parse_amount_text`, and a Currency typed with it skips the Currency step; on the comment step «✅ Сегодня, без комментария» (`today_no_comment`) saves with today's date and an empty comment, skipping `CHOOSE_DT`; the Currency step is `currency_picker` as inline buttons (callback `cur:pick:<ISO>`, `cur:page:<n>`): Recent currencies of the User, «🌍 Другая» pages, or typed text — one match is chosen, several come back as buttons, none re-asks with Recent currencies. The saved Expense's Currency goes to Recent currencies (`save_row`), so a cancelled entry leaves them as they were. A registry word («доллар», «динар») means the registry Currency; «канадский доллар» finds the others. Edited Telegram messages are stopped in handler group -3 (`bot.EDITED_MESSAGES`) before the allowlist and every flow.
 
-**Preset ⚡** (`flow_preset.py`): the ⚡ button of a Preset with an amount saves at once. A Preset with `amount=None` stores itself in `user_data["preset"]`, sends a live card «⚡ <b>name</b>», Категория, Кто, «💵 Введите сумму (<Currency>):» with the inline home button (`user_data[live_card.KEY_CARD]`) and moves to `TYPING_PRESET_AMT`. The answer is deleted and goes through `amount_input.parse_amount_text` (same checks as manual input; a wrong one puts `AMOUNT_ERROR` on the card); a Currency typed with the amount replaces the sheet's. Saved: today, Category and Spender from the sheet, comment = Preset name; the card (or, for a Preset with an amount, a new message) becomes `undo.saved_text` + «↩️ Отменить», then the main menu is sent (the ⚡ keyboard replaced it).
+**Preset ⚡** (`flow_preset.py`): the ⚡ button of a Preset with an amount saves at once. A Preset with `amount=None` stores itself in `user_data["preset"]`, sends a live card «⚡ <b>name</b>», Категория, Кто, «💵 Введи сумму (<Currency>):» with the inline home button (`user_data[live_card.KEY_CARD]`) and moves to `TYPING_PRESET_AMT`. The answer is deleted and goes through `amount_input.parse_amount_text` (same checks as manual input; a wrong one puts `AMOUNT_ERROR` on the card); a Currency typed with the amount replaces the sheet's. Saved: today, Category and Spender from the sheet, comment = Preset name; the card (or, for a Preset with an amount, a new message) becomes `undo.saved_text` + «↩️ Отменить», then the main menu is sent (the ⚡ keyboard replaced it).
 
 **Voice** (`voice_input.py`): OGG/Opus → PyAV PCM → Vosk (RU model under `models/`, gitignored) → Claude structured expenses constrained to sheet categories/currencies → `draft_expense.session_from_voice`.
 
@@ -241,8 +241,7 @@ timer, it goes on the tap). The button is red
 «what — amount» line, then Category · day.month · Spender; several: one line
 each). The Draft, manual and ⚡ Preset saves use `saved_text` (manual adds
 «🔶 Крупная трата» below when marked); a done undo replaces any message with
-`undone_text` and no buttons. The Payment reminder has its own
-`payment_reminder.saved_text` with the same look (#106).
+`undone_text` and no buttons. The Payment reminder uses `undo.saved_text` too (#107).
 
 **Draft card look** (issue #101, spec `docs/specs/2026-11-bot-look.md`, variant
 B): `card_text` → «📝 <b>Черновик траты</b>» (several items: «📝 <b>Черновик:
@@ -301,9 +300,9 @@ its buttons. Drafts are not persisted (Q15): a restart drops them.
 
 **Errors:** `bot.build_application()` registers `errors.on_error` with
 `add_error_handler`. An exception a handler does not catch is logged (traceback,
-tokens and keys masked) and the user gets «❌ Не сохранилось. Попробуйте ещё раз».
+tokens and keys masked) and the user gets «❌ Не сохранилось. Попробуй ещё раз».
 Voice, text and photo catch their own errors: a failed Vosk or Claude call shows
-«❌ Не разобрал, введите вручную», a failed download asks to try again. No
+«❌ Не разобрал. Введи вручную: «💰 Добавить трату»», a failed download asks to try again. No
 handler sends exception text to the user.
 
 The bot's Claude clients (`voice_input`, `photo_input`) come from `llm.client()`, with the timeout and retry limits `llm.LLM_TIMEOUT_SEC` / `LLM_MAX_RETRIES`. The dashboard's grouping client keeps the SDK defaults.

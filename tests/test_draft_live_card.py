@@ -92,7 +92,7 @@ def test_bad_amount_is_deleted_and_card_shows_reason_and_same_step(ctx, tg):
     assert reply.deleted
     assert tg.sent == [card]
     text, kw = card.edits[-1]
-    assert draft.AMOUNT_ERROR in text and "Введите новую сумму" in text
+    assert draft.AMOUNT_ERROR in text and "Введи новую сумму" in text
     assert _labels(kw) == ["⬅️ Назад"]
     # The same step: the next good answer is taken.
     _type(ctx, tg, "500")
@@ -139,7 +139,7 @@ def test_buried_card_is_deleted_and_sent_again_at_the_bottom(ctx, tg):
     assert card_a.deleted and card_a.edits == []
     moved = tg.sent[-1]
     assert moved is not card_a and moved.message_id > card_a.message_id
-    assert "кофе" in moved.text and "Введите новую сумму" in moved.text
+    assert "кофе" in moved.text and "Введи новую сумму" in moved.text
     assert _labels(moved.kw) == ["⬅️ Назад"]
     # The answer edits the moved card, not the deleted one.
     _type(ctx, tg, "1 200")
@@ -165,7 +165,7 @@ def test_person_messages_below_the_card_do_not_count(ctx, tg):
     FakeMessage("просто текст", bot=tg)  # the person wrote something, the bot did not
     _tap(ctx, card, session, "amt:0")
     assert not card.deleted and tg.sent == [card]
-    assert "Введите новую сумму" in card.edits[-1][0]
+    assert "Введи новую сумму" in card.edits[-1][0]
 
 
 def test_deleted_bot_message_below_the_card_does_not_count(ctx, tg):

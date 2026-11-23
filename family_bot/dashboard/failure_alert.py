@@ -13,6 +13,7 @@ CLI (used by run.sh):  python3 -m family_bot.dashboard.failure_alert "<reason>"
 """
 from __future__ import annotations
 
+import html
 import http.client
 import logging
 import os
@@ -53,20 +54,22 @@ def failure_text(reason: str, token: str) -> str:
     Returns
     -------
     str
-        Message text with the reason and where the log is.
+        HTML message text with the reason (escaped) and where the log is.
     """
     if token:
         reason = reason.replace(token, TOKEN_MASK)
     if len(reason) > MAX_REASON_LEN:
         reason = reason[:MAX_REASON_LEN] + "…"
-    return ("⚠️ Сборка дашборда не удалась: " + reason + "\n"
-            "Бот отдаёт прошлую версию. Подробности — dashboard/output/launchd.log "
-            "(или build.log при ручном запуске).")
+    return ("⚠️ <b>Дашборд не собрался</b>\n"
+            "Причина: <code>" + html.escape(reason) + "</code>\n"
+            "Бот пока отдаёт прошлую версию. Посмотри лог "
+            "<code>dashboard/output/launchd.log</code> (при ручном запуске — "
+            "<code>build.log</code>), исправь и запусти <code>dashboard/run.sh</code>.")
 
 
 def post_message(token: str, chat_id: str, text: str) -> None:
     """
-    Send a message with the Bot API sendMessage method.
+    Send an HTML message with the Bot API sendMessage method.
 
     Parameters
     ----------
@@ -75,9 +78,10 @@ def post_message(token: str, chat_id: str, text: str) -> None:
     chat_id : str
         Target chat.
     text : str
-        Message text.
+        Message text (HTML).
     """
-    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    data = urllib.parse.urlencode(
+        {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage", data=data)
     with urllib.request.urlopen(request, timeout=SEND_TIMEOUT_SEC):

@@ -76,7 +76,7 @@ ASK_DATE_FROM = "📅 Напиши дату начала (ДД.ММ.ГГГГ):"
 ASK_DATE_TO = "📅 Напиши дату конца (ДД.ММ.ГГГГ):"
 ASK_GROUPING = "💱 Разбить по валютам?"
 BAD_DATE = "❌ Не понял дату. Пример: 13.07.2025"
-NO_PERIOD = "❌ Не задан период"
+NO_PERIOD = "❌ Не задан период. Открой «📊 Статистика» заново"
 ASK_TARGET = "💱 В какую валюту пересчитать все траты?"
 # Callback data prefix of the Currency picker buttons in this flow.
 CURRENCY_CALLBACK = "scur:"

@@ -10,11 +10,21 @@ def test_home_row():
     assert nav.home_row() == ["🏠 В начало"]
 
 
-def test_main_menu_keyboard_has_five_actions():
+def test_main_menu_is_two_rows_without_home():
     markup = nav.main_menu_keyboard()
-    labels = {btn.text for row in markup.keyboard for btn in row}
-    assert labels == {"💰 Добавить трату", "🧾 Заготовка", "📅 Этот месяц", "📊 Статистика",
-                      "📈 Дашборд", "🏠 В начало"}
+    rows = [[btn.text for btn in row] for row in markup.keyboard]
+    assert rows == [["💰 Добавить трату", "🧾 Заготовка"],
+                    ["📅 Этот месяц", "📊 Статистика", "📈 Дашборд"]]
+
+
+def test_old_keyboard_labels_still_work():
+    """A phone keeps the old keyboard until the bot sends the new one."""
+    for label in ("🏠 В начало", "В начало", "🏠 To start"):
+        assert nav.HOME_TEXT.pattern.match(label)
+        assert nav.is_menu_text(label)
+    for label in ("💰 Add expense", "📊 Show statistics", "📈 Dashboard"):
+        assert nav.MENU_ACTIONS[label] in nav.MENU_LABELS
+        assert label in nav.MENU_TEXT.strings
 
 
 def test_begin_preset_empty_stays_on_menu():

@@ -771,8 +771,8 @@ def publish_to_telegram(html_path: Path) -> None:
         with html_path.open("rb") as fh:
             resp = requests.post(
                 f"https://api.telegram.org/bot{token}/sendDocument",
-                data={"chat_id": chat_id,
-                      "caption": "🔄 Актуальный дашборд трат обновлён."},
+                data={"chat_id": chat_id, "parse_mode": "HTML",
+                      "caption": "📈 <b>Дашборд обновлён</b>\nОткрой файл в браузере."},
                 files={"document": ("expenses_dashboard.html", fh, "text/html")},
                 timeout=120,
             )
