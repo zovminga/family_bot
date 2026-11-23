@@ -38,10 +38,16 @@ def _tap(ctx, session, payload):
     return query
 
 
+def _card(query, n=0):
+    """Text and reply_markup of the n-th edit of the tapped card (edit steps edit the card)."""
+    text, kw = query.message.edits[n]
+    return text, kw.get("reply_markup")
+
+
 def test_typed_amount_updates_the_card(ctx):
     session = _open_draft(ctx)
     query = _tap(ctx, session, "amt:0")
-    assert "Введите новую сумму" in query.edits[0]
+    assert "Введите новую сумму" in _card(query)[0]
     with pytest.raises(ApplicationHandlerStop):
         run(bot.draft_amount_text(make_update("1 200 €"), ctx))
     assert (session.items[0]["amount"], session.items[0]["currency"]) == (1200.0, "€")
@@ -52,11 +58,13 @@ def test_typed_amount_updates_the_card(ctx):
 
 def test_bad_amount_is_asked_again(ctx):
     session = _open_draft(ctx)
-    _tap(ctx, session, "amt:0")
+    query = _tap(ctx, session, "amt:0")
     upd = make_update("0")
     with pytest.raises(ApplicationHandlerStop):
         run(bot.draft_amount_text(upd, ctx))
-    assert "больше нуля" in upd.message.replies[0][0]
+    text, _ = _card(query, -1)
+    assert "больше нуля" in text and "Введите новую сумму" in text
+    assert upd.message.replies == []
     assert session.items[0]["amount"] == 350.0
     assert bot.KEY_AMOUNT_EDIT in ctx.user_data
 
@@ -99,8 +107,8 @@ def test_pending_edit_on_saved_draft_passes_through(ctx):
 def test_who_button_lists_allowlist_spenders(ctx):
     session = _open_draft(ctx)
     query = _tap(ctx, session, "who:0")
-    _, kw = query.edits[0]
-    labels = [b.text for row in kw["reply_markup"].inline_keyboard for b in row]
+    _, markup = _card(query)
+    labels = [b.text for row in markup.inline_keyboard for b in row]
     assert labels == ["Azat", "Lisa", "⬅️ Назад"]
     _tap(ctx, session, "setwho:0:1")
     assert session.items[0]["who"] == "Lisa"
@@ -129,8 +137,9 @@ def test_currency_button_shows_recent_currencies_of_this_user(ctx):
     settings_of(ctx).sheets.users[111] = ["CNY", "дин", "€"]
     session = _open_draft(ctx)
     query = _tap(ctx, session, "cur:0")
-    assert "введите код" in query.edits[0]
-    rows = [[b.text for b in row] for row in query.markups[0].inline_keyboard]
+    text, markup = _card(query)
+    assert "введите код" in text
+    rows = [[b.text for b in row] for row in markup.inline_keyboard]
     assert rows == [["🇨🇳 CNY", "🇷🇸 дин", "🇪🇺 €"], ["🌍 Другая"], ["⬅️ Назад"]]
 
 
@@ -147,11 +156,12 @@ def test_other_page_then_pick_sets_iso_code_and_recent(ctx):
 
     session = _open_draft(ctx)
     query = _tap(ctx, session, "cur:0:page:0")
-    assert "Все валюты" in query.edits[0]
-    pick = _labels(query.markups[0])["🇬🇪 GEL"]
+    text, markup = _card(query)
+    assert "Все валюты" in text
+    pick = _labels(markup)["🇬🇪 GEL"]
     query = _tap(ctx, session, pick.split(":", 2)[2])
     assert session.items[0]["currency"] == "GEL"
-    assert "350 GEL" in query.edits[0]
+    assert "350 GEL" in _card(query)[0]
     assert settings_of(ctx).sheets.users[111] == ["GEL", "дин", "€"]
 
 

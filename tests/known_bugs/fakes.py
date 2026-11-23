@@ -18,18 +18,74 @@ def known_bug(finding: str) -> pytest.MarkDecorator:
     return pytest.mark.xfail(strict=True, reason=f"known bug {finding}, see {SPEC}")
 
 
+class FakeBot:
+    """Chat-wide message ids, the bot's sends and deletions.
+
+    ``sent_log`` is the same record ``live_card.TrackingBot`` keeps, so a test
+    can bury a card under newer bot messages.
+    """
+
+    def __init__(self) -> None:
+        from family_bot.live_card import SentLog
+
+        self.sent_log = SentLog()
+        self.last_id = 0
+        self.sent: list["FakeMessage"] = []
+        self.deleted: list[int] = []  # message ids, in order
+
+    def next_id(self) -> int:
+        self.last_id += 1
+        return self.last_id
+
+    async def send_message(self, chat_id: int, text: str, **kw: Any) -> "FakeMessage":
+        msg = FakeMessage(text, bot=self, chat_id=chat_id, from_bot=True)
+        msg.kw = kw
+        return msg
+
+    async def delete_message(self, chat_id: int, message_id: int) -> bool:
+        self.deleted.append(message_id)
+        self.sent_log.deleted(chat_id, message_id)
+        return True
+
+
 class FakeMessage:
-    def __init__(self, text: Optional[str] = None) -> None:
+    """Message with an id in its chat; bot messages go to the bot's ``sent_log``."""
+
+    def __init__(self, text: Optional[str] = None, *, bot: Optional[FakeBot] = None,
+                 chat_id: int = 111, chat_type: str = "private",
+                 from_bot: bool = False) -> None:
         self.text = text
+        self.bot = bot or FakeBot()
+        self.chat_id = chat_id
+        self.chat = SimpleNamespace(id=chat_id, type=chat_type)
+        self.message_id = self.bot.next_id()
+        self.kw: dict[str, Any] = {}
         self.replies: list[tuple[str, dict[str, Any]]] = []
         self.edits: list[tuple[str, dict[str, Any]]] = []
+        self.deleted = False
+        if from_bot:
+            self.bot.sent.append(self)
+            self.bot.sent_log.sent(chat_id, self.message_id)
+
+    def get_bot(self) -> FakeBot:
+        return self.bot
 
     async def reply_text(self, text: str, **kw: Any) -> "FakeMessage":
         self.replies.append((text, kw))
-        return FakeMessage(text)
+        reply = FakeMessage(text, bot=self.bot, chat_id=self.chat_id,
+                            chat_type=self.chat.type, from_bot=True)
+        reply.kw = kw
+        return reply
 
     async def edit_text(self, text: str, **kw: Any) -> None:
         self.edits.append((text, kw))
+
+    async def edit_reply_markup(self, **kw: Any) -> None:
+        self.edits.append(("markup", kw))
+
+    async def delete(self) -> bool:
+        self.deleted = True
+        return await self.bot.delete_message(self.chat_id, self.message_id)
 
 
 class FakeQuery:
@@ -52,11 +108,19 @@ class FakeQuery:
 
 
 def make_update(text: Optional[str] = None, user_id: int = 111,
-                query: Optional[FakeQuery] = None) -> SimpleNamespace:
-    msg = FakeMessage(text) if query is None else None
+                query: Optional[FakeQuery] = None,
+                bot: Optional[FakeBot] = None) -> SimpleNamespace:
+    """Update from the person in their private chat (chat id = user id).
+
+    Pass one ``bot`` to several updates to share message ids and the bot's
+    ``sent_log`` across them.
+    """
+    msg = FakeMessage(text, bot=bot, chat_id=user_id) if query is None else None
+    effective = msg if msg else query.message
     return SimpleNamespace(
         message=msg,
-        effective_message=msg if msg else query.message,
+        effective_message=effective,
+        effective_chat=effective.chat,
         effective_user=SimpleNamespace(id=user_id, username="u", first_name="U"),
         callback_query=query,
     )

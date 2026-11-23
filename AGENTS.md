@@ -67,6 +67,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   auth.py             ALLOWED_USERS parse + gate
   expense.py          ExpenseRecord + append
   draft_expense.py    Draft card (voice, photo, text)
+  live_card.py        Live card: one message per flow, answers deleted, moves down when buried
   sheets.py           SheetsClient seam
   sheet_data.py       Headers, dates, currency maps; Data rows → Row
   fx.py               Exchange rates (bot stats + dashboard)
