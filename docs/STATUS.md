@@ -4,8 +4,8 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #105: statistics questions in one message, answers in look B)  
-**Product code tip:** branch for issue #105 (2026-11-23) — «📊 Статистика» asks in one edited message with inline buttons, the answer is a new message in the month-summary look and the questions are deleted; on top of #101 (Draft card in look B), #104, #106  
+**Updated by:** agent session (issue #105: statistics questions in one message, answers in look B; merged main with #102)  
+**Product code tip:** branch for issue #105 (2026-11-23) — «📊 Статистика» asks in one edited message with inline buttons, the answer is a new message in the month-summary look and the questions are deleted; on top of #102 (Draft edits in one live card, `live_card.py`), #101 (Draft card in look B), #104, #106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -35,6 +35,20 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   stays on screen; a menu tap mid-questions deletes them and runs the menu,
   the inline «🏠 В начало» deletes them. `/cancel` mid-questions leaves the
   questions message in the chat. Not checked in a real Telegram chat yet.
+- Draft edits in one live card (issue #102, spec `docs/specs/2026-11-bot-look.md`
+  stories 25–29, 35): every Draft edit step (Категория, Дата, Валюта, Сумма,
+  Кто, Крупная) edits the card message. In a private chat the bot deletes the
+  person's typed amount / Currency (accepted or not) and the voice message once
+  its Draft card is shown; a voice it could not parse and a receipt photo stay.
+  A wrong amount puts «❌ Нужна сумма больше нуля…» on the card with the same
+  step. The bot remembers its own recent message ids per chat
+  (`live_card.TrackingBot`); if an edit step finds the card under a newer bot
+  message (the person's messages do not count), the card is deleted and sent
+  again at the bottom with the same text and buttons. Save and cancel stay in
+  place. Group chats: nothing deleted or moved. After a restart the id log is
+  empty, so nothing moves until the bot sends again. The mechanism is
+  `live_card.show` / `drop_reply`, ready for manual input (#103). Not checked
+  in a real Telegram chat yet.
 - Draft card in variant B (issue #101, spec `docs/specs/2026-11-bot-look.md`
   stories 1–3, 6, 8, 10–12, 30–34, 36–37): voice, typed text and receipt
   Drafts show «📝 <b>Черновик траты</b>», the transcript / typed text /
@@ -50,7 +64,7 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   `undo.saved_text` / `undone_text`. Manual and ⚡ Preset saves keep their old
   one-line «✅ Сохранено: …» until #103; the Payment reminder builds the same
   look with its own `payment_reminder.saved_text` (#106); editing
-  inside the card (#102) is not done. Not checked in a real Telegram chat yet.
+  inside the card is #102 (above). Not checked in a real Telegram chat yet.
 - Month summary in look B (issue #104, spec `docs/specs/2026-11-bot-look.md`,
   stories 45–51): `analytics.format_month_summary` writes «📅 <b>Итог за
   ноябрь 2026</b>», then one block per Currency: «💰 Итого <b>сумма</b>» and
@@ -418,7 +432,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 ## Open
 
 - New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
-  styles; #104 built: month summary; #106 built: Payment reminder; the rest is spec only): HTML in every message,
+  styles; #101 built: Draft card; #102 built: Draft edits in one live card;
+  #104 built: month summary; #106 built: Payment reminder; the rest is spec only): HTML in every message,
   labelled Draft card with the voice transcript in a quote, one live card for
   manual input and Draft edits (the bot deletes the person's replies and voice
   messages, keeps receipt photos), saved/undone line, coloured buttons

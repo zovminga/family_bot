@@ -68,13 +68,13 @@ def test_custom_period_after_month_flow_uses_requested_period(ctx):
     # second query from the main menu: custom period in November
     upd = make_update(nav.SHOW_STATS)
     run(bot.choose_action(upd, ctx))
-    card = upd.message.bot_replies[0]
+    card = upd.message.bot.sent[-1]
     tap(bot.STATS.on_category, flow_stats.ALL, ctx)
     tap(bot.STATS.on_type, flow_stats.PERIOD, ctx)
     run(bot.STATS.on_date_from(make_update("01.11.2026"), ctx))
     run(bot.STATS.on_date_to(make_update("30.11.2026"), ctx))
     tap(bot.STATS.on_group_currency, flow_stats.YES, ctx)
-    result = card.bot_replies[0].text
+    result = card.bot.sent[-1].text
     assert "с 01.11.2026 по 30.11.2026" in result, result
 
 

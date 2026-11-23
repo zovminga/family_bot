@@ -195,20 +195,20 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
 
     opened = seen.update(nav.SHOW_STATS)
     run(s.begin(opened, ctx))
-    card = opened.message.bot_replies[0]
+    card = opened.message.bot.sent[-1]
     seen.messages.append(card)
     tap(s.on_category, flow_stats.ONE)
     tap(s.on_category, flow_stats.CATEGORY + "0")
     tap(s.on_type, flow_stats.LAST)
     run(s.begin(opened, ctx))
-    card = opened.message.bot_replies[-1]
+    card = opened.message.bot.sent[-1]
     seen.messages.append(card)
     tap(s.on_category, flow_stats.ALL)
     tap(s.on_type, flow_stats.MONTHS)
     tap(s.on_month, flow_stats.MONTH + "2026-10")
     tap(s.on_group_currency, flow_stats.YES)
     run(s.begin(opened, ctx))
-    card = opened.message.bot_replies[-1]
+    card = opened.message.bot.sent[-1]
     seen.messages.append(card)
     tap(s.on_category, flow_stats.ALL)
     tap(s.on_type, flow_stats.PERIOD)
@@ -219,7 +219,7 @@ def test_stats_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(s.on_convert_currency(seen.update("дин"), ctx))
     for scope_type in (flow_stats.LAST, flow_stats.MONTHS):
         run(s.begin(opened, ctx))
-        card = opened.message.bot_replies[-1]
+        card = opened.message.bot.sent[-1]
         seen.messages.append(card)
         tap(s.on_category, flow_stats.LARGE)
         tap(s.on_type, scope_type)

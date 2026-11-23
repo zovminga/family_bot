@@ -29,7 +29,6 @@ from typing import Any, Callable, Coroutine, Optional, TypeVar
 from dateutil import parser as dparser
 from dateutil.relativedelta import relativedelta
 from telegram import InlineKeyboardMarkup, Message, Update
-from telegram.constants import ChatType
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import BaseHandler, CallbackQueryHandler, ContextTypes, MessageHandler
 
@@ -38,6 +37,7 @@ from family_bot import clock
 from family_bot import currency
 from family_bot import currency_picker as picker
 from family_bot import errors
+from family_bot import live_card
 from family_bot import look
 from family_bot import navigation as nav
 from family_bot.conversation_states import State
@@ -156,12 +156,6 @@ async def _delete(message: Optional[Message]) -> None:
         await message.delete()
     except TelegramError as e:
         errors.log_exception("Delete stats message", e)
-
-
-async def _drop_typed(message: Message) -> None:
-    """Delete the User's typed answer; only in a private chat (a group keeps its messages)."""
-    if message.chat.type == ChatType.PRIVATE:
-        await _delete(message)
 
 
 def _month_label(month: str) -> str:
@@ -365,7 +359,7 @@ class StatsFlow:
     async def on_date_from(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_DATE_FROM: parse the period start (the typed text is deleted)."""
         text = _message(update).text or ""
-        await _drop_typed(_message(update))
+        await live_card.drop_reply(_message(update))
         try:
             date_from = _parse_date(text)
         except (ValueError, OverflowError):
@@ -379,7 +373,7 @@ class StatsFlow:
     async def on_date_to(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_DATE_TO: parse the period end, then ask about grouping."""
         text = _message(update).text or ""
-        await _drop_typed(_message(update))
+        await live_card.drop_reply(_message(update))
         try:
             date_to = _parse_date(text)
         except (ValueError, OverflowError):
@@ -422,7 +416,7 @@ class StatsFlow:
     async def on_convert_currency(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """STAT_CONVERT_CURRENCY, typed: symbol, ISO code or Russian name («дин», «GEL», «юань»)."""
         text = _message(update).text or ""
-        await _drop_typed(_message(update))
+        await live_card.drop_reply(_message(update))
         codes = await asyncio.to_thread(self._all_codes)
         found = picker.search(text, codes)
         if len(found) == 1:
