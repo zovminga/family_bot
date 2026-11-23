@@ -535,8 +535,11 @@ async def undo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     result = await asyncio.to_thread(
         undo.undo, context.user_data, query.data, cfg(context).sheets, clock.now())
     if not result.done:
-        # Someone else's or an old save: say why, keep the button for its owner.
+        # Someone else's save: say why, keep the button for its owner.
+        # An expired one: the button is dead for everyone, so it goes.
         await query.answer(result.text, show_alert=True)
+        if result.drop_button:
+            await query.edit_message_reply_markup(reply_markup=None)
         return
     await query.answer()
     await query.edit_message_text(result.text)

@@ -37,21 +37,60 @@ def _item(**overrides):
 
 def test_card_text_single_voice():
     session = session_from_voice([_item()], who="Ann", transcript="ланч двенадцать")
-    text = card_text(session)
-    assert "Расшифровка" in text
-    assert "12.50" in text or "12,50" in text
-    assert "Food" in text
+    assert card_text(session) == (
+        "📝 <b>Черновик траты</b>\n"
+        "<blockquote>ланч двенадцать</blockquote>\n"
+        "Сумма: <b>12,50 дин</b>\n"
+        "Что: <b>lunch</b>\n"
+        "Категория: <b>Food</b>\n"
+        "Дата: <b>07.08.2026</b>\n"
+        "Кто: <b>Ann</b>"
+    )
 
 
-def test_card_text_receipt_header():
+def test_card_text_without_comment_or_transcript():
+    text = card_text(DraftSession(items=[_item(comment="")]))
+    assert "<blockquote>" not in text
+    assert "Что: <b>—</b>" in text
+
+
+def test_card_text_receipt_lists_items_and_total():
     session = session_from_receipt(
         [_item(), _item(comment="beer", amount=3.0, category="Alcohol")],
         who="Bob",
         merchant="Shop",
     )
-    text = card_text(session)
-    assert "Чек · Shop" in text
-    assert "2 трат" in text
+    assert card_text(session) == (
+        "📝 <b>Черновик: 2 траты</b>\n"
+        "<blockquote>Чек · Shop</blockquote>\n"
+        "1. lunch — <b>12,50 дин</b> · Food · 07.08.2026\n"
+        "2. beer — <b>3 дин</b> · Alcohol · 07.08.2026\n"
+        "\n"
+        "Итого: <b>15,50 дин</b>"
+    )
+
+
+def test_card_total_is_per_currency():
+    session = DraftSession(items=[_item(amount=100.0), _item(amount=5.0, currency="€"),
+                                  _item(amount=20.0)])
+    assert card_text(session).endswith("Итого: <b>120 дин + 5 €</b>")
+
+
+def test_card_emoji_only_in_title():
+    session = session_from_voice([_item(), _item()], who="Ann", transcript="x", note="уточни")
+    title, *body = card_text(session).splitlines()
+    assert title.startswith("📝 ")
+    # Emoji and pictographs start at U+2190; «—» and «·» are below it.
+    assert not [ch for line in body for ch in line if ord(ch) >= 0x2190]
+
+
+def test_save_and_cancel_are_coloured_other_buttons_plain():
+    session = DraftSession(id="ab12", items=[_item()])
+    rows = main_buttons(session)
+    assert rows[0] == [("✅ Сохранить", "vx:ab12:save", "success"),
+                       ("❌ Отмена", "vx:ab12:cancel", "danger")]
+    assert all(len(button) == 2 for row in rows[1:] for button in row)
+    assert [b[0] for b in rows[1]] == ["🏷 Категория", "📅 Дата", "💱 Валюта"]
 
 
 def test_main_buttons_multi_item_edit_rows():
@@ -80,7 +119,8 @@ def test_set_category_and_save():
 
     outcome = apply_callback("save", session, cats, curs, client)
     assert session.closed
-    assert "Сохранено" in outcome.text
+    assert outcome.text == ("✅ Сохранено\n<blockquote><b>lunch — 12,50 дин</b>\n"
+                            "Transport · 07.08 · Ann</blockquote>")
     assert len(client.appended_rows) == 1
     assert client.appended_rows[0][2] == "Transport"
 
@@ -160,10 +200,10 @@ def test_setdate_yesterday():
 
 def test_cancel_closes_and_later_taps_do_nothing():
     client = FakeSheetsClient()
-    session = DraftSession(items=[_item()], header="x")
+    session = DraftSession(items=[_item()], transcript="x")
     outcome = apply_callback("cancel", session, ["Food"], ["дин"], client)
     assert session.closed
-    assert outcome.text == "❌ Отменено."
+    assert outcome.text == "Черновик отменён"
     assert apply_callback("save", session, ["Food"], ["дин"], client).text is None
     assert client.appended_rows == []
 
@@ -192,7 +232,7 @@ def test_add_draft_prunes_old_closed_drafts_only():
 # --- ✏️ Сумма and 👤 Кто (issue #31) ---
 
 def _labels(rows):
-    return [label for row in rows for label, _ in row]
+    return [button[0] for row in rows for button in row]
 
 
 def test_single_card_has_amount_and_spender_buttons():
@@ -245,7 +285,7 @@ def test_spender_buttons_come_from_allowlist_names():
     outcome = apply_callback("setwho:0:1", session, ["Food"], ["дин"],
                              FakeSheetsClient(), spenders=["Azat", "Lisa"])
     assert session.items[0]["who"] == "Lisa"
-    assert "Кто: Lisa" in outcome.text
+    assert "Кто: <b>Lisa</b>" in outcome.text
 
 
 def test_spender_index_out_of_range_is_ignored():
@@ -259,3 +299,14 @@ def test_save_outcome_carries_written_records():
     session = DraftSession(id="ab12", items=[_item()])
     outcome = apply_callback("save", session, ["Food"], ["дин"], FakeSheetsClient())
     assert [r.amount for r in outcome.saved] == [12.5]
+
+
+def test_save_of_five_items_is_one_message_with_five_lines():
+    items = [_item(comment=f"item{i}", amount=float(i)) for i in range(1, 6)]
+    session = DraftSession(id="ab12", items=items)
+    outcome = apply_callback("save", session, ["Food"], ["дин"], FakeSheetsClient())
+    title, body = outcome.text.split("\n", 1)
+    assert title == "✅ Сохранено"
+    lines = body.removeprefix("<blockquote>").removesuffix("</blockquote>").splitlines()
+    assert lines == [f"<b>item{i} — {i} дин</b> · Food · 07.08 · Ann" for i in range(1, 6)]
+    assert len(outcome.saved) == 5

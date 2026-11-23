@@ -81,7 +81,7 @@ def test_coffee_350_becomes_one_draft_item(claude):
                               "date": TODAY, "category": "Food", "who": "Azat"}]
     assert "кофе 350" in claude.prompts[0]
     text = draft.card_text(session)
-    assert "«кофе 350»" in text and "Расшифровка" not in text
+    assert "<blockquote>кофе 350</blockquote>" in text
     assert "350 дин" in text
 
 
@@ -150,7 +150,7 @@ def test_menu_text_shows_draft_card_and_saves_with_one_tap(claude, menu):
     state, msg, ctx = menu("кофе 350")
     assert state == CHOOSE_ACTION
     text, kw = _last_text(msg)
-    assert "📝 Черновик траты" in text
+    assert "📝 <b>Черновик траты</b>" in text
     (session,) = ctx.user_data[draft.KEY_DRAFTS].values()
     save_cb = kw["reply_markup"].inline_keyboard[0][0].callback_data
     assert save_cb == f"vx:{session.id}:save"

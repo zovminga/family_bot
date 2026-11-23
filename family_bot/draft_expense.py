@@ -19,6 +19,7 @@ from family_bot import clock
 from family_bot import currency
 from family_bot import currency_picker as picker
 from family_bot import look
+from family_bot import undo
 from family_bot.currency import format_amount
 from family_bot.expense import ExpenseRecord, append_expenses
 from family_bot.sheet_data import DATE_FMT
@@ -47,6 +48,9 @@ STALE_TEXT = "Черновик устарел после обновления б
 LARGE_KEY = "large"
 LARGE_MARK = "🔶"
 LARGE_BUTTON = f"{LARGE_MARK} Крупная"
+LARGE_LINE = f"{LARGE_MARK} Крупная трата"
+DRAFT_TITLE = "Черновик траты"
+CANCELLED_TEXT = "Черновик отменён"
 
 # (amount, Currency) -> whether to suggest the Large expense mark.
 IsLarge = Callable[[float, str], bool]
@@ -57,9 +61,8 @@ class DraftSession:
     """In-memory Draft the user is reviewing before save."""
 
     items: list[dict] = field(default_factory=list)
-    transcript: str = ""
+    transcript: str = ""  # voice, typed text or «Чек · shop»: shown in a quote
     note: str = ""
-    header: Optional[str] = None  # HTML: human text in it is already escaped
     id: str = ""
     closed: bool = False  # saved or cancelled: its card buttons do nothing
 
@@ -142,49 +145,71 @@ def _h(text: str) -> str:
     return look.escape(str(text))
 
 
+def _title(session: DraftSession) -> str:
+    n = len(session.items)
+    name = DRAFT_TITLE if n == 1 else f"Черновик: {look.expenses(n)}"
+    return f"📝 {look.bold(name)}"
+
+
+def _totals(items: list[dict]) -> str:
+    """Sum per Currency in first-seen order: «1 200 дин + 20 €» (Currencies do not add up)."""
+    sums: dict[str, float] = {}
+    for it in items:
+        sums[it["currency"]] = sums.get(it["currency"], 0.0) + it["amount"]
+    return " + ".join(format_amount(amount, cur) for cur, amount in sums.items())
+
+
 def card_text(session: DraftSession) -> str:
-    """Draft card as Telegram HTML; human text is escaped (``header`` is HTML already)."""
+    """
+    Draft card as Telegram HTML: title, source in a quote, fields; human text escaped.
+
+    Parameters
+    ----------
+    session : DraftSession
+        Draft to show; ``transcript`` (voice, typed text or receipt) goes in the quote.
+
+    Returns
+    -------
+    str
+        One item: «Сумма: <b>350 дин</b>» lines. Several: «1. Хлеб — <b>120 дин</b>»
+        lines and the total under them.
+    """
     items = session.items
-    lines = (
-        [session.header, ""]
-        if session.header
-        else [f"🎧 Расшифровка: «{_h(session.transcript)}»", ""]
-    )
+    lines = [_title(session)]
+    if session.transcript:
+        lines.append(look.quote(_h(session.transcript)))
     if len(items) == 1:
         it = items[0]
         lines += [
-            "📝 Черновик траты",
-            f"• Товар/коммент: {_h(it['comment'] or '—')}",
-            f"• Сумма: {_h(format_amount(it['amount'], it['currency']))}",
-            f"• Категория: {_h(it['category'])}",
-            f"• Дата: {_h(it['date'])}",
-            f"• Кто: {_h(it['who'])}",
+            look.field("Сумма", format_amount(it["amount"], it["currency"])),
+            look.field("Что", it["comment"] or "—"),
+            look.field("Категория", it["category"]),
+            look.field("Дата", it["date"]),
+            look.field("Кто", it["who"]),
         ]
         if _is_large(it):
-            lines.append(f"• {LARGE_MARK} Крупная трата")
+            lines.append(LARGE_LINE)
     else:
-        lines.append(f"📝 Черновик: {look.expenses(len(items))}")
         for i, it in enumerate(items, 1):
             mark = f"{LARGE_MARK} " if _is_large(it) else ""
-            lines.append(_h(
-                f"{i}. {mark}{it['comment'] or '—'} — {format_amount(it['amount'], it['currency'])}"
-                f" · {it['category']} · {it['date']}"
-            ))
+            amount = look.bold(format_amount(it["amount"], it["currency"]))
+            lines.append(f"{i}. {mark}{_h(it['comment'] or '—')} — {amount}"
+                         f" · {_h(it['category'])} · {_h(it['date'])}")
+        lines += ["", look.field("Итого", _totals(items))]
     if session.note:
-        lines += ["", f"ℹ️ {_h(session.note)}"]
-    lines += ["", "Проверь и сохрани 👇"]
+        lines += ["", _h(session.note)]
     return "\n".join(lines)
 
 
 def main_buttons(session: DraftSession) -> ButtonGrid:
     items = session.items
     rows: ButtonGrid = [[
-        ("✅ Сохранить", _cb(session, "save")),
-        ("❌ Отмена", _cb(session, "cancel")),
+        ("✅ Сохранить", _cb(session, "save"), look.SUCCESS),
+        ("❌ Отмена", _cb(session, "cancel"), look.DANGER),
     ]]
     if len(items) == 1:
         rows.append([
-            ("✏️ Категория", _cb(session, "cat:0")),
+            ("🏷 Категория", _cb(session, "cat:0")),
             ("📅 Дата", _cb(session, "date:0")),
             ("💱 Валюта", _cb(session, "cur:0")),
         ])
@@ -209,7 +234,7 @@ def _amount_who_row(session: DraftSession, i: int) -> list[look.Button]:
 def item_edit_buttons(session: DraftSession, i: int) -> ButtonGrid:
     return [
         [
-            ("✏️ Категория", _cb(session, f"cat:{i}")),
+            ("🏷 Категория", _cb(session, f"cat:{i}")),
             ("📅 Дата", _cb(session, f"date:{i}")),
             ("💱 Валюта", _cb(session, f"cur:{i}")),
         ],
@@ -374,7 +399,7 @@ def session_from_voice(
 ) -> DraftSession:
     for it in items:
         it["who"] = who
-    return DraftSession(items=items, transcript=transcript, note=note, header=None)
+    return DraftSession(items=items, transcript=transcript, note=note)
 
 
 def session_from_text(
@@ -386,8 +411,7 @@ def session_from_text(
 ) -> DraftSession:
     for it in items:
         it["who"] = who
-    return DraftSession(items=items, transcript=text, note=note,
-                        header=f"✍️ «{look.escape(text)}»")
+    return DraftSession(items=items, transcript=text, note=note)
 
 
 def session_from_receipt(
@@ -399,13 +423,8 @@ def session_from_receipt(
 ) -> DraftSession:
     for it in items:
         it["who"] = who
-    header = "🧾 Чек" + (f" · {look.escape(merchant)}" if merchant else "") + " — черновик"
-    return DraftSession(
-        items=items,
-        transcript=merchant,
-        note=note,
-        header=header,
-    )
+    source = "Чек" + (f" · {merchant}" if merchant else "")
+    return DraftSession(items=items, transcript=source, note=note)
 
 
 def save_drafts(client: SheetsClient, items: list[dict]) -> list[ExpenseRecord]:
@@ -459,7 +478,7 @@ def apply_callback(
 
     if data == "cancel":
         session.closed = True
-        return CallbackOutcome(text="❌ Отменено.")
+        return CallbackOutcome(text=CANCELLED_TEXT)
 
     if data == "menu":
         return CallbackOutcome(text=card_text(session), buttons=main_buttons(session))
@@ -476,15 +495,7 @@ def apply_callback(
         except Exception:
             session.closed = False
             raise
-        if len(items) == 1:
-            it = items[0]
-            text = _h(
-                f"✅ Сохранено: {it['comment'] or it['category']} — "
-                f"{format_amount(it['amount'], it['currency'])} · {it['date']}"
-            )
-        else:
-            text = f"✅ Сохранено трат: {len(items)}"
-        return CallbackOutcome(text=text, saved=tuple(records))
+        return CallbackOutcome(text=undo.saved_text(records), saved=tuple(records))
 
     parts = data.split(":", 2)
     action = parts[0]

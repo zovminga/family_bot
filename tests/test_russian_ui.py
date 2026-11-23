@@ -245,11 +245,12 @@ def test_draft_card() -> None:
              draft.search_currency(session, 0, "долл", codes)]
     texts += [v.text or "" for v in views]
     grids += [v.buttons or [] for v in views]
-    texts += [label for grid in grids for row in grid for label, _ in row]
+    texts += [button[0] for grid in grids for row in grid for button in row]
     outcome = draft.apply_callback("save", session, CATEGORIES, ["дин"], FakeSheetsClient())
     texts.append(outcome.text or "")
-    assert "• Сумма: 1 234 дин" in texts[0]
-    assert outcome.text == "✅ Сохранено: кофе — 1 234 дин · 19.11.2026"
+    assert "Сумма: <b>1 234 дин</b>" in texts[0]
+    assert outcome.text == ("✅ Сохранено\n<blockquote><b>кофе — 1 234 дин</b>\n"
+                            "Еда · 19.11 · Анна</blockquote>")
     assert_russian(texts)
 
 
