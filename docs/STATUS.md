@@ -4,7 +4,7 @@
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
 **Last updated:** 2026-11-23  
-**Updated by:** agent session (issue #107: menu, greeting and texts on «ты»)  
+**Updated by:** agent session (Render auto-deploy confirmed; test bots answer 429)  
 **Product code tip:** branch for issue #107 (2026-11-23) — main menu in two rows without «🏠 В начало», greeting «👋 Что делаем?», every text on «ты», `/whoami` and «нет доступа» with the Telegram ID in `<code>`, dashboard and build-failure messages in HTML; the Payment reminder uses the shared «✅ Сохранено» line; on top of #100–#106  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -453,8 +453,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Telegram or Sheets. Secrets stay on the machine that runs the bot. Do not
   search the tree for them and do not treat the absence as a defect.
 - **No hosting manifest.** No `Procfile`, `render.yaml`, or `Dockerfile`.
-  README's Render webhook is optional and unconfirmed. Do not infer a live host
-  from the repo.
+  Render settings live outside git.
+- **The bot runs on Render and deploys itself on merge to `main`** (confirmed
+  by the owner 2026-11-23: the #107 menu appeared in the live bot after the
+  merge, with no manual deploy). Render posts no deployment status to GitHub,
+  so check Render → Events, or send the bot `/start`. Agents have no Render
+  access from this Mac (no CLI, no API key).
+- **New test bots answer 429.** Two test bots created 2026-11-23 answered
+  «429 Too Many Requests» to every Bot API call, even `getMe`, from this Mac,
+  without VPN and from a phone on mobile data; a token reset did not help.
+  Cause unknown. The live bot works. Check look changes on the live bot.
 - **Dashboard build host (documented):** `dashboard/README.md` says the HTML is
   built on this Mac (`run.sh` / `launchd`), then the bot only re-sends the
   stored Telegram `file_id`. The bot process itself is not that Mac job.
