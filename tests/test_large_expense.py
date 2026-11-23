@@ -292,21 +292,22 @@ def test_month_summary_skips_large_and_lists_them_below() -> None:
         _row(5000, "€", "old", large=True, month="2026-10"),
     ]
     text = analytics.format_month_summary(analytics.month_summary(rows, "2026-11"))
-    lines = text.splitlines()
-    assert "💰 Итого: 300 €" in lines
-    assert "Trips" not in text
-    assert lines[-1] == "🔶 Ещё крупные траты: 2 000 € · 150 000 дин (tickets, laptop)"
+    assert "💰 Итого <b>300 €</b>" in text.splitlines()
+    assert "<b>Trips</b>" not in text
+    assert text.endswith("🔶 Крупные (не в итоге)\n"
+                         "tickets — 2 000 €\nlaptop — 150 000 дин</blockquote>")
 
 
 def test_month_summary_without_large_has_no_extra_line() -> None:
     text = analytics.format_month_summary(analytics.month_summary([_row(300, "€")], "2026-11"))
-    assert "крупные" not in text
+    assert "Крупные" not in text
 
 
 def test_month_with_only_large_expenses_still_lists_them() -> None:
     text = analytics.format_month_summary(
         analytics.month_summary([_row(2000, "€", large=True, category="Trips")], "2026-11"))
-    assert text.splitlines()[-1] == "🔶 Ещё крупные траты: 2 000 € (Trips)"
+    assert text.endswith("Трат нет\n\n<blockquote expandable>"
+                         "🔶 Крупные (не в итоге)\nTrips — 2 000 €</blockquote>")
 
 
 def test_preset_without_amount_above_threshold_is_never_marked(

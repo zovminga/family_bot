@@ -173,7 +173,7 @@ def test_large_expense_texts(seen: Seen, ctx: SimpleNamespace,
         analytics.month_summary([*ROWS, large], "2026-10")))
     texts = seen.collect()
     assert manual.LARGE_QUESTION in texts
-    assert any(t.endswith("🔶 Ещё крупные траты: 2 000 € (билеты)") for t in texts), texts
+    assert any("🔶 Крупные (не в итоге)\nбилеты — 2 000 €" in t for t in texts), texts
     assert_russian(texts)
 
 
