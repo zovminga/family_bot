@@ -25,7 +25,7 @@ packages = ["family_bot"]
 
 [dependency-groups]
 bot = [
-    "python-telegram-bot[webhooks,job-queue]>=22.2,<23",
+    "python-telegram-bot[webhooks,job-queue]>=22.7,<23",
     "python-dateutil>=2.9",
     # Voice input: offline speech-to-text; PyAV wheels bundle ffmpeg.
     "vosk>=0.3.44",
@@ -96,6 +96,7 @@ files = [
     "family_bot/fx.py",
     "family_bot/llm.py",
     "family_bot/logs.py",
+    "family_bot/look.py",
     "family_bot/monthly_summary.py",
     "family_bot/navigation.py",
     "family_bot/payment_reminder.py",

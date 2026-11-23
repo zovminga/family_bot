@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from family_bot.analytics import month_title
+from family_bot import look
 from family_bot.currency import format_amount
 from family_bot.draft_expense import ButtonGrid
 from family_bot.expense import ExpenseRecord
@@ -125,14 +126,14 @@ def _payment_lines(payment: DuePayment) -> list[str]:
 
 
 def message_text(reminder: Reminder) -> str:
-    """Reminder text with the open lines; a closing line once all are closed."""
+    """Reminder text (HTML) with the open lines; a closing line once all are closed."""
     month = month_title(reminder.month)
     if not reminder.open:
         return ALL_CLOSED_TEXT.format(month=month)
     lines = [TITLE.format(month=month), ""]
     for i in sorted(reminder.open):
         lines += _payment_lines(reminder.payments[i])
-    return "\n".join([*lines, "", HINT])
+    return look.escape("\n".join([*lines, "", HINT]))
 
 
 def buttons(reminder: Reminder) -> ButtonGrid:

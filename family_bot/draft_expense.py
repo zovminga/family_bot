@@ -18,6 +18,7 @@ from family_bot import amount_input
 from family_bot import clock
 from family_bot import currency
 from family_bot import currency_picker as picker
+from family_bot import look
 from family_bot.currency import format_amount
 from family_bot.expense import ExpenseRecord, append_expenses
 from family_bot.sheet_data import DATE_FMT
@@ -36,7 +37,7 @@ CATEGORY_HASH_CHARS = 8
 # Saved / cancelled drafts kept so a repeat tap on their card is a no-op.
 MAX_CLOSED_DRAFTS = 20
 
-ButtonGrid = list[list[tuple[str, str]]]  # (label, callback_data)
+ButtonGrid = look.ButtonGrid
 
 # Reply to a card whose Draft is not in memory. Drafts live only in memory, so
 # that is a card from before a restart (or a closed Draft past MAX_CLOSED_DRAFTS).
@@ -58,7 +59,7 @@ class DraftSession:
     items: list[dict] = field(default_factory=list)
     transcript: str = ""
     note: str = ""
-    header: Optional[str] = None
+    header: Optional[str] = None  # HTML: human text in it is already escaped
     id: str = ""
     closed: bool = False  # saved or cancelled: its card buttons do nothing
 
@@ -137,35 +138,40 @@ def short(text: str, n: int = 20) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+def _h(text: str) -> str:
+    return look.escape(str(text))
+
+
 def card_text(session: DraftSession) -> str:
+    """Draft card as Telegram HTML; human text is escaped (``header`` is HTML already)."""
     items = session.items
     lines = (
         [session.header, ""]
         if session.header
-        else [f"🎧 Расшифровка: «{session.transcript}»", ""]
+        else [f"🎧 Расшифровка: «{_h(session.transcript)}»", ""]
     )
     if len(items) == 1:
         it = items[0]
         lines += [
             "📝 Черновик траты",
-            f"• Товар/коммент: {it['comment'] or '—'}",
-            f"• Сумма: {format_amount(it['amount'], it['currency'])}",
-            f"• Категория: {it['category']}",
-            f"• Дата: {it['date']}",
-            f"• Кто: {it['who']}",
+            f"• Товар/коммент: {_h(it['comment'] or '—')}",
+            f"• Сумма: {_h(format_amount(it['amount'], it['currency']))}",
+            f"• Категория: {_h(it['category'])}",
+            f"• Дата: {_h(it['date'])}",
+            f"• Кто: {_h(it['who'])}",
         ]
         if _is_large(it):
             lines.append(f"• {LARGE_MARK} Крупная трата")
     else:
-        lines.append(f"📝 Черновик: {len(items)} трат(ы)")
+        lines.append(f"📝 Черновик: {look.expenses(len(items))}")
         for i, it in enumerate(items, 1):
             mark = f"{LARGE_MARK} " if _is_large(it) else ""
-            lines.append(
+            lines.append(_h(
                 f"{i}. {mark}{it['comment'] or '—'} — {format_amount(it['amount'], it['currency'])}"
                 f" · {it['category']} · {it['date']}"
-            )
+            ))
     if session.note:
-        lines += ["", f"ℹ️ {session.note}"]
+        lines += ["", f"ℹ️ {_h(session.note)}"]
     lines += ["", "Проверь и сохрани 👇"]
     return "\n".join(lines)
 
@@ -192,7 +198,7 @@ def main_buttons(session: DraftSession) -> ButtonGrid:
     return rows
 
 
-def _amount_who_row(session: DraftSession, i: int) -> list[tuple[str, str]]:
+def _amount_who_row(session: DraftSession, i: int) -> list[look.Button]:
     return [
         ("✏️ Сумма", _cb(session, f"amt:{i}")),
         ("👤 Кто", _cb(session, f"who:{i}")),
@@ -230,7 +236,7 @@ def _category_cb(session: DraftSession, i: int, name: str) -> str:
 
 def category_buttons(session: DraftSession, i: int, categories: list[str]) -> ButtonGrid:
     rows: ButtonGrid = []
-    row: list[tuple[str, str]] = []
+    row: list[look.Button] = []
     for c in categories:
         row.append((c, _category_cb(session, i, c)))
         if len(row) == 2:
@@ -246,7 +252,7 @@ def _currency_cb(session: DraftSession, i: int) -> picker.Callback:
     return lambda payload: _cb(session, f"cur:{i}:{payload}")
 
 
-def _back_row(session: DraftSession) -> list[tuple[str, str]]:
+def _back_row(session: DraftSession) -> list[look.Button]:
     return [("⬅️ Назад", _cb(session, "menu"))]
 
 
@@ -380,7 +386,8 @@ def session_from_text(
 ) -> DraftSession:
     for it in items:
         it["who"] = who
-    return DraftSession(items=items, transcript=text, note=note, header=f"✍️ «{text}»")
+    return DraftSession(items=items, transcript=text, note=note,
+                        header=f"✍️ «{look.escape(text)}»")
 
 
 def session_from_receipt(
@@ -392,7 +399,7 @@ def session_from_receipt(
 ) -> DraftSession:
     for it in items:
         it["who"] = who
-    header = "🧾 Чек" + (f" · {merchant}" if merchant else "") + " — черновик"
+    header = "🧾 Чек" + (f" · {look.escape(merchant)}" if merchant else "") + " — черновик"
     return DraftSession(
         items=items,
         transcript=merchant,
@@ -471,7 +478,7 @@ def apply_callback(
             raise
         if len(items) == 1:
             it = items[0]
-            text = (
+            text = _h(
                 f"✅ Сохранено: {it['comment'] or it['category']} — "
                 f"{format_amount(it['amount'], it['currency'])} · {it['date']}"
             )

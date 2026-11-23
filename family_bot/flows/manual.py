@@ -29,6 +29,7 @@ from family_bot import currency
 from family_bot import currency_picker as picker
 from family_bot import large_expense
 from family_bot.currency import format_amount
+from family_bot.look import escape
 from family_bot import navigation as nav
 from family_bot import undo
 from family_bot.conversation_states import State
@@ -79,10 +80,7 @@ def _picker_cb(payload: str) -> str:
 
 def _inline(grid: picker.Grid) -> InlineKeyboardMarkup:
     """Picker grid plus the home button as an inline keyboard."""
-    rows = [[InlineKeyboardButton(label, callback_data=data) for label, data in row]
-            for row in grid]
-    rows.append([nav.home_inline_button()])
-    return InlineKeyboardMarkup(rows)
+    return nav.inline_markup(grid, home=True)
 
 
 class ManualFlow:
@@ -226,7 +224,7 @@ class ManualFlow:
         code = picker.picked_code(payload)
         if code is not None:
             cur = currency.stored_value(code)
-            await query.edit_message_text(f"💱 Валюта: {currency.label(cur)}")
+            await query.edit_message_text(escape(f"💱 Валюта: {currency.label(cur)}"))
             return await self._set_currency_and_ask_comment(update, context, cur)
         page = picker.page_number(payload)
         if page is not None:
@@ -294,7 +292,7 @@ class ManualFlow:
             [nav.home_inline_button()]
         ]
         await update.effective_message.reply_text(
-            f"👤 Кто: {user_name}\n\n💬 Напишите комментарий или нажмите кнопку",
+            f"👤 Кто: {escape(user_name)}\n\n💬 Напишите комментарий или нажмите кнопку",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return State.TYPING_CMNT
@@ -374,13 +372,10 @@ class ManualFlow:
             picker.remember, context.user_data, self._sheets(context),
             update.effective_user.id, who, cur)
 
-        text = f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}"
+        text = escape(f"✅ Сохранено: {cat} — {format_amount(amt, cur)}, {date_str}")
         if large:
             text += "\n🔶 Крупная трата"
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton(label, callback_data=data) for label, data in row]
-            for row in undo.remember(context.user_data, [record], clock.now())
-        ])
+        markup = nav.inline_markup(undo.remember(context.user_data, [record], clock.now()))
 
         # Reply to chat depending on whether it was a message or button press
         if update.callback_query:

@@ -48,6 +48,8 @@ ALLOWED_LATIN = re.compile(
     r"/\w+|ALLOWED_USERS|\.env|Telegram|Google|Sheets|Config|Regular_expenses|\bID\b"
     r"|\b[A-Z]{3}\b")
 LATIN_WORD = re.compile(r"[A-Za-z]{2,}")
+# Telegram HTML tags (parse mode HTML): the User sees the text, not the tags.
+HTML_TAG = re.compile(r"</?[a-z-]+(?: [^>]*)?>")
 
 
 def run(coro: Any) -> Any:
@@ -59,8 +61,8 @@ def run(coro: Any) -> Any:
 
 
 def english_words(text: str) -> list[str]:
-    """Latin words in text, after removing the allowed technical names."""
-    return LATIN_WORD.findall(ALLOWED_LATIN.sub("", text))
+    """Latin words the User sees, after removing tags and the allowed technical names."""
+    return LATIN_WORD.findall(ALLOWED_LATIN.sub("", HTML_TAG.sub("", text)))
 
 
 def markup_labels(markup: Any) -> list[str]:
