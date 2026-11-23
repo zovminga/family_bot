@@ -13,6 +13,8 @@ from family_bot import bot
 from family_bot import clock
 from family_bot import config
 from family_bot import errors
+from family_bot import look
+from family_bot import navigation as nav
 from family_bot import payment_reminder as pr
 from family_bot import payment_reminder_bot as prb
 from family_bot import regular
@@ -109,24 +111,42 @@ def reminder(*presets: dict, rows: Optional[list[Row]] = None) -> pr.Reminder:
     return pr.new_reminder(pr.due_payments(list(presets), rows or [], MONTH), MONTH)
 
 
-def test_message_lists_payments_with_same_category_rows() -> None:
+def test_message_shows_each_payment_as_a_block_with_same_category_rows() -> None:
     rem = reminder(RENT, BILLS, rows=[row(4, "Жильё", 800, "квартира", currency="€")])
+    assert pr.message_text(rem) == (
+        "🔔 <b>Ноябрь 2026: ещё не внесены платежи</b>\n\n"
+        "<b>Аренда</b> — 850 € · Жильё\n"
+        "<blockquote>уже есть: 04.11.2026 — 800 € — квартира</blockquote>\n\n"
+        "<b>Коммуналка</b> — сумма не задана · Счета\n\n"
+        f"{pr.HINT}")
+
+
+def test_message_escapes_human_text() -> None:
+    odd = {**RENT, "name": "M&M <3", "category": "Дом & сад"}
+    rem = reminder(odd, rows=[row(4, "Дом & сад", 5, "<b>кофе</b>"), row(5, "Дом & сад", 7, "")])
     text = pr.message_text(rem)
-    assert text.splitlines()[0] == "🔔 Ноябрь 2026: ещё не внесены платежи"
-    assert "• Аренда — 850 € (Жильё)" in text
-    assert "   уже есть: 04.11.2026 — 800 € — квартира" in text
-    assert "• Коммуналка — сумма не задана (Счета)" in text
-    assert text.count("уже есть") == 1  # no same-Category rows → no «уже есть» line
+    assert "<b>M&amp;M &lt;3</b> — 850 € · Дом &amp; сад" in text
+    assert ("<blockquote>уже есть: 04.11.2026 — 5 дин — &lt;b&gt;кофе&lt;/b&gt;\n"
+            "уже есть: 05.11.2026 — 7 дин</blockquote>") in text  # no comment → no tail
 
 
-def test_each_payment_has_pay_and_already_buttons() -> None:
+def test_pay_is_green_and_already_has_no_style() -> None:
     rem = reminder(RENT, BILLS)
-    labels = [[label for label, _ in r] for r in pr.buttons(rem)]
-    assert labels == [["⚡ Внести: Аренда", pr.ALREADY_LABEL],
-                      ["⚡ Внести: Коммуналка", pr.ALREADY_LABEL]]
-    datas = [cb for r in pr.buttons(rem) for _, cb in r]
+    grid = pr.buttons(rem)
+    assert grid[0][0][::2] == ("⚡ Внести: Аренда", look.SUCCESS)
+    assert grid[1][0][::2] == ("⚡ Внести: Коммуналка", look.SUCCESS)
+    assert all(len(r[1]) == 2 and r[1][0] == pr.ALREADY_LABEL for r in grid)
+    markup = nav.inline_markup(grid)
+    assert [[b.style for b in r] for r in markup.inline_keyboard] == [["success", None]] * 2
+    datas = [b[1] for r in grid for b in r]
     assert all(len(cb.encode()) <= 64 for cb in datas)
     assert pr.parse_callback(datas[1]) == (rem.id, 0, pr.ACTION_ALREADY)
+
+
+def test_saved_text_quotes_the_payment_like_the_saved_line() -> None:
+    record = pr.record({**RENT, "name": "M&M"}, 850.0, "€", "20.11.2026")
+    assert pr.saved_text(record) == (
+        "✅ Сохранено\n<blockquote><b>M&amp;M — 850 €</b>\nЖильё · 20.11 · Оба</blockquote>")
 
 
 def test_closed_lines_leave_the_message_and_the_last_one_closes_it() -> None:
@@ -136,7 +156,7 @@ def test_closed_lines_leave_the_message_and_the_last_one_closes_it() -> None:
     assert "Аренда" not in pr.message_text(rem)
     assert len(pr.buttons(rem)) == 1
     pr.take(rem, 1)
-    assert pr.message_text(rem) == pr.ALL_CLOSED_TEXT.format(month="Ноябрь 2026")
+    assert pr.message_text(rem) == "🔔 <b>Ноябрь 2026</b>: все платежи из напоминания разобраны."
     assert pr.buttons(rem) == []
 
 
@@ -250,7 +270,7 @@ def test_job_sends_reminder_and_keeps_it_in_bot_data(november: None) -> None:
     run(prb.send_reminder(job_context(lambda: ([RENT, BILLS], []), telegram, bot_data)))  # type: ignore[arg-type]
     [(chat_id, text, markup)] = telegram.sent
     assert chat_id == -100 and "Аренда" in text and "Коммуналка" in text
-    assert len(markup.inline_keyboard) == 2
+    assert [[b.style for b in r] for r in markup.inline_keyboard] == [["success", None]] * 2
     [rem] = pr.reminders(bot_data).values()
     assert (rem.chat_id, rem.message_id) == (-100, 77)
 
@@ -305,7 +325,8 @@ def test_pay_with_amount_saves_at_once_with_undo_for_presser(november: None) -> 
     [saved] = sheets.appended_rows
     assert saved[:7] == ["20.11.2026", MONTH, "Жильё", 850.0, "€", "Оба", "Аренда"]
     [(text, kw)] = query.message.replies
-    assert text == "✅ Сохранено: Аренда — 850 € · 20.11.2026"
+    assert text == ("✅ Сохранено\n"
+                    "<blockquote><b>Аренда — 850 €</b>\nЖильё · 20.11 · Оба</blockquote>")
     [[button]] = kw["reply_markup"].inline_keyboard
     assert button.text == undo.UNDO_LABEL
     assert isinstance(ctx.user_data[undo.KEY_LAST_SAVE], undo.LastSave)
@@ -318,7 +339,7 @@ def test_last_line_closed_drops_buttons_and_the_reminder(november: None) -> None
     ctx, rem = sent_reminder(FakeSheetsClient(data_values=[DATA_HEADERS]), RENT)
     run(prb.on_button(*tap(callback(rem, 0, pr.ACTION_PAY))[:1], ctx))  # type: ignore[arg-type]
     [edit] = ctx.bot.edited
-    assert edit["text"].startswith("🔔 Ноябрь 2026") and edit.get("reply_markup") is None
+    assert edit["text"].startswith("🔔 <b>Ноябрь 2026</b>") and edit.get("reply_markup") is None
     assert pr.reminders(ctx.bot_data) == {}
 
 
@@ -419,12 +440,14 @@ def test_pay_without_amount_asks_by_force_reply_then_saves(november: None) -> No
     sheets = FakeSheetsClient(data_values=[DATA_HEADERS])
     ctx, rem = sent_reminder(sheets, RENT, BILLS)
     prompt = ask_amount(ctx, rem, 1)
+    assert prompt.text == "💵 Сколько внести за «<b>Коммуналка</b>» (дин)? Ответь на это сообщение суммой."
     assert sheets.appended_rows == [] and rem.open == {0, 1}
     msg = answer(ctx, prompt, "4 200")
     [saved] = sheets.appended_rows
     assert saved[2:7] == ["Счета", 4200.0, "дин", "Анна", "Коммуналка"]
     [(text, kw)] = msg.replies
-    assert text == "✅ Сохранено: Коммуналка — 4 200 дин · 20.11.2026"
+    assert text == ("✅ Сохранено\n"
+                    "<blockquote><b>Коммуналка — 4 200 дин</b>\nСчета · 20.11 · Анна</blockquote>")
     assert kw["reply_markup"].inline_keyboard[0][0].text == undo.UNDO_LABEL
     assert rem.open == {0}
 
