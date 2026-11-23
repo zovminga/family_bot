@@ -38,7 +38,7 @@ def test_manual_save_offers_undo_that_deletes_that_row(monkeypatch):
     ctx.user_data.update(cat="Food", amt=350.0, cur="дин", spender="Azat", comment="")
     query = FakeQuery("today")
     assert run(bot.MANUAL.choose_dt(make_update(query=query), ctx)) == State.CHOOSE_ACTION
-    [(label, data, style)] = _labels(query.markups[0])
+    [(label, data, style)] = _labels(query.message.edits[-1][1]["reply_markup"])
     assert (label, style) == ("↩️ Отменить", "danger")
     assert undo.KEY_LAST_SAVE in ctx.user_data  # go_home keeps it
 

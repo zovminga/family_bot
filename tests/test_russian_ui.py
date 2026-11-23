@@ -29,7 +29,7 @@ from family_bot.flows import manual
 from family_bot.flows import stats as flow_stats
 from family_bot.sheet_data import Row
 from tests.conftest import FakeSheetsClient, bot_context
-from tests.known_bugs.fakes import FakeQuery, make_update
+from tests.known_bugs.fakes import FakeBot, FakeQuery, make_update
 
 CATEGORIES = ["Еда", "Транспорт"]
 ROWS = [
@@ -80,16 +80,21 @@ class Seen:
     def __init__(self) -> None:
         self.texts: list[str] = []
         self.updates: list[SimpleNamespace] = []
+        self.bot = FakeBot()  # live cards are bot messages edited later
         self.messages: list[Any] = []  # bot messages edited or replied to directly
 
     def update(self, text: str | None = None, query: FakeQuery | None = None,
                user_id: int = 111) -> SimpleNamespace:
-        upd = make_update(text, user_id=user_id, query=query)
+        upd = make_update(text, user_id=user_id, query=query,
+                          bot=self.bot if query is None else None)
         self.updates.append(upd)
         return upd
 
     def collect(self) -> list[str]:
         out = list(self.texts)
+        for msg in self.bot.sent:
+            for text, kw in [(msg.text, msg.kw), *msg.edits]:
+                out += [text, *markup_labels(kw.get("reply_markup"))]
         for msg in self.messages:
             for text, kw in [*msg.replies, *msg.edits]:
                 out += [text, *markup_labels(kw.get("reply_markup"))]
@@ -141,24 +146,25 @@ def test_main_menu_and_commands(seen: Seen, ctx: SimpleNamespace) -> None:
 def test_manual_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     m = bot.MANUAL
     run(m.begin(seen.update(nav.ADD_EXPENSE), ctx))
-    run(m.choose_cat(seen.update("нет такой"), ctx))
-    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.type_amount(seen.update("ноль"), ctx))
     run(m.type_amount(seen.update("1234.5"), ctx))
     run(m.choose_cur(seen.update("нет такой"), ctx))
     run(m.choose_cur(seen.update("долл"), ctx))
     run(m.on_currency_button(seen.update(query=FakeQuery("cur:page:0")), ctx))
     run(m.choose_cur(seen.update("дин"), ctx))
+    run(m.choose_cat(seen.update("нет такой"), ctx))
+    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.type_comment(seen.update(query=FakeQuery("skip")), ctx))
     run(m.choose_dt(seen.update(query=FakeQuery("custom")), ctx))
     run(m.type_dt(seen.update("никогда"), ctx))
     run(m.type_dt(seen.update("13.07.2025"), ctx))
     run(m.begin(seen.update(nav.ADD_EXPENSE), ctx))
-    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.type_amount(seen.update("350 дин"), ctx))
+    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.today_no_comment(seen.update(query=FakeQuery(manual.TODAY_NO_COMMENT)), ctx))
     texts = seen.collect()
-    assert "✅ Сохранено: Еда — 1 234,50 дин, 13.07.2025" in texts
+    assert ("✅ Сохранено\n<blockquote><b>Еда — 1 234,50 дин</b>\n13.07 · Анна</blockquote>"
+            in texts), texts
     assert_russian(texts)
 
 
@@ -166,17 +172,17 @@ def test_large_expense_texts(seen: Seen, ctx: SimpleNamespace,
                              monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bot.fx, "rate", lambda src, dst: 1.0)
     m = bot.MANUAL
-    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.type_amount(seen.update("1500 €"), ctx))
     run(m.on_large_text(seen.update("может быть"), ctx))
     run(m.on_large_button(seen.update(query=FakeQuery(manual.LARGE_YES)), ctx))
+    run(m.choose_cat(seen.update("Еда"), ctx))
     run(m.today_no_comment(seen.update(query=FakeQuery(manual.TODAY_NO_COMMENT)), ctx))
     large = Row(date=date(2026, 10, 7), month="2026-10", category="Транспорт",
                 amount=2000.0, currency="€", who="Анна", comment="билеты", large=True)
     seen.texts.append(analytics.format_month_summary(
         analytics.month_summary([*ROWS, large], "2026-10")))
     texts = seen.collect()
-    assert manual.LARGE_QUESTION in texts
+    assert any(t.endswith(manual.LARGE_QUESTION) for t in texts), texts
     assert any("🔶 Крупные (не в итоге)\nбилеты — 2 000 €" in t for t in texts), texts
     assert_russian(texts)
 
@@ -242,8 +248,9 @@ def test_preset_flow(seen: Seen, ctx: SimpleNamespace) -> None:
     run(bot.type_preset_amount(seen.update("ноль"), ctx))
     run(bot.type_preset_amount(seen.update("4 200"), ctx))
     texts = seen.collect()
-    assert "✅ Сохранено: Аренда — 500 € · 19.11.2026" in texts
-    assert "✅ Сохранено: Коммуналка — 4 200 дин · 19.11.2026" in texts
+    assert any(t.startswith("✅ Сохранено\n<blockquote><b>Аренда — 500 €</b>") for t in texts)
+    assert any(t.startswith("✅ Сохранено\n<blockquote><b>Коммуналка — 4 200 дин</b>")
+               for t in texts), texts
     assert_russian(texts)
 
 
