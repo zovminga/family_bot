@@ -3,8 +3,8 @@
 > Living handoff. Agents update this at the end of every meaningful task
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
-**Last updated:** 2026-11-20  
-**Updated by:** agent session (fix: Large expense threshold in €, not BASE_CURRENCY)  
+**Last updated:** 2026-11-23  
+**Updated by:** agent session (spec: new bot look, stage 1)  
 **Product code tip:** `main` with the threshold-Currency fix (2026-11-20) — with `BASE_CURRENCY=RSD` almost every voice Draft was marked «🔶 Крупная трата»; the threshold now carries its own Currency (default 1000 €)  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
@@ -341,6 +341,16 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Unread sections are unread source, not missing knowledge.
 
 ## Open
+
+- New bot look, stage 1 (spec only, nothing built): HTML in every message,
+  labelled Draft card with the voice transcript in a quote, one live card for
+  manual input and Draft edits (the bot deletes the person's replies and voice
+  messages, keeps receipt photos), saved/undone line, coloured buttons
+  (green confirm, red cancel), two-row menu, text bars in the month summary,
+  «ты» everywhere. Spec: [`docs/specs/2026-11-bot-look.md`](specs/2026-11-bot-look.md);
+  research: [`docs/research/2026-11-telegram-formatting.md`](research/2026-11-telegram-formatting.md).
+  Mini App is stage 2, no spec yet. Issues #100–#108 (`ready-for-agent`);
+  #100 (HTML + button styles) blocks the rest.
 
 - New features planned (partly built): Large expense (#83 done: manual input
   and «📅 Этот месяц»; #86 Draft card, #87 stats, #88 dashboard done), receipt
