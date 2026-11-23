@@ -154,30 +154,42 @@ def test_month_summary_takes_any_month():
 def test_format_month_summary_one_currency():
     text = format_month_summary(month_summary(MONTH_ROWS[:5], "2026-11"))
     assert text == (
-        "📅 Ноябрь 2026\n"
-        "💰 Итого: 3 900 дин\n"
+        "📅 <b>Итог за ноябрь 2026</b>\n"
         "\n"
-        "🏷 Топ категорий:\n"
-        "1. Транспорт — 2 000 дин\n"
-        "2. Еда — 1 500 дин\n"
-        "3. Кафе — 300 дин\n"
+        "💰 Итого <b>3 900 дин</b>\n"
         "\n"
-        "👤 По людям:\n"
+        "<b>Транспорт</b> 2 000\n"
+        "█████░░░░░ 51%\n"
+        "<b>Еда</b> 1 500\n"
+        "████░░░░░░ 38%\n"
+        "<b>Кафе</b> 300\n"
+        "█░░░░░░░░░ 8%\n"
+        "<b>Дом</b> 100\n"
+        "░░░░░░░░░░ 3%\n"
+        "\n"
+        "<blockquote expandable>👤 По людям\n"
         "Азат — 3 000 дин\n"
-        "Лиза — 900 дин"
+        "Лиза — 900 дин</blockquote>"
     )
 
 
-def test_format_month_summary_several_currencies_never_added():
+def test_format_month_summary_two_currencies_own_blocks_never_added():
     text = format_month_summary(month_summary(MONTH_ROWS, "2026-11"))
-    assert text.startswith("📅 Ноябрь 2026\n💰 Итого: 3 900 дин · 20 €\n")
-    assert "\n— дин —\n" in text and "\n— € —\n" in text
+    blocks = text.split("\n\n")
+    assert blocks[1] == "💰 Итого <b>3 900 дин</b>"
+    # Each Currency has its own block; bars are shares of that Currency's total.
+    assert blocks[3] == "💰 Итого <b>20 €</b>"
+    assert blocks[4] == "<b>Еда</b> 20\n██████████ 100%"
+    assert "<b>Еда</b> 1 500\n████░░░░░░ 38%" in blocks[2]
     assert "3 920" not in text
-    assert text.endswith("👤 По людям:\nЛиза — 20 €")
+    assert text.endswith("<blockquote expandable>👤 По людям\n"
+                         "Азат — 3 000 дин\n"
+                         "Лиза — 900 дин · 20 €</blockquote>")
 
 
 def test_format_month_summary_empty_month():
-    assert format_month_summary(month_summary([], "2026-11")) == "📅 Ноябрь 2026\nНет данных 🤷"
+    assert format_month_summary(month_summary([], "2026-11")) == (
+        "📅 <b>Итог за ноябрь 2026</b>\n\nТрат нет")
 
 
 def test_month_summary_blank_category_and_spender_get_labels():

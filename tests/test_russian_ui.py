@@ -173,7 +173,7 @@ def test_large_expense_texts(seen: Seen, ctx: SimpleNamespace,
         analytics.month_summary([*ROWS, large], "2026-10")))
     texts = seen.collect()
     assert manual.LARGE_QUESTION in texts
-    assert any(t.endswith("🔶 Ещё крупные траты: 2 000 € (билеты)") for t in texts), texts
+    assert any("🔶 Крупные (не в итоге)\nбилеты — 2 000 €" in t for t in texts), texts
     assert_russian(texts)
 
 
@@ -269,7 +269,7 @@ def test_payment_reminder_texts() -> None:
     rem = pr.new_reminder(pr.due_payments([rent, bills], rows, "2026-11"), "2026-11")
     texts = [pr.message_text(rem), pr.STALE_TEXT, pr.CLOSED_TEXT, pr.NOT_YOURS_TEXT,
              pr.PROMPT_TEXT.format(name="Коммуналка", currency="дин")]
-    texts += [label for row in pr.buttons(rem) for label, _ in row]
+    texts += [button[0] for row in pr.buttons(rem) for button in row]
     rem.open.clear()
     texts.append(pr.message_text(rem))
     assert "уже есть: 03.11.2026 — 300 дин — кофе" in texts[0]
