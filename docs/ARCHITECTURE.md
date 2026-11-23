@@ -28,6 +28,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── flows/manual.py         manual add steps (ManualFlow)
     ├── flows/stats.py          statistics steps, StatQuery
     ├── draft_expense.py        Draft review UI state machine
+    ├── live_card.py            live card: edit one message per step, move it down when buried, delete answers
     ├── undo.py                 «↩️ Отменить» after a save (own last save, 30 min)
     ├── voice_input.py          OGG → Vosk → Claude → draft items
     ├── photo_input.py          image → Claude Vision → draft items
@@ -74,6 +75,7 @@ Finances never share across installs.
 | `logs.py` | `setup()`: one stderr handler on the root logger, level from `LOG_LEVEL` (default INFO; an unknown value → INFO plus one warning line), format `time LEVEL module: message`, every formatted line (traceback too) passed through `errors.mask_secrets`; `httpx` held at WARNING (it logs Telegram URLs with the token). Called once by each entry point after `.env` is read: `bot.main`, `build_dashboard.main`, `failure_alert.main`, `scripts/`. Standard library only (runs under system python3 from `run.sh`) | `print` diagnostics (ruff `T20`; only `scripts/` print their report); call `logging.basicConfig` elsewhere |
 | `sheet_data.py` | Header aliases, amount and date parse, `DATE_FMT`/`MONTH_FMT`, currency maps derived from `currency.py`; `parse_rows` turns Data values into `Row` (frozen dataclass: `date` is `datetime.date` or None, `amount` is `float`, the rest stored text). Bot stats and the dashboard build both read rows through it | Read Data cells by index or parse amounts/dates another way |
 | `draft_expense.py` | Draft session, card text, `vx:` callback outcomes; item key `large` (Large expense flag: `mark_large` on creation, `large:<i>` toggle, written by `save_drafts`) | Re-implement confirm UI |
+| `live_card.py` | Live card (Telegram adapter). `show(card, text, markup, markup_only=)` edits the card, or in a private chat where `TrackingBot.sent_log` holds a newer bot message, sends it again at the bottom and deletes the old one; returns the card to keep. `drop_reply(message)` deletes the person's answer in a private chat. `TrackingBot` (the Application's bot) records every `send*` result and every `delete_message` per chat (last 20 ids); edits do not count. «Message is not modified» on an edit is ignored | Delete messages in group chats; track the last message by hand in a flow |
 | `undo.py` | User's last save in `user_data["last_save"]`, «↩️ Отменить» button (`undo:<id>`), ownership and 30-minute checks; rows deleted by `expense.delete_expenses` | Delete «the last row of Data» |
 | `analytics.py` | Filters and totals over `list[Row]`; no I/O. `filter_rows`, `aggregate`, `last_n`, `format_last_n` take `large=False` (Large expenses left out) or `large=True` (only Large expenses; nothing → «🔶 Крупных трат за этот период нет» / «📭 Крупных трат нет»). Conversion takes a `get_rate(from, to)` function from the caller; a missing rate gives «❌ Нет курса для пересчёта в X: A, B…» with every Currency that has none, never a partial sum. `month_summary(rows, month)` → `MonthSummary` (per Currency: total, Categories, Spenders — Large expenses left out — plus `large`, that month's Large expense rows) and `format_month_summary` for any `YYYY-MM` (HTML, look B: bold total and every Category with a `look.bar` share per Currency; Spenders and «🔶 Крупные (не в итоге)» in one `look.expandable_quote`; «Трат нет» for an empty month) |
 | `large_expense.py` | Large expense decision: `suggest(amount, currency, threshold=, base=, get_rate=)` — above the threshold in the base Currency; no rate → False. `THRESHOLD_ENV`, `DEFAULT_THRESHOLD` | Compare an amount with the threshold elsewhere | Mix Sheets or HTTP into stats |
@@ -251,6 +253,15 @@ through `draft_expense.search_currency`; text with a digit, a command or a menu
 button ends that wait. `cur:<i>:pick:<ISO>` sets the item's Currency; the
 choice goes to Recent currencies (`CallbackOutcome.picked`).
 
+**Draft edits run on a live card** (issue #102): edit steps go through
+`bot._show_step` → `live_card.show`; `AmountEdit.card` is replaced when the card
+moves. Typed amount / Currency answers are deleted with `live_card.drop_reply`
+before the card is redrawn; a wrong amount shows `draft_expense.amount_step`
+with `AMOUNT_ERROR` (same step, wait kept). Text that ends the wait (menu
+button, command, a word) is not deleted. Save and cancel edit the card in place
+through the callback query. `voice_handler` deletes the voice after the Draft
+card is shown; `photo_handler` keeps the photo.
+
 **Large expense on the Draft card** (issue #86): `bot._show_draft` (voice, text,
 photo) calls `draft_expense.mark_large` in a worker thread before the card is
 shown: each item gets `large` from `large_expense.suggest` (threshold
@@ -303,7 +314,10 @@ Bot does **not** build the HTML. Laptop runs `python -m family_bot.dashboard` (`
 
 `tests/conftest.py` keeps tests away from `.env` and live Sheets, and holds
 `FakeSheetsClient` (in-memory `SheetsClient`). Known-bug reproductions and
-their own fakes live in `tests/known_bugs/`.
+their own fakes live in `tests/known_bugs/`. Its `make_update` / `FakeMessage` /
+`FakeBot` give each message an id in its chat, record edits and deletions, and
+keep the bot's `sent_log` (pass one `bot=` to several updates to share it);
+`tests/test_draft_live_card.py` shows the live-card scenarios.
 
 CI (`.github/workflows/ci.yml`, GitHub Actions) runs on every pull request and
 push to `main`: `uv sync --locked` on Python 3.12, then `pytest`, `ruff check`,

@@ -51,6 +51,8 @@ LARGE_BUTTON = f"{LARGE_MARK} Крупная"
 LARGE_LINE = f"{LARGE_MARK} Крупная трата"
 DRAFT_TITLE = "Черновик траты"
 CANCELLED_TEXT = "Черновик отменён"
+# Shown on the card under the fields when a typed amount fails the checks.
+AMOUNT_ERROR = "❌ Нужна сумма больше нуля, не больше двух знаков после запятой."
 
 # (amount, Currency) -> whether to suggest the Large expense mark.
 IsLarge = Callable[[float, str], bool]
@@ -358,10 +360,36 @@ def spender_buttons(session: DraftSession, i: int, spenders: Sequence[str]) -> B
     return rows
 
 
-def amount_prompt(session: DraftSession, i: int) -> str:
+def amount_prompt(session: DraftSession, i: int, error: str = "") -> str:
     target = f" для #{i + 1}" if len(session.items) > 1 else ""
-    return (card_text(session)
+    reason = f"\n{error}" if error else ""
+    return (card_text(session) + reason
             + f"\n\n✏️ Введите новую сумму{target}. Например: 1 200 или 350 дин")
+
+
+def amount_step(session: DraftSession, i: int, error: str = "") -> CallbackOutcome:
+    """
+    The «✏️ Сумма» step of item i: card, prompt and «⬅️ Назад».
+
+    Parameters
+    ----------
+    session : DraftSession
+        Open Draft.
+    i : int
+        Item index whose amount the User types next.
+    error : str
+        Why the last typed amount was refused (``AMOUNT_ERROR``); empty on the first ask.
+
+    Returns
+    -------
+    CallbackOutcome
+        Card text with the prompt, the back button, ``await_amount`` set.
+    """
+    return CallbackOutcome(
+        text=amount_prompt(session, i, error),
+        buttons=[_back_row(session)],
+        await_amount=i,
+    )
 
 
 def set_amount(session: DraftSession, i: int, text: str, currencies: list[str]) -> bool:
@@ -530,11 +558,7 @@ def apply_callback(
     if action == "date":
         return CallbackOutcome(buttons=date_buttons(session, i), markup_only=True)
     if action == "amt":
-        return CallbackOutcome(
-            text=amount_prompt(session, i),
-            buttons=[[("⬅️ Назад", _cb(session, "menu"))]],
-            await_amount=i,
-        )
+        return amount_step(session, i)
     if action == "who":
         return CallbackOutcome(
             buttons=spender_buttons(session, i, spenders), markup_only=True)
