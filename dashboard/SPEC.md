@@ -48,6 +48,7 @@ CSV-экспорт. На выходе — один самодостаточны�
 ├── secrets/creds.json             # service account Google  (gitignored)
 ├── family_bot/                    # Python-пакет
 │   ├── bot.py                     # Telegram wiring; валюты/спендеры через sheet_data + auth
+│   ├── dashboard_job.py           # сборка в боте: 1-го числа и /build_dashboard
 │   ├── sheets.py / sheet_data.py  # общий Sheets-шов и разбор строк Data в Row
 │   ├── fx.py / llm.py             # общие курсы валют и разбор JSON из ответа Claude
 │   └── dashboard/                 # python -m family_bot.dashboard
@@ -59,7 +60,7 @@ CSV-экспорт. На выходе — один самодостаточны�
     ├── vendor/chart.umd.min.js    # Chart.js, скачивается при первой сборке и вшивается в HTML (gitignored)
     ├── run.sh                     # авто-сборка по требованию (Sheets + Claude), venv на Python 3.12
     ├── schedule.sh                # установка/удаление launchd-агента (раз в месяц)
-    ├── manual_adjustments.csv     # ручные доначисления (gitignored)
+    ├── manual_adjustments.csv     # ручные доначисления (gitignored; или в DASHBOARD_FILES_DIR)
     ├── requirements.txt           # generated from uv.lock (group dashboard), for run.sh
     ├── README.md                  # как запускать
     ├── SPEC.md                    # этот файл
@@ -88,8 +89,8 @@ CSV-экспорт. На выходе — один самодостаточны�
 
 ### 3.1 Источник
 - По умолчанию — Google Sheets через общий шов бота: `sheets.open_client()` →
-  `SheetsClient.read_data_values()` (service account, лист `Data`). Так собирает
-  `run.sh`.
+  `SheetsClient.read_data_values()` (service account, лист `Data`). Так собирают
+  бот (§5.1) и `run.sh`.
 - Альтернатива — CSV-экспорт через `--csv "<path>"` (когда нет `creds.json`).
 
 ### 3.2 Заголовки
@@ -133,6 +134,7 @@ CSV-экспорт. На выходе — один самодостаточны�
 сумму как внесена, без «≈». Счётчик `Large expense(s)` — в логе сборки.
 
 ### 3.4 Ручные доначисления (`manual_adjustments.csv`)
+Файл лежит в `dashboard/` или в папке `DASHBOARD_FILES_DIR` (`household_file()`).
 Если файл есть — строки **подмешиваются** к основным данным, выравниваясь по
 именам полей (порядок колонок неважен). Используется для забытых регулярных
 трат (например, аренда за прошлые месяцы — 7 строк по 850 €). Файл gitignored.
@@ -183,7 +185,8 @@ CSV-экспорт. На выходе — один самодостаточны�
   `(тема, [ключевые слова])`, матч по подстроке, **первое совпадение выигрывает**.
   Это семантическая группировка свободного текста БЕЗ внешнего LLM.
   В коде — общие слова и известные бренды. Свои магазины, кафе и места семья
-  кладёт в `dashboard/theme_keywords.json` (gitignored): `{тема: [слова]}`.
+  кладёт в `dashboard/theme_keywords.json` (gitignored; или в папку
+  `DASHBOARD_FILES_DIR`): `{тема: [слова]}`.
   `load_theme_rules()` дописывает их к словам темы, порядок тем не меняется;
   тема не из `THEME_RULES` или не список строк — ошибка до сборки.
 - **llm** (`--llm`): классификация комментариев в темы через внешнюю модель.
@@ -298,7 +301,8 @@ Chart.js подставляется раньше данных, поэтому `_
 ### 4.0 Первый экран «Этот месяц» (`renderThisMonth`)
 Стоит над фильтрами. Отвечает «сколько в этом месяце» (issue #38).
 «Этот месяц» — месяц `DATA.as_of` (дата сборки, `build(as_of=…)`, по умолчанию
-сегодня по часам Mac). `d` — число `as_of`, из `D` дней месяца.
+сегодня по `clock.now()`, зона `TZ_NAME`). `generated_at` — тоже по `TZ_NAME`:
+Render живёт в UTC. `d` — число `as_of`, из `D` дней месяца.
 
 - **X** — сумма операций этого месяца.
 - **История** — до 3 (`HISTORY_MONTHS`) календарных месяцев перед этим, но не
@@ -507,23 +511,41 @@ python3 -m family_bot.dashboard
 Готовый HTML открывается без сети: Chart.js и данные вшиты. Сеть нужна только
 при сборке — для курсов валют и для первой загрузки Chart.js в `vendor/`.
 
-### 5.1 Авто-обновление (`run.sh`, `schedule.sh`) и доставка в Telegram
+### 5.1 Авто-обновление (бот, `run.sh`) и доставка в Telegram
 
-**Архитектура доставки:** дашборд собирается **только на build-машине** (Маке).
-`run.sh` всегда идёт с `--publish`: после сборки скрипт грузит HTML в Telegram
-(`sendDocument` в чат `DASHBOARD_CHAT_ID` через `BOT_TOKEN`, подпись HTML «📈 <b>Дашборд
-обновлён</b>») и пишет полученный
-`file_id` + timestamp в лист `Meta` таблицы (`Meta!B1`). Telegram-бот **не
-собирает** дашборд — по `/dashboard` он читает `Meta!B1` и пере-отправляет тот же
+**Сборка в боте** (issue #119, `family_bot/dashboard_job.py`). Бот на Render
+собирает дашборд 1-го числа в `MONTHLY_SUMMARY_HOUR` (по умолчанию 9, зона
+`TZ_NAME`; `JobQueue.run_monthly`, задача `dashboard_build`) и по команде
+`/build_dashboard` (`run_once`). Задача ставится в `post_init` при тех же
+условиях, что итог месяца: задан `DASHBOARD_CHAT_ID` и открыт Google Sheets.
+`run_build` вызывает `build_dashboard.build_from_env()` через
+`asyncio.to_thread`: бот отвечает во время сборки. Одна сборка за раз —
+`asyncio.Lock` в `bot_data`; вторая задача во время сборки ничего не делает,
+вторая команда отвечает «⏳ Дашборд уже собирается». `build_from_env()` — те же
+шаги, что `run.sh`: настройки из окружения (`BASE_CURRENCY`,
+`DASHBOARD_FROM_MONTH`, `DASHBOARD_SPENDER_ALIASES`, `DASHBOARD_FILES_DIR`),
+темы через Claude при заданном `ANTHROPIC_API_KEY`, иначе по правилам, затем
+`publish_to_telegram()`. Задача живёт в памяти процесса: если бот в этот час
+не запущен (деплой, рестарт), сборка месяца пропускается. Кэш тем
+(`output/llm_cache_*.json`) на Render теряется при деплое.
+
+**Доставка:** после сборки HTML уходит в Telegram (`sendDocument` в чат
+`DASHBOARD_CHAT_ID` через `BOT_TOKEN`, подпись HTML «📈 <b>Дашборд обновлён</b>»),
+полученный `file_id` + timestamp пишется в лист `Meta` таблицы (`Meta!B1`). По
+кнопке «📈 Дашборд» и `/dashboard` бот читает `Meta!B1` и пере-отправляет тот же
 файл по `file_id` (мгновенно, с любого устройства; `file_id` переиспользуется
-одним и тем же ботом в любом чате). Функции: `publish_to_telegram()` +
-`_store_file_id_in_sheet()` в `build_dashboard.py`; чтение на стороне бота —
-`get_dashboard_file_id()` в `bot.py`.
+одним и тем же ботом в любом чате). Функции: `build_and_publish()`,
+`publish_to_telegram()` + `_store_file_id_in_sheet()` в `build_dashboard.py`;
+чтение на стороне бота — `get_dashboard_file_id()` в `bot.py`.
+
+**Свои файлы семьи** (`theme_keywords.json`, `manual_adjustments.csv`) лежат в
+`dashboard/` или в папке `DASHBOARD_FILES_DIR` (относительный путь — от корня
+репозитория). На Render это Secret Files в `/etc/secrets`.
 Ошибка отправки (HTTP или сеть) пробрасывается с `<BOT_TOKEN>` вместо токена
 в тексте и без исходной цепочки исключений: токен стоит в URL запроса, а вывод
 `run.sh` пишется в `build.log` / `launchd.log`.
 
-**По требованию:** `./run.sh [доп. аргументы python -m family_bot.dashboard]`. Скрипт
+**На компьютере, по требованию:** `./run.sh [доп. аргументы python -m family_bot.dashboard]`. Скрипт
 через `uv` держит изолированный `venv/` на Python 3.12 с `requirements.txt`.
 В `venv/.deps-stamp` лежат версия Python и SHA-256 `requirements.txt`; при
 несовпадении `venv/` удаляется и создаётся заново. Затем скрипт
@@ -535,7 +557,8 @@ python3 -m family_bot.dashboard
 Пакет `family_bot` в `venv/` не ставится: `run.sh` добавляет корень
 репозитория в `PYTHONPATH`.
 
-**Раз в месяц:** `./schedule.sh install` кладёт в `~/Library/LaunchAgents/`
+**Раз в месяц на Mac** (только без бота на сервере: иначе 1-го числа придут
+два файла): `./schedule.sh install` кладёт в `~/Library/LaunchAgents/`
 plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.env`), по умолчанию `local.family-bot.dashboard.plist` (генерится с абсолютным путём к
 `run.sh`, в репозиторий не коммитится) и грузит его через `launchctl`.
 `StartCalendarInterval` = 1-е число, 09:00 (меняется `RUN_DAY`/`RUN_HOUR`/
@@ -547,12 +570,14 @@ plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.
 в чат `DASHBOARD_CHAT_ID` уходит одно сообщение через `BOT_TOKEN` (Bot API
 `sendMessage`, разметка HTML): заголовок «⚠️ <b>Дашборд не собрался</b>», этап и тип
 исключения моноширинным, например «сборка: RuntimeError», где лежит лог и что
-сделать. Текст исключения не уходит: он может цитировать строки таблицы
+сделать: у `run.sh` — `launchd.log` / `build.log` и `run.sh`
+(`LOCAL_LOG_HINT`), у бота — лог бота и `/build_dashboard` (`BOT_LOG_HINT`). Текст исключения не уходит: он может цитировать строки таблицы
 (трата, сумма, комментарий). Токен в тексте и в ошибке отправки заменяется на
 `<BOT_TOKEN>` (в HTML-тексте — экранированный); причина обрезается до 200 символов.
-- `build_dashboard.py --publish` ловит ошибку самопроверки, сборки или
+- `build_and_publish(publish=True)` ловит ошибку самопроверки, сборки или
   публикации (ответ Telegram `ok: false` — тоже ошибка), пишет traceback
-  в лог, шлёт сообщение и выходит с кодом 3.
+  в лог, шлёт сообщение и возвращает `False`. CLI (`--publish`) затем
+  выходит с кодом 3, бот работает дальше.
   Без `--publish` ошибка пробрасывается как раньше, сообщения нет.
 - `run.sh` ставит `trap … EXIT`: при ненулевом коде, кроме 3, шлёт сообщение
   с этапом самого `run.sh` («поиск uv», «создание venv», «запуск
@@ -564,9 +589,9 @@ plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.
   Если их нет или отправка не прошла — предупреждение в лог, код выхода
   сборки не меняется.
 
-⚠️ Для авто-обновления из Sheets нужен `secrets/creds.json` в корне репозитория
-(service account) и таблица, расшаренная на его email; и `ANTHROPIC_API_KEY`
-в `.env` в корне репозитория.
+⚠️ Для сборки из Sheets нужен ключ service account (`GOOGLE_CREDS_PATH`; на
+Render — Secret File `/etc/secrets/creds.json`), таблица, расшаренная на его
+email, и `ANTHROPIC_API_KEY` для тем через Claude.
 
 ---
 
@@ -574,8 +599,12 @@ plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.
 
 - **Курс — сегодняшний на всю историю** (упрощение, принято пользователем).
 - **Данные семьи — в настройках, не в коде** (I8): базовая валюта, первый месяц,
-  псевдонимы имён (`.env`), свои магазины (`theme_keywords.json`), имя агента
+  псевдонимы имён (`.env` / окружение бота), свои магазины (`theme_keywords.json`)
+  и ручные доначисления в `dashboard/` или `DASHBOARD_FILES_DIR`, имя агента
   launchd (`LAUNCHD_LABEL`).
+- **Сборка — в боте, не на Mac** (issue #119): дашборд не зависит от
+  включённого компьютера. Час сборки — `MONTHLY_SUMMARY_HOUR`, отдельной
+  настройки нет.
 - **Аренда переносится в категорию аренды из таблицы** (`Rent` / `Аренда`) по слову `аренд` (фикс ошибки ввода).
 - **Месяцы раньше `DASHBOARD_FROM_MONTH` скрыты** (можно вернуть `--from ""`).
 - **Тиры оптимизации** — субъективная классификация; правится в трёх местах
@@ -597,7 +626,7 @@ plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.
 | Хочу… | Файл / место |
 |---|---|
 | правило группировки темы | `THEME_RULES` в `build_dashboard.py` (+ обнови `CLASSIFY_SELFTEST`) |
-| свои магазины / места для тем | `dashboard/theme_keywords.json` (gitignored) |
+| свои магазины / места для тем | `theme_keywords.json` в `dashboard/` или `DASHBOARD_FILES_DIR` (gitignored) |
 | сменить LLM-провайдера/модель | `--provider` / `--model`; дефолты в `DEFAULT_LLM_MODELS` |
 | добавить нового LLM-провайдера | `LLM_PROVIDERS` + функция `_classify_batch_*` в `build_dashboard.py`; JSON из ответа — `llm.extract_json_object` |
 | разбор строк Data, форматы даты | `family_bot/sheet_data.py` (`Row`, `parse_rows`, `READ_DATE_FMTS`) — общий с ботом |
@@ -609,9 +638,10 @@ plist `<LAUNCHD_LABEL>.plist` (`LAUNCHD_LABEL` из окружения или `.
 | базовую валюту | `BASE_CURRENCY` в `.env` или `--base` |
 | период отсечки | `DASHBOARD_FROM_MONTH` в `.env` или `--from` |
 | нормализацию имени | `DASHBOARD_SPENDER_ALIASES` в `.env` |
-| добавить ручную трату | `dashboard/manual_adjustments.csv` |
+| добавить ручную трату | `manual_adjustments.csv` в `dashboard/` или `DASHBOARD_FILES_DIR` |
 | «обычно», прогноз, число месяцев истории | `renderThisMonth`, `HISTORY_MONTHS` в `template.html` (§4.0) |
 | формулу метрики | соответствующая `render*`-функция в `template.html` (данные в HTML — через `esc()`, §4) |
 | что считать крупной тратой на Dashboard | `r.large` в цикле `build()` (§3.3); чтение пометки — `sheet_data.is_large_cell` |
 | блок «Крупные траты» | `#largeCard` и `renderLarge()` в `template.html` (§4.13) |
-| день/время авто-сборки | `RUN_DAY`/`RUN_HOUR`/`RUN_MINUTE` при `./schedule.sh install` |
+| час сборки в боте | `MONTHLY_SUMMARY_HOUR` (день — `DAY_OF_MONTH` в `monthly_summary.py`) |
+| день/время сборки на Mac | `RUN_DAY`/`RUN_HOUR`/`RUN_MINUTE` при `./schedule.sh install` |

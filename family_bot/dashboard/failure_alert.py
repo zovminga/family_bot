@@ -36,11 +36,17 @@ MAX_REASON_LEN = 200
 SEND_TIMEOUT_SEC = 30
 TOKEN_MASK = "<BOT_TOKEN>"
 UNKNOWN_REASON = "причина неизвестна"
+# Where to look and how to retry: a build by run.sh on a computer, or by the bot.
+LOCAL_LOG_HINT = ("Посмотри лог <code>dashboard/output/launchd.log</code> (при ручном "
+                  "запуске — <code>build.log</code>), исправь и запусти "
+                  "<code>dashboard/run.sh</code>.")
+BOT_LOG_HINT = ("Посмотри лог бота (на Render — вкладка Logs), исправь и отправь "
+                "боту /build_dashboard.")
 
 Sender = Callable[[str, str, str], None]
 
 
-def failure_text(reason: str, token: str) -> str:
+def failure_text(reason: str, token: str, log_hint: str = LOCAL_LOG_HINT) -> str:
     """
     Build the alert text.
 
@@ -50,11 +56,13 @@ def failure_text(reason: str, token: str) -> str:
         Stage and exception type; masked and cut to MAX_REASON_LEN.
     token : str
         Bot token to replace with TOKEN_MASK.
+    log_hint : str
+        Where the log is and how to retry (LOCAL_LOG_HINT or BOT_LOG_HINT).
 
     Returns
     -------
     str
-        HTML message text with the reason (escaped) and where the log is.
+        HTML message text with the reason (escaped) and ``log_hint``.
     """
     if token:
         reason = reason.replace(token, TOKEN_MASK)
@@ -62,9 +70,7 @@ def failure_text(reason: str, token: str) -> str:
         reason = reason[:MAX_REASON_LEN] + "…"
     return ("⚠️ <b>Дашборд не собрался</b>\n"
             "Причина: <code>" + html.escape(reason) + "</code>\n"
-            "Бот пока отдаёт прошлую версию. Посмотри лог "
-            "<code>dashboard/output/launchd.log</code> (при ручном запуске — "
-            "<code>build.log</code>), исправь и запусти <code>dashboard/run.sh</code>.")
+            "Бот пока отдаёт прошлую версию. " + log_hint)
 
 
 def post_message(token: str, chat_id: str, text: str) -> None:
@@ -119,7 +125,8 @@ def _env_file_values(path: Path) -> dict[str, str]:
     return values
 
 
-def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
+def send_failure_alert(reason: str, send: Optional[Sender] = None,
+                       log_hint: str = LOCAL_LOG_HINT) -> bool:
     """
     Send the failure alert to DASHBOARD_CHAT_ID.
 
@@ -131,6 +138,8 @@ def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
         Stage and exception type, never the exception text.
     send : Sender, optional
         Transport; defaults to post_message. Tests pass a fake.
+    log_hint : str
+        Where the log is and how to retry, see ``failure_text``.
 
     Returns
     -------
@@ -144,7 +153,7 @@ def send_failure_alert(reason: str, send: Optional[Sender] = None) -> bool:
         logger.warning("⚠️  BOT_TOKEN/DASHBOARD_CHAT_ID not set — failure alert not sent.")
         return False
     try:
-        (send or post_message)(token, chat_id, failure_text(reason, token))
+        (send or post_message)(token, chat_id, failure_text(reason, token, log_hint))
     except (OSError, ValueError, http.client.HTTPException) as exc:
         # urllib errors quote the request URL, which holds the token.
         logger.warning("⚠️  Failure alert not sent: %s", str(exc).replace(token, TOKEN_MASK))

@@ -88,6 +88,7 @@ files = [
     "family_bot/currency.py",
     "family_bot/currency_picker.py",
     "family_bot/dashboard/failure_alert.py",
+    "family_bot/dashboard_job.py",
     "family_bot/draft_expense.py",
     "family_bot/errors.py",
     "family_bot/expense.py",

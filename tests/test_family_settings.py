@@ -84,7 +84,7 @@ def test_theme_keywords_bad_file_fails(tmp_path: Path, content: str) -> None:
 def run_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     for name in ("BASE_CURRENCY", "DASHBOARD_FROM_MONTH", "DASHBOARD_SPENDER_ALIASES"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(bd, "THEME_KEYWORDS_PATH", tmp_path / "none.json")
+    monkeypatch.setenv(bd.FILES_DIR_ENV, str(tmp_path))  # no theme_keywords.json there
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr(bd, "build", lambda **kw: calls.append(kw) or tmp_path / "x.html")
 

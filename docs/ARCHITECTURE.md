@@ -42,6 +42,7 @@ bot.py  (handlers, ConversationHandler, allowlist gate, webhook|polling)
     ├── sheet_data.py           Data row parsing → Row (bot + dashboard)
     ├── clock.py                "now" in the family time zone (TZ_NAME)
     ├── monthly_summary.py      JobQueue job: last month's summary on the 1st
+    ├── dashboard_job.py        dashboard build job: the 1st and /build_dashboard
     ├── payment_reminder.py     Payment reminder: due monthly Presets, text, buttons (no Telegram)
     ├── payment_reminder_bot.py Payment reminder job on the 5th/20th, buttons, amount reply
     ├── errors.py               error handler, user texts, secret masking
@@ -69,6 +70,7 @@ Finances never share across installs.
 | `amount_input.py` | Rules for a new amount: finite and above zero (`positive_amount`), optional Currency before or after it, at most two decimals (`parse_amount_text`: «1 200», «350 дин», «€12,5»; «1.234» is rejected, not rounded). Number parsing is `sheet_data.parse_amount`, Currency lookup is `currency.find` | Parse typed or spoken amounts another way |
 | `clock.py` | `clock.now()`: current time in the family zone (`TZ_NAME`, default `Europe/Belgrade`) | Call `datetime.now()` for "today" |
 | `monthly_summary.py` | Job on the 1st of each month at `MONTHLY_SUMMARY_HOUR` (default 9) in `TZ_NAME`: `schedule(job_queue, chat_id, hour, load_rows)` (`JobQueue.run_monthly`) and the callback `send_summary`, which reads rows in a thread and sends `analytics.format_month_summary` for `previous_month(clock.now())` to `DASHBOARD_CHAT_ID`. A failure is logged with `errors.log_exception`. The job lives in memory: if the bot is down at that hour, the month is skipped, not sent late | Send scheduled messages another way; catch up a missed summary at start (nothing records that it was sent) |
+| `dashboard_job.py` | Dashboard build inside the bot (issue #119). `schedule(job_queue, hour)` puts `run_build` on the 1st at `MONTHLY_SUMMARY_HOUR` in `TZ_NAME` (`JobQueue.run_monthly`, `monthly_summary.job_tz`); `build_now` is `/build_dashboard` (`run_once`). `run_build` calls `build_dashboard.build_from_env` through `asyncio.to_thread`; one build at a time (`build_lock`, an `asyncio.Lock` in `bot_data`). The build sends the file to `DASHBOARD_CHAT_ID`, stores its `file_id` in Meta and alerts its own failures | Build in the event loop; call `sys.exit` from the build |
 | `payment_reminder.py` | Payment reminder logic, no Telegram. `due_payments(presets, rows, month)`: monthly Presets (`remind` not False) with no Data row this month whose comment equals the Preset name (case and outer spaces ignored), each with the month's rows of the same Category (`DuePayment`). `Reminder` (short id, open line indices, chat and message id) lives in `bot_data["payment_reminders"]`; `message_text` (HTML: bold Preset name, «уже есть» rows in a quote), `buttons` (`pr:<id>:<line>:pay` with style `success` / `already` without), `saved_text` (quoted «✅ Сохранено» line after «⚡ Внести»), `prompt_text`, `take` / `put_back` (a line is closed before the write so a second tap cannot save twice), `record` (sheet Category, Currency, Spender; the Preset name as comment; `large=False`). Amount prompts wait in `bot_data["payment_reminder_prompts"]` by (chat id, message id) with the presser's id | Credit a payment by guess (amount or Category match); remember «✅ Уже внесено» across reminders |
 | `payment_reminder_bot.py` | Telegram side of the Payment reminder. `schedule` puts `send_reminder` on the 5th and 20th (`JobQueue.run_monthly`, `PAYMENT_REMINDER_HOUR`, default 10, in `TZ_NAME`, `monthly_summary.job_tz`); the job reads Presets and Data fresh in a thread, sends nothing when all are entered, logs a failure. `on_button` (callback `pr:`): «⚡ Внести» with an amount saves at once and replies «✅ Сохранено» with the presser's «↩️ Отменить» (`undo.remember`); without an amount it sends a `ForceReply` prompt (in a group with privacy mode the bot sees only replies to its messages); «✅ Уже внесено» removes the line and writes nothing. `AMOUNT_REPLY` (group -1, before the Draft amount text) takes the presser's reply, checks it with `amount_input`, asks again on a bad amount. A button or reply after a restart answers «Напоминание устарело после обновления бота». Like the summary, a reminder missed while the bot is down is skipped | Send the reminder from another place; read Presets from `Config` at send time (the sheet may have changed without `/reloadcats`) |
 | `errors.py` | Application error handler `on_error`, user texts `SAVE_FAILED` / `NOT_PARSED`, `log_exception` with `BOT_TOKEN` / API keys masked | Send exception text to the user; log a traceback without `mask_secrets` |
@@ -157,8 +159,8 @@ Startup: importing `bot` reads no `.env` and opens no spreadsheet. `main()`
 reads `.env` and stops with one line if `BOT_TOKEN` is missing;
 `logs.setup()` runs right after `.env` is read, before that check.
 `post_init` loads `Config`, logs each setup problem as one WARNING line, schedules
-the monthly summary and the Payment reminder when `DASHBOARD_CHAT_ID` is set and Sheets is open
-(`monthly_summary.schedule`, `payment_reminder_bot.schedule`)
+the monthly summary, the Payment reminder and the dashboard build when `DASHBOARD_CHAT_ID` is set and Sheets is open
+(`monthly_summary.schedule`, `payment_reminder_bot.schedule`, `dashboard_job.schedule`)
 and fills the Telegram command menu from `bot.COMMANDS` (`set_my_commands`; a Telegram error
 there is logged and the bot still starts).
 
@@ -319,7 +321,7 @@ Default Claude API id is `claude-sonnet-5` (real, legacy as of 2026-11-18; see `
 
 ## Dashboard boundary
 
-Bot does **not** build the HTML. Laptop runs `python -m family_bot.dashboard` (`family_bot/dashboard/__main__.py` calls `build_dashboard.main`; usually through `dashboard/run.sh`), optionally publishes file + stores `file_id` in Meta; bot only re-sends. A failed publishing build sends a short alert to the same chat (`family_bot/dashboard/failure_alert.py`). Full pipeline/formulas: `dashboard/SPEC.md`.
+The bot builds the HTML on the 1st and on `/build_dashboard` (`dashboard_job.py` → `build_dashboard.build_from_env`, in a thread), publishes the file to `DASHBOARD_CHAT_ID` and stores its `file_id` in Meta; «📈 Дашборд» re-sends that `file_id`. A computer can run the same build: `python -m family_bot.dashboard` (`family_bot/dashboard/__main__.py` calls `build_dashboard.main`; usually through `dashboard/run.sh`). Both go through `build_and_publish`. A failed publishing build sends a short alert to the same chat (`family_bot/dashboard/failure_alert.py`). The household's own files (`theme_keywords.json`, `manual_adjustments.csv`) live in `dashboard/` or `DASHBOARD_FILES_DIR` (Render: `/etc/secrets`). Full pipeline/formulas: `dashboard/SPEC.md`.
 
 ## Tests
 

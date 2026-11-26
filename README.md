@@ -14,6 +14,7 @@ own allowlist). Your finances never mix with someone else's install.
 - Multi-currency (дин, €, ₽, ¥, £, $, CNY; list in `currency.py`)
 - Statistics and optional HTML dashboard
 - Last month's summary on the 1st of each month, sent to `DASHBOARD_CHAT_ID`
+- The bot builds the HTML dashboard on the 1st of each month and sends it to `DASHBOARD_CHAT_ID`; `/build_dashboard` builds it now
 - Payment reminder on the 5th and 20th: monthly presets not entered this month, with «⚡ Внести» / «✅ Уже внесено» buttons
 - Categories and presets loaded from Google Sheets
 - Allowlist so only your family can use *your* bot
@@ -217,6 +218,12 @@ an older Python. Then `pip install --no-deps -e .` fails with
 Add Secret File** → file name `creds.json` → paste the whole contents of your
 local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.json`.
 
+**Secret Files for the dashboard** (optional, only if you have them locally):
+`theme_keywords.json` (your shops and places for comment themes) and
+`manual_adjustments.csv` (rows to add to Data). Add each one the same way,
+with the same file name, and set `DASHBOARD_FILES_DIR` = `/etc/secrets`.
+Both files hold household data, so they stay out of the public repo.
+
 **Environment Variables** (service → **Environment**):
 
 | Variable | Value |
@@ -226,12 +233,15 @@ local `secrets/creds.json` → **Save**. Render puts it at `/etc/secrets/creds.j
 | `GOOGLE_CREDS_PATH` | `/etc/secrets/creds.json` |
 | `SHEET_NAME` | exact spreadsheet title, as in `.env` |
 | `ALLOWED_USERS` | same line as in `.env` |
-| `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos |
+| `ANTHROPIC_API_KEY` | optional, for voice / typed text / photos and dashboard themes (without it the dashboard groups comments by keyword rules) |
 | `BASE_CURRENCY` | optional, ISO code of the currency used when an expense names none (default `EUR`), as in `.env` |
 | `TZ_NAME` | optional, the family's IANA time zone (default `Europe/Belgrade`). Render runs in UTC; the bot takes "today" and "yesterday" in this zone |
-| `DASHBOARD_CHAT_ID` | optional, the chat for last month's summary on the 1st (same id as for the dashboard). Unset → no summary, and the log has one `⚠️ DASHBOARD_CHAT_ID` line |
-| `MONTHLY_SUMMARY_HOUR` | optional, hour 0–23 in `TZ_NAME` when the summary is sent on the 1st (default `9`) |
+| `DASHBOARD_CHAT_ID` | optional, the chat for last month's summary and the dashboard on the 1st. Unset → no summary, no dashboard build, and the log has one `⚠️ DASHBOARD_CHAT_ID` line |
+| `MONTHLY_SUMMARY_HOUR` | optional, hour 0–23 in `TZ_NAME` when the summary is sent and the dashboard is built on the 1st (default `9`) |
 | `PAYMENT_REMINDER_HOUR` | optional, hour 0–23 in `TZ_NAME` when the Payment reminder is sent on the 5th and 20th to `DASHBOARD_CHAT_ID` (default `10`) |
+| `DASHBOARD_FROM_MONTH` | optional, dashboard: hide months before this one, `YYYY-MM`, as in `.env` |
+| `DASHBOARD_SPENDER_ALIASES` | optional, dashboard: one Spender under several spellings, as in `.env` |
+| `DASHBOARD_FILES_DIR` | optional, `/etc/secrets` when you added the dashboard Secret Files above |
 | `WEBHOOK_SECRET` | recommended: a random string of 1–256 characters `A–Z a–z 0–9 _ -` (command below) |
 
 Render sets `RENDER_EXTERNAL_URL` (the service address) by itself. When it is
@@ -254,9 +264,11 @@ it. If it is unset, the bot makes a random secret at each start and registers
 it with Telegram, so it still works; a fixed value avoids rejected updates
 while an old and a new instance overlap during a deploy.
 
-The monthly summary is scheduled inside the bot process. If the process is
-not running at that hour on the 1st (a deploy, a restart, or an instance that
-sleeps when idle), that month's summary is skipped, not sent later.
+The monthly summary and the dashboard build are scheduled inside the bot
+process. If the process is not running at that hour on the 1st (a deploy, a
+restart, or an instance that sleeps when idle), that month's summary and
+build are skipped, not run later. Send `/build_dashboard` to build the
+dashboard by hand.
 
 ## Commands
 
@@ -266,6 +278,7 @@ sleeps when idle), that month's summary is skipped, not sent later.
 | `/whoami` | anyone | Show Telegram ID / allowlist status |
 | `/register NAME` | allowlisted | Print an `ALLOWED_USERS=` line to copy into `.env` (does not save by itself) |
 | `/dashboard` | allowlisted | Re-send latest HTML dashboard |
+| `/build_dashboard` | allowlisted | Build the dashboard now and send it to `DASHBOARD_CHAT_ID` |
 | `/categories` | allowlisted | List categories |
 | `/reloadcats` | allowlisted | Reload categories + presets |
 | `/test_connection` | allowlisted | Ping Google Sheets |
@@ -276,8 +289,10 @@ startup (`bot.COMMANDS`), except `/stop`. The bot speaks Russian.
 
 ## Dashboard
 
-The bot does **not** build the dashboard. Build it on a laptop and publish
-`file_id` into the `Meta` sheet — see [`dashboard/README.md`](dashboard/README.md).
+The bot builds the dashboard on the 1st of each month and on `/build_dashboard`:
+it sends the HTML file to `DASHBOARD_CHAT_ID` and stores its `file_id` in the
+`Meta` sheet, and «📈 Дашборд» re-sends that file. A build on your computer
+(`dashboard/run.sh`) does the same — see [`dashboard/README.md`](dashboard/README.md).
 
 ## Sheet layout (after bootstrap)
 

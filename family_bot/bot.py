@@ -30,6 +30,7 @@ from family_bot import draft_expense as draft
 from family_bot import large_expense
 from family_bot import live_card
 from family_bot import flow_preset
+from family_bot import dashboard_job
 from family_bot import monthly_summary
 from family_bot import navigation as nav
 from family_bot import payment_reminder as reminder
@@ -57,6 +58,7 @@ def cfg(context: ContextTypes.DEFAULT_TYPE) -> config.Config:
 COMMANDS = [
     BotCommand("start", "Главное меню"),
     BotCommand("dashboard", "Дашборд трат"),
+    BotCommand("build_dashboard", "Собрать дашборд заново"),
     BotCommand("categories", "Список категорий"),
     BotCommand("reloadcats", "Перечитать категории и заготовки из таблицы"),
     BotCommand("cancel", "Отменить и вернуться в меню"),
@@ -87,6 +89,8 @@ async def post_init(app: Application) -> None:
             app.job_queue, settings.summary_chat_id, settings.reminder_hour,
             lambda: load_reminder_inputs(app.bot_data[config.KEY]))
         logger.info("✅ Payment reminder: 5th and 20th, %d:00", settings.reminder_hour)
+        dashboard_job.schedule(app.job_queue, settings.summary_hour)
+        logger.info("✅ Dashboard build: 1st of each month, %d:00", settings.summary_hour)
     try:
         await app.bot.set_my_commands(COMMANDS)
     except TelegramError as e:  # the menu is a convenience, the bot still works
@@ -94,10 +98,10 @@ async def post_init(app: Application) -> None:
 
 
 # ---------- Dashboard delivery ----------
-# The dashboard is BUILT on a separate machine (see dashboard/run.sh): that build
-# uploads the HTML to Telegram and stores the resulting file_id in the "Meta"
-# worksheet. The bot itself never builds — it just re-sends that latest file_id,
-# so opening the dashboard from the phone is instant and needs no server-side work.
+# The dashboard is BUILT by a monthly job (dashboard_job.py, also /build_dashboard)
+# or by dashboard/run.sh: the build uploads the HTML to Telegram and stores the
+# resulting file_id in the "Meta" worksheet. The button re-sends that latest
+# file_id, so opening the dashboard from the phone is instant.
 
 
 def get_dashboard_file_id(sheets: SheetsClient) -> Optional[str]:
@@ -121,8 +125,7 @@ async def send_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not file_id:
         await msg.reply_text(
             "📈 <b>Дашборда пока нет</b>\n"
-            "Собери его на компьютере: <code>dashboard/run.sh</code>. "
-            "После сборки он появится здесь."
+            "Бот собирает его 1-го числа каждого месяца. Собрать сейчас: /build_dashboard"
         )
         return
     try:
@@ -785,6 +788,7 @@ def build_application(bot_token: str) -> Application:
 
     app.add_handler(conv)
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))
+    app.add_handler(CommandHandler("build_dashboard", dashboard_job.build_now))
     app.add_handler(CommandHandler("reloadcats", reload_cats))
     app.add_handler(CommandHandler("categories", show_categories))
     app.add_handler(CommandHandler("test_connection", test_connection))

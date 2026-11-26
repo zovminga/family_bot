@@ -77,6 +77,7 @@ family_bot/           Python package (`family-bot` command, `python -m family_bo
   amount_input.py     Amount checks for typed/spoken input
   clock.py            clock.now() in the family time zone (TZ_NAME)
   monthly_summary.py  JobQueue job: last month's summary on the 1st to DASHBOARD_CHAT_ID
+  dashboard_job.py    JobQueue job: dashboard build on the 1st and /build_dashboard
   payment_reminder.py Payment reminder: due monthly Presets, text, buttons (no Telegram)
   payment_reminder_bot.py  Payment reminder job on the 5th/20th, its buttons and amount reply
   errors.py           Error handler: short user text, masked log
