@@ -47,10 +47,12 @@ DASHBOARD_CHAT_ID=<your_telegram_id>   # чат, куда слать дашбо�
 BASE_CURRENCY=EUR                      # базовая валюта (ISO), её же бот ставит по умолчанию
 DASHBOARD_FROM_MONTH=2024-01           # необязательно: скрыть месяцы раньше этого
 DASHBOARD_SPENDER_ALIASES=ann=Анна,annie=Анна   # необязательно: одно имя в разных написаниях
+DASHBOARD_FILES_DIR=/etc/secrets      # необязательно: папка с theme_keywords.json и manual_adjustments.csv
 ```
 
 Свои магазины, кафе и места для группировки по темам — в
-`dashboard/theme_keywords.json` (файл в `.gitignore`). Формат:
+`dashboard/theme_keywords.json` (файл в `.gitignore`). Если задан
+`DASHBOARD_FILES_DIR`, файл берётся из этой папки. Формат:
 `{"Кофе": ["corner cafe"], "Супермаркет и продукты": ["мой магазин"]}`. Темы —
 только из `THEME_RULES` в `build_dashboard.py`; слова дописываются к словам темы.
 
@@ -82,15 +84,26 @@ python -m family_bot.dashboard --from 2024-07     # с конкретного м
 
 ## Авто-обновление и доставка в Telegram
 
-Архитектура: **дашборд собирается только на этой машине** (Маке). После каждой
-сборки `run.sh` отправляет готовый HTML в Telegram и сохраняет его `file_id` в
-лист `Meta` таблицы. Telegram-бот **ничего не собирает** — по кнопке `/dashboard`
-он просто пере-отправляет последний файл по `file_id` (мгновенно, с любого
-устройства). То есть сборка в одном месте, а смотреть можно и с телефона.
+Архитектура: **дашборд собирает сам бот** (на Render) — 1-го числа каждого
+месяца в `MONTHLY_SUMMARY_HOUR` (по умолчанию 9:00, зона `TZ_NAME`) и по команде
+`/build_dashboard`. Сборка идёт в отдельном потоке, бот в это время отвечает.
+После сборки бот отправляет HTML в чат `DASHBOARD_CHAT_ID` и сохраняет его
+`file_id` в лист `Meta`. По кнопке «📈 Дашборд» и `/dashboard` бот
+пере-отправляет последний файл по `file_id`.
 
-Поток: `run.sh` → собрать (Sheets + Claude) → `sendDocument` в чат
-`DASHBOARD_CHAT_ID` → записать `file_id` в `Meta!B1` → бот читает `Meta!B1` и
-отдаёт файл по запросу.
+Поток: собрать (Sheets + Claude) → `sendDocument` в чат `DASHBOARD_CHAT_ID` →
+записать `file_id` в `Meta!B1` → бот читает `Meta!B1` и отдаёт файл по запросу.
+
+Бот берёт настройки из своего окружения: `BASE_CURRENCY`, `DASHBOARD_FROM_MONTH`,
+`DASHBOARD_SPENDER_ALIASES`, `DASHBOARD_FILES_DIR`. Темы — через Claude, если
+задан `ANTHROPIC_API_KEY`, иначе по правилам. Кэш тем (`output/llm_cache_*.json`)
+на Render живёт до следующего деплоя, поэтому сборка после деплоя заново
+отправляет в Claude все комментарии. Сбой сборки — короткое сообщение в
+`DASHBOARD_CHAT_ID`, подробности — в логе бота (Render → Logs).
+
+`run.sh` на компьютере делает ту же сборку и отправку. Он нужен для пробной
+сборки и для установки без бота на сервере. Не ставь агент `launchd` (ниже)
+вместе с ботом на Render: 1-го числа придут два файла.
 
 **По требованию** (одной командой):
 
@@ -145,8 +158,8 @@ RUN_DAY=1 RUN_HOUR=8 RUN_MINUTE=30 ./schedule.sh install
 попадает.
 
 Месяцы раньше `DASHBOARD_FROM_MONTH` скрыты (флаг `--from` её переопределяет). Ручные доначисления
-(например, забытая аренда) лежат в `dashboard/manual_adjustments.csv` и
-автоматически подмешиваются при сборке.
+(например, забытая аренда) лежат в `dashboard/manual_adjustments.csv` (или в папке
+`DASHBOARD_FILES_DIR`) и автоматически подмешиваются при сборке.
 
 Результат: `dashboard/output/expenses_dashboard.html` — открывается двойным
 кликом. Папка `output/` в `.gitignore`, т.к. содержит реальные финансовые данные.

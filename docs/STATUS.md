@@ -3,9 +3,9 @@
 > Living handoff. Agents update this at the end of every meaningful task
 > (see `AGENTS.md` → Keep docs fresh). Newest facts on top inside each section.
 
-**Last updated:** 2026-11-23  
-**Updated by:** agent session (bot look stage 1 closed, #108 without animated emoji)  
-**Product code tip:** branch for issue #107 (2026-11-23) — main menu in two rows without «🏠 В начало», greeting «👋 Что делаем?», every text on «ты», `/whoami` and «нет доступа» with the Telegram ID in `<code>`, dashboard and build-failure messages in HTML; the Payment reminder uses the shared «✅ Сохранено» line; on top of #100–#106  
+**Last updated:** 2026-11-26  
+**Updated by:** agent session (issue #119: dashboard build moved into the bot on Render)  
+**Product code tip:** branch for issue #119 (2026-11-26) — the bot builds the dashboard on the 1st at `MONTHLY_SUMMARY_HOUR` and on `/build_dashboard`, in a thread, sends it to `DASHBOARD_CHAT_ID` and stores its `file_id` in Meta; household dashboard files come from `DASHBOARD_FILES_DIR`  
 **Repo:** https://github.com/zovminga/family_bot.git (public)
 
 ## Snapshot
@@ -17,6 +17,25 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 
 ## What works
 
+- Dashboard build in the bot (issue #119): on the 1st at `MONTHLY_SUMMARY_HOUR`
+  (default 9, `TZ_NAME`) and on `/build_dashboard` the bot runs the same build
+  as `dashboard/run.sh` (`build_dashboard.build_from_env` → `build_and_publish`)
+  in a worker thread (`dashboard_job.py`), sends the file to `DASHBOARD_CHAT_ID`
+  («📈 <b>Дашборд обновлён</b>») and stores its `file_id` in Meta. Settings come
+  from the bot's environment: `BASE_CURRENCY`, `DASHBOARD_FROM_MONTH`,
+  `DASHBOARD_SPENDER_ALIASES`; Claude groups themes when `ANTHROPIC_API_KEY` is
+  set, else the rules. `theme_keywords.json` and `manual_adjustments.csv` are
+  read from `DASHBOARD_FILES_DIR` (Render: Secret Files in `/etc/secrets`),
+  default `dashboard/`. One build at a time (`asyncio.Lock` in `bot_data`); a
+  second `/build_dashboard` answers «⏳ Дашборд уже собирается». No chat or no
+  Sheets → no job, and the command answers «❌ Некуда отправить дашборд…». A
+  failure sends «⚠️ Дашборд не собрался» pointing at the bot log and
+  `/build_dashboard` (`failure_alert.BOT_LOG_HINT`); `run.sh` keeps its own
+  hint. «📈 Дашборда пока нет» now names the 1st and `/build_dashboard`.
+  `generated_at` and `as_of` follow `TZ_NAME` (`clock.now()`), not the server
+  clock. Checked locally: a rules build from the real sheet with
+  `DASHBOARD_FILES_DIR` merged the 7 manual adjustment rows. Not checked on
+  Render or in Telegram yet. Tests: `tests/test_dashboard_on_render.py`.
 - Menu and texts on «ты» (issue #107, spec `docs/specs/2026-11-bot-look.md`
   stories 7, 9, 14–16, 56–59): the main menu is two rows — «💰 Добавить трату»,
   «🧾 Заготовка» / «📅 Этот месяц», «📊 Статистика», «📈 Дашборд» — without
@@ -366,8 +385,8 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
 - "Today" follows the family time zone (issue #19): `clock.now()` reads
   `TZ_NAME` (default `Europe/Belgrade`). The date buttons, presets, the Draft
   card, voice/receipt prompts, the month list in stats and the Meta
-  `updated_at` stamp all use it. The dashboard `generated_at` stays on the
-  build Mac's local clock.
+  `updated_at` stamp all use it. The dashboard `generated_at` and `as_of`
+  use it too since #119.
 - Data writes follow the sheet's header names (column order is free) and go
   `RAW`, so a comment `=…` stays text. `parse_amount` reads `1,234` as 1234
   and `12,5` as 12.5 (rule in `dashboard/SPEC.md` §3.3). Issue #17.
@@ -463,9 +482,10 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   «429 Too Many Requests» to every Bot API call, even `getMe`, from this Mac,
   without VPN and from a phone on mobile data; a token reset did not help.
   Cause unknown. The live bot works. Check look changes on the live bot.
-- **Dashboard build host (documented):** `dashboard/README.md` says the HTML is
-  built on this Mac (`run.sh` / `launchd`), then the bot only re-sends the
-  stored Telegram `file_id`. The bot process itself is not that Mac job.
+- **Dashboard build host:** the bot on Render since #119 (`dashboard_job.py`).
+  Before #119 a `launchd` job on the owner's Mac ran `dashboard/run.sh` on the
+  1st; it must be removed once the bot builds (two files otherwise). `run.sh`
+  stays for manual and trial builds.
 - **Claude model id `claude-sonnet-5` is real.** Checked 2026-11-18 against
   [Claude Sonnet 5](https://platform.claude.com/docs/en/models/sonnet-5/overview):
   Claude API id, legacy, available until no earlier than 2027-06-30.
@@ -477,6 +497,17 @@ has a clean tree matching GitHub; no local `.env` in this checkout.
   Unread sections are unread source, not missing knowledge.
 
 ## Open
+
+- Dashboard on Render (issue #119), owner steps after the merge: on Render
+  add `DASHBOARD_FROM_MONTH`, `DASHBOARD_SPENDER_ALIASES`, Secret Files
+  `theme_keywords.json` and `manual_adjustments.csv`, and
+  `DASHBOARD_FILES_DIR=/etc/secrets`; check `BASE_CURRENCY` and
+  `ANTHROPIC_API_KEY`; then send `/build_dashboard` and remove the Mac
+  `launchd` agent (`./schedule.sh uninstall`). The theme cache
+  (`output/llm_cache_anthropic.json`) is lost on every deploy, so the first
+  build after a deploy sends every comment to Claude; time and cost of such
+  a build are not measured. The monthly job is skipped if a deploy runs at
+  that hour, like the monthly summary.
 
 - New bot look, stage 1 (#100 built: HTML everywhere, `look.py`, button
   styles; #101 built: Draft card; #102 built: Draft edits in one live card;

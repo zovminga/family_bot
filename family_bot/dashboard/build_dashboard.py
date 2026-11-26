@@ -20,15 +20,17 @@ import logging
 import os
 import re
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
 import requests
 from dotenv import load_dotenv
 
+from family_bot import clock
 from family_bot.currency import BASE_CURRENCY_ENV, DEFAULT_BASE, to_iso
-from family_bot.dashboard.failure_alert import ALERT_HANDLED_EXIT_CODE, send_failure_alert
+from family_bot.dashboard.failure_alert import (ALERT_HANDLED_EXIT_CODE, BOT_LOG_HINT,
+                                                LOCAL_LOG_HINT, send_failure_alert)
 from family_bot.fx import fetch_rates
 from family_bot import logs
 from family_bot.llm import extract_json_object, reply_text
@@ -75,9 +77,38 @@ FROM_MONTH_ENV = "DASHBOARD_FROM_MONTH"
 FROM_MONTH_RE = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
 # Spender aliases «alias=Name,alias=Name»: one Spender under several spellings.
 SPENDER_ALIASES_ENV = "DASHBOARD_SPENDER_ALIASES"
+# Folder with the household's own files below (absolute or repo-relative).
+# Unset: dashboard/. On Render: /etc/secrets, where Secret Files live.
+FILES_DIR_ENV = "DASHBOARD_FILES_DIR"
 # Git-ignored JSON {theme: [extra keywords]} with the household's own shops and
 # places, merged into THEME_RULES. Only themes from THEME_RULES are allowed.
-THEME_KEYWORDS_PATH = DASHBOARD_DIR / "theme_keywords.json"
+THEME_KEYWORDS_NAME = "theme_keywords.json"
+# Git-ignored CSV of rows to add to Data (e.g. rent the household forgot to log).
+ADJUSTMENTS_NAME = "manual_adjustments.csv"
+
+
+def household_file(name: str) -> Path:
+    """
+    Path of one of the household's own dashboard files.
+
+    Parameters
+    ----------
+    name : str
+        File name, e.g. THEME_KEYWORDS_NAME.
+
+    Returns
+    -------
+    Path
+        The file in DASHBOARD_FILES_DIR (a relative folder counts from the
+        repo root), else in dashboard/.
+    """
+    raw = os.getenv(FILES_DIR_ENV)
+    if not raw:
+        return DASHBOARD_DIR / name
+    folder = Path(raw)
+    if not folder.is_absolute():
+        folder = BOT_DIR / folder
+    return folder / name
 
 # Comments matching this are ATM cash withdrawals / cash-outs, not real
 # spending — they only move money between accounts. Excluded from the dashboard
@@ -600,7 +631,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
     # Merge manual adjustments (e.g. rent entries the user forgot to log).
     # Rows are aligned to the main headers by field name, so column order is
     # irrelevant. The file is git-ignored and stays out of the public repo.
-    adj_path = DASHBOARD_DIR / "manual_adjustments.csv"
+    adj_path = household_file(ADJUSTMENTS_NAME)
     if adj_path.exists():
         a_headers, a_rows = read_csv(adj_path)
         a_cols = resolve_columns(a_headers)
@@ -711,10 +742,12 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
             else:
                 r["theme"] = classify_theme(r["comment"], rules) or "Прочее"
 
+    # Family time (TZ_NAME), not the server clock: Render runs in UTC.
+    now = clock.now()
     data = {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated_at": now.strftime("%Y-%m-%d %H:%M"),
         # build date: the first screen's "this month" and how many of its days passed
-        "as_of": (as_of or datetime.now().date()).isoformat(),
+        "as_of": (as_of or now.date()).isoformat(),
         "base_currency": base_iso,
         "base_symbol": ISO_TO_SYMBOL.get(base_iso, base_iso),
         "spreadsheet_url": spreadsheet_url,
@@ -744,7 +777,7 @@ def build(base_iso: str, model: str, use_llm: bool, provider: str = "anthropic",
 
 
 # ---------------------------------------------------------------------------
-# Publish to Telegram (build machine only)
+# Publish to Telegram (the bot's monthly job, or run.sh on a computer)
 # ---------------------------------------------------------------------------
 def _store_file_id_in_sheet(file_id: str) -> None:
     """Write the latest dashboard file_id + timestamp to the Meta worksheet.
@@ -756,8 +789,8 @@ def _store_file_id_in_sheet(file_id: str) -> None:
 def publish_to_telegram(html_path: Path) -> None:
     """Upload the built dashboard to Telegram and store its file_id in the sheet.
 
-    Runs on the build machine after a successful build so the bot can later
-    re-send the latest dashboard by file_id without rebuilding anything.
+    Runs after a successful build so the bot can later re-send the latest
+    dashboard by file_id without rebuilding anything.
     Requires BOT_TOKEN and DASHBOARD_CHAT_ID in the environment (.env).
     """
     token = os.getenv("BOT_TOKEN")
@@ -820,28 +853,92 @@ def main() -> None:
     if args.from_month and not FROM_MONTH_RE.fullmatch(args.from_month):
         parser.error(f"--from / {FROM_MONTH_ENV}: expected YYYY-MM, got {args.from_month!r}")
 
+    if not build_and_publish(base=args.base, use_llm=args.llm, provider=args.provider,
+                             model=args.model, csv_path=args.csv,
+                             from_month=args.from_month or None, publish=args.publish):
+        sys.exit(ALERT_HANDLED_EXIT_CODE)
+
+
+def build_and_publish(base: str, use_llm: bool, provider: str, model: Optional[str],
+                      csv_path: Optional[str], from_month: Optional[str], publish: bool,
+                      log_hint: str = LOCAL_LOG_HINT) -> bool:
+    """
+    Build the dashboard and, with ``publish``, send it to Telegram.
+
+    Parameters
+    ----------
+    base : str
+        Base Currency (ISO code or symbol).
+    use_llm : bool
+        Group comments with an LLM instead of the rules.
+    provider : str
+        LLM backend, a key of LLM_PROVIDERS.
+    model : str or None
+        Model id; None takes DEFAULT_LLM_MODELS for ``provider``.
+    csv_path : str or None
+        Build from this CSV export instead of Google Sheets.
+    from_month : str or None
+        Hide months before this one (YYYY-MM).
+    publish : bool
+        Send the file to DASHBOARD_CHAT_ID and store its file_id in Meta.
+    log_hint : str
+        Where the log is, for the failure alert (failure_alert hints).
+
+    Returns
+    -------
+    bool
+        True when done. False when a ``publish`` run failed: the error is
+        logged and the failure alert is sent.
+
+    Raises
+    ------
+    Exception
+        Any build error when ``publish`` is False.
+    """
     stage = "самопроверка классификатора"
     try:
-        rules = load_theme_rules(THEME_KEYWORDS_PATH)
+        if from_month and not FROM_MONTH_RE.fullmatch(from_month):
+            raise ValueError(f"{FROM_MONTH_ENV}: expected YYYY-MM, got {from_month!r}")
+        rules = load_theme_rules(household_file(THEME_KEYWORDS_NAME))
         _run_classify_selftest(rules)
         aliases = parse_spender_aliases(os.getenv(SPENDER_ALIASES_ENV))
-        base = to_iso(args.base)
-        model = args.model or DEFAULT_LLM_MODELS[args.provider]
+        base_iso = to_iso(base)
         stage = "сборка"
-        out_path = build(base_iso=base, model=model, use_llm=args.llm, provider=args.provider,
-                         csv_path=args.csv, from_month=args.from_month or None,
-                         theme_rules=rules, spender_aliases=aliases)
-        if args.publish:
+        out_path = build(base_iso=base_iso, model=model or DEFAULT_LLM_MODELS[provider],
+                         use_llm=use_llm, provider=provider, csv_path=csv_path,
+                         from_month=from_month, theme_rules=rules, spender_aliases=aliases)
+        if publish:
             stage = "публикация в Telegram"
             publish_to_telegram(out_path)
     except Exception as exc:
-        # A --publish build is the scheduled one: tell the Dashboard chat. Only
+        # A publish run is the scheduled one: tell the Dashboard chat. Only
         # the stage and exception type go out; the text can quote sheet rows.
-        if not args.publish:
+        if not publish:
             raise
         logger.exception("Build failed at stage: %s", stage)
-        send_failure_alert(f"{stage}: {type(exc).__name__}")
-        sys.exit(ALERT_HANDLED_EXIT_CODE)
+        send_failure_alert(f"{stage}: {type(exc).__name__}", log_hint=log_hint)
+        return False
+    return True
+
+
+def build_from_env() -> bool:
+    """
+    Build and publish with the household settings from the environment.
+
+    The bot's job calls this (dashboard_job.py): Claude groups the comments
+    when ANTHROPIC_API_KEY is set, else the rules do. Never raises.
+
+    Returns
+    -------
+    bool
+        True when the dashboard was sent and its file_id stored.
+    """
+    key_env, _ = LLM_PROVIDERS["anthropic"]
+    return build_and_publish(base=os.getenv(BASE_CURRENCY_ENV) or DEFAULT_BASE.code,
+                             use_llm=bool(os.getenv(key_env)), provider="anthropic",
+                             model=None, csv_path=None,
+                             from_month=os.getenv(FROM_MONTH_ENV) or None,
+                             publish=True, log_hint=BOT_LOG_HINT)
 
 
 if __name__ == "__main__":
